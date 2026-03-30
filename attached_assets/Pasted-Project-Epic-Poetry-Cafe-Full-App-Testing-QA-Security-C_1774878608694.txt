@@ -1,0 +1,821 @@
+Project: Epic Poetry Cafe – Full App Testing, QA, Security, Code Review, Functional Validation, UX, Logic, and Performance Testing
+Test the entire application deeply and systematically.
+This is not a basic test. Perform a complete product audit across:
+functional testing
+role-based user testing
+calculation validation
+business logic validation
+UI/UX testing
+workflow testing
+API testing
+backend validation testing
+security testing
+permission testing
+data integrity testing
+performance testing
+edge case testing
+code quality review
+bug fixing
+regression testing
+The goal is to make this app real-world production ready for Epic Poetry Cafe.
+Do not only identify issues.
+Find, fix, retest, and verify all issues.
+1. TESTING OBJECTIVE
+Validate that the entire system works correctly for all major users, all business scenarios, and all calculations.
+The app includes:
+authentication
+roles and permissions
+dashboard
+master data
+vendor management
+ingredient management
+menu item and recipe/BOM management
+purchase management
+expense management
+inventory and stock snapshot
+sales entry/import
+waste management
+trial and R&D management
+utility/fixed cost management
+profitability engine
+variance engine
+analytics dashboard
+reports and exports
+audit logs
+settings and configuration
+The testing must ensure that the app is:
+correct
+secure
+stable
+usable
+maintainable
+scalable enough for live usage
+2. MANDATORY TESTING APPROACH
+Perform testing in this order:
+Phase A – Environment & Setup Validation
+ensure project runs without errors
+validate environment variables
+validate backend startup
+validate frontend startup
+validate database migrations
+validate seed/demo data loading
+validate static/media handling
+validate API base URL config
+validate CORS setup
+validate JWT auth setup
+Phase B – Functional Testing
+test each module feature
+test create/read/update/delete
+test list/search/filter/sort/pagination
+test imports and exports
+test dashboards and reports
+Phase C – Business Logic Testing
+validate formulas
+validate costing logic
+validate stock logic
+validate P&L logic
+validate waste and trial logic
+validate variance calculations
+validate fixed cost allocations
+Phase D – Role/User Testing
+test each user role thoroughly
+ensure permission isolation
+ensure unauthorized actions are blocked
+Phase E – Security Testing
+auth/session security
+permission bypass attempts
+API security
+validation and injection testing
+data exposure testing
+file upload safety review
+Phase F – UI/UX Testing
+form behavior
+responsiveness
+layout issues
+usability issues
+loading/error states
+consistency
+Phase G – Performance & Reliability
+query efficiency
+API response performance
+heavy list pages
+analytics loading
+repeated save actions
+import handling
+Phase H – Code Review & Refactoring
+identify weak code
+simplify duplicated logic
+improve maintainability
+fix anti-patterns
+improve validation and error handling
+Phase I – Regression Testing
+after every fix, retest affected modules
+ensure one fix does not break another module
+3. USER ROLES TO TEST
+Test all flows for these users:
+3.1 Super Admin
+Can manage everything.
+3.2 Owner
+Should view analytics, reports, profitability, dashboards, approvals if configured.
+3.3 Manager
+Should manage most operations but with controlled access.
+3.4 Purchase/Store User
+Should manage vendor, purchases, stock snapshots, ingredient data if permitted.
+3.5 Kitchen/Bar User
+Should create waste entries, stock-related updates if allowed, trial entries if allowed.
+3.6 Accounts User
+Should manage expenses, view reports, validate cost and payable data.
+3.7 Viewer/Analyst
+Read-only analytics access only.
+For each role test:
+visible menu items
+page access
+action access
+hidden buttons
+blocked API access
+proper error messaging when unauthorized
+4. AUTHENTICATION & USER TESTING
+Test:
+login success
+login failure with wrong password
+login failure with inactive user
+JWT token generation
+refresh token flow
+expired token behavior
+logout behavior
+access protected route without token
+forgot password flow
+reset password flow
+password validation strength
+session persistence
+role-based redirect after login
+Check security:
+ensure password not exposed in API
+ensure invalid token rejected
+ensure refresh token misuse prevented
+ensure protected API endpoints require auth
+5. MASTER DATA TESTING
+Test all master modules:
+create category
+edit category
+disable category
+search and filter category
+duplicate prevention if needed
+invalid data validation
+inactive category not selectable where appropriate
+Test UOM:
+UOM creation
+conversion rules
+duplicate unit validation
+conversion factor use in calculations
+Test configuration:
+update costing method
+update thresholds
+update precision
+update allocation settings
+verify settings apply to calculations correctly
+6. VENDOR MANAGEMENT TESTING
+Test:
+create vendor
+update vendor
+inactive vendor
+filter by category/status
+duplicate vendor code handling
+required field validation
+invalid email/phone validation
+preferred vendor tagging
+alternate vendor setup
+vendor ingredient mapping
+effective date handling in vendor rate records
+Analytics tests:
+vendor spend summary correctness
+purchase history linking
+vendor-specific ingredient listing accuracy
+Negative tests:
+create vendor with missing required fields
+map invalid ingredient
+duplicate overlapping effective periods if not allowed
+7. INGREDIENT MANAGEMENT TESTING
+Test:
+create ingredient
+edit ingredient
+active/inactive status
+category assignment
+stock UOM / purchase UOM / recipe UOM mapping
+conversion factor logic
+reorder level validation
+opening stock entry
+standard cost / latest cost / weighted average field behavior
+ingredient-vendor mapping
+Test with examples:
+milk in litre, recipe in ml
+cheese in kg, recipe in gram
+cups in box, usage in piece
+Validation tests:
+zero or negative conversion factors
+invalid UOM combinations
+negative reorder levels
+duplicate ingredient code
+8. MENU ITEM & RECIPE/BOM TESTING
+This is critical.
+Test menu item:
+create item
+multiple prices
+item category
+active/inactive
+duplicate code handling
+Test recipe builder:
+add multiple ingredients
+edit recipe line
+delete recipe line
+change qty and wastage %
+optional vs mandatory lines
+stage notes
+Calculation tests:
+recipe line cost
+net quantity required
+total item cost
+selling price vs margin
+cost recalculation after ingredient rate change
+packaging item inclusion
+item with no ingredients
+invalid quantity
+zero selling price
+negative margin item handling
+Cross-check calculations manually for sample items:
+Cold Coffee
+Cappuccino
+Pasta
+Sandwich
+Lemongrass Cooler Iced Tea
+Verify exact formula correctness.
+9. PURCHASE MANAGEMENT TESTING
+Test:
+create purchase
+add multiple lines
+vendor selection
+invoice details
+payment status
+due date
+attachment upload
+line totals
+total totals
+edit purchase
+delete/inactivate purchase if supported
+Stock impact tests:
+purchase updates ingredient stock
+purchase updates latest cost
+purchase recalculates weighted average cost
+purchase affects reports correctly
+Validation tests:
+quantity zero
+negative rate
+missing vendor
+invalid conversion factor
+duplicate invoice warning for same vendor
+purchase with inactive ingredient
+purchase with inactive vendor
+Analytics tests:
+vendor spend updated
+ingredient purchase history updated
+cost trends updated
+Edge cases:
+very small decimals
+very large quantity
+tax included/excluded behavior if supported
+10. EXPENSE MANAGEMENT TESTING
+Test:
+create expense
+edit expense
+recurring expense
+fixed vs variable expense
+with and without vendor
+category selection
+attachment upload
+payment mode
+monthly recurring template behavior
+Allocation tests:
+daily allocation correctness
+fixed cost appearing in daily/monthly P&L
+recurring expense reflection in analytics
+Validation:
+negative amount
+invalid category
+invalid dates
+empty description where mandatory
+Analytics tests:
+category-wise expense summary
+monthly expense trend
+expense by payment mode if available
+11. INVENTORY & STOCK MODULE TESTING
+Test:
+opening stock load
+stock update from purchases
+stock deduction via waste
+stock deduction via trials
+stock closing snapshot entry
+stock ledger correctness
+stock valuation correctness
+low stock indicator
+Formula tests:
+consumed = opening + inward - closing - waste - trial
+value based on selected cost method
+ingredient snapshot per day
+Edge cases:
+negative closing stock attempt
+missing stock snapshot
+multiple updates same date
+ingredient with no purchases but stock exists
+inactive ingredient with stock
+Variance tests:
+compare actual and theoretical consumption
+verify mismatch numbers correctly
+12. SALES MODULE TESTING
+Test:
+manual sales entry
+multiple item entry same date
+sales edit
+sales delete/inactivate
+date filtering
+channel-wise sales
+discount handling
+selling price override if allowed
+CSV import
+CSV import tests:
+valid CSV import
+invalid headers
+invalid item code
+duplicate rows
+mixed success and failure rows
+downloadable template correctness
+row-level error report
+Analytics tests:
+daily sales total
+item-wise sales
+category-wise sales
+top selling items
+discount impact
+Edge cases:
+zero quantity
+negative sales amount
+item inactive but imported
+duplicate same item/date handling rule
+13. WASTE MANAGEMENT TESTING
+Test:
+create ingredient waste
+create menu item waste
+waste category
+waste reason
+quantity
+UOM
+cost auto calculation
+notes
+approval flow if implemented
+Logic tests:
+ingredient waste reduces stock
+menu item waste cost derived from recipe
+waste value shows in analytics
+waste impacts P&L correctly
+waste % vs sales calculation correct
+Validation tests:
+negative quantity
+zero quantity
+invalid reason
+inactive ingredient/item
+future dates if disallowed
+excessive waste beyond stock
+Analytics tests:
+waste by item
+waste by ingredient
+waste by reason
+waste by category
+waste trend
+top waste items
+14. TRIAL & R&D MANAGEMENT TESTING
+Test:
+create trial master
+create multiple trial versions
+add ingredients to version
+actual vs planned quantity
+evaluation scores
+version status changes
+compare versions
+approve one version
+reject one version
+convert approved trial to menu recipe
+Logic tests:
+trial batch cost
+per item trial cost
+trial waste
+stock deduction as trial consumption
+approved version conversion accuracy
+version history retention
+Validation tests:
+no ingredients
+invalid batch size
+yield zero
+invalid score ranges
+approving rejected version
+approving multiple final versions if not allowed
+Analytics tests:
+active trials
+approved vs rejected count
+trial spend
+trial waste summary
+15. UTILITY & FIXED COST TESTING
+Test:
+create recurring rent/electricity/water/gas/pest control/etc.
+edit billing periods
+allocation method settings
+fixed vs variable flags
+recurring logic
+Calculation tests:
+daily allocation = monthly amount / days in month
+allocated values appear correctly in daily P&L
+monthly P&L totals are accurate
+Edge cases:
+February month days
+leap year behavior if supported
+overlapping recurring records
+missing billing dates
+zero amount
+duplicate monthly entries
+16. PROFITABILITY & COST ENGINE TESTING
+This is one of the highest priority areas.
+Test all formulas manually and via API.
+Validate:
+Item production cost
+ingredient cost sum
+packaging inclusion
+wastage inclusion
+Margin
+selling price - production cost
+margin percentage
+Ingredient effective cost
+latest cost method
+weighted average method
+standard cost method
+Actual consumption
+opening + inward - closing - waste - trial
+Theoretical consumption
+sales quantities × recipe quantities
+Variance
+actual - theoretical
+Daily P&L
+sales
+direct material consumption
+waste
+trial
+allocated expenses
+allocated utilities
+profit
+Monthly P&L
+all aggregation accuracy
+Test with known sample data and manually verify every result.
+Use sample products like:
+Cold Coffee
+Cappuccino
+Pasta
+Sandwich
+Lemongrass Cooler Iced Tea
+Create expected-value test cases and compare API/database/UI outputs.
+17. DASHBOARD & ANALYTICS TESTING
+Test all dashboard cards, charts, filters, and summaries.
+Check:
+data accuracy
+date filter behavior
+empty state behavior
+chart rendering
+label clarity
+loading behavior
+drilldown behavior if present
+Specific dashboards:
+main owner dashboard
+item profitability dashboard
+ingredient consumption dashboard
+vendor dashboard
+waste dashboard
+trial dashboard
+Verify:
+top 5 calculations correct
+summary cards match detailed reports
+charts match actual source data
+18. REPORTS & EXPORT TESTING
+Test all reports:
+filters
+date ranges
+search
+pagination
+totals
+sorting
+Export tests:
+CSV export correct format
+Excel export correct columns
+print layout readability
+export respects filters
+no hidden unauthorized data exposed in export
+Reports to test:
+purchases
+expenses
+vendor spend
+stock
+sales
+item profitability
+ingredient consumption
+variance
+waste
+trials
+daily P&L
+monthly P&L
+19. AUDIT LOG TESTING
+Test:
+create action logs
+update action logs
+delete/inactivate logs
+recipe change logs
+settings change logs
+purchase and expense change logs
+waste and trial approval logs
+Validate:
+old value stored
+new value stored
+user stored
+timestamp stored
+module name correct
+Security test:
+audit logs cannot be tampered with by unauthorized roles
+20. API TESTING
+Test all APIs using:
+valid payload
+invalid payload
+missing fields
+unauthorized token
+wrong role
+malformed input
+pagination
+filtering
+sorting
+search
+Check:
+response status codes
+serializer validation messages
+consistent API response structure
+no stack traces leaked
+no sensitive fields leaked
+Important APIs:
+auth
+recipe cost calculation
+profitability
+daily P&L
+variance
+dashboard summary
+trial comparison
+convert approved trial to recipe
+import/export endpoints
+21. SECURITY TESTING
+Perform practical application security review.
+Authentication & Authorization
+access endpoint without token
+access admin endpoint with lower role
+try modifying records not allowed by role
+hidden button bypass through direct API
+Input Validation
+Test for:
+SQL injection patterns
+XSS payloads
+script tags in text fields
+malformed JSON
+long strings
+HTML injection
+negative numeric abuse
+extremely large values
+File Upload Testing
+invalid file type
+oversized file
+suspicious file extension
+duplicate filenames
+unsafe filename handling
+Data Exposure
+ensure no password hashes exposed
+ensure no internal stack traces exposed
+ensure no unrestricted list APIs expose too much data
+Token & Session
+expired token
+invalid token
+modified token
+refresh misuse
+logout then reuse token if applicable
+CORS & Config
+ensure backend not overly open
+ensure secret keys/env vars not exposed in frontend
+22. UI/UX TESTING
+Test every page for:
+responsive behavior on desktop/tablet/mobile
+form labels
+required indicators
+validation messages
+placeholder clarity
+table readability
+date picker usability
+loading states
+error states
+success states
+snackbars/toasts
+empty states
+modal usability
+keyboard behavior
+tab order
+accidental double submit prevention
+Look for:
+crowded layout
+inconsistent spacing
+broken alignment
+bad mobile table overflow
+unreadable charts
+confusing workflow
+Goal:
+App should feel simple and fast for daily cafe operations.
+23. PERFORMANCE TESTING
+Review performance of:
+dashboard APIs
+list pages with many records
+report generation
+import flows
+profitability calculations
+variance calculations
+Check:
+slow queries
+N+1 query issues
+repeated unnecessary API calls
+frontend rerender inefficiencies
+large payload problems
+Optimize:
+indexing
+queryset optimization
+pagination
+memoization where useful
+lazy loading where useful
+aggregate query handling
+24. DATA INTEGRITY TESTING
+Ensure business data remains consistent.
+Test:
+deleting referenced records
+disabling ingredients used in recipes
+disabling vendors used in purchases
+editing costs after historical transactions
+duplicate record generation
+concurrent updates if possible
+transaction rollback on partial failure
+Check:
+purchase totals match line totals
+stock movement consistency
+historical analytics remain stable
+converted trial recipes do not corrupt existing recipes
+25. CODE QUALITY REVIEW
+Review both frontend and backend code thoroughly.
+Backend review
+Check for:
+fat views
+duplicated calculation logic
+missing transactions
+serializer misuse
+missing permissions
+poor naming
+weak validation
+hidden logic bugs
+no test coverage on critical services
+Frontend review
+Check for:
+repeated form logic
+missing reusable components
+messy state flow
+weak error handling
+broken loading management
+routing guard issues
+inconsistent API handling
+Refactor where needed:
+centralize calculations
+centralize constants
+centralize validation
+centralize permissions logic
+improve readability and maintainability
+26. BUG FIXING RULE
+For every bug found:
+reproduce it
+describe root cause
+fix it properly
+retest that use case
+run regression tests on dependent modules
+document fix in changelog
+Do not do temporary patchwork fixes.
+Do root-cause-level fixes.
+27. TEST CASE DOCUMENTATION REQUIRED
+Create a testing document inside the project with:
+Sections:
+environment validation checklist
+module-wise test cases
+role-wise test cases
+security test cases
+API test cases
+formula validation test cases
+bugs found
+fixes made
+remaining risks if any
+final production readiness status
+For critical calculations, include:
+sample input
+expected result
+actual result
+pass/fail
+28. AUTOMATED TESTS TO ADD
+Create or improve automated tests for critical backend areas:
+auth
+vendor CRUD
+ingredient CRUD
+recipe costing service
+purchase cost update logic
+expense allocation logic
+stock consumption service
+waste calculation service
+trial costing service
+trial approval conversion service
+profitability service
+daily P&L service
+variance calculation service
+permissions on major endpoints
+Add frontend tests for:
+auth flow
+main reusable table/form components
+key page rendering
+major validation behavior
+29. FINAL OUTPUT EXPECTED AFTER TESTING
+After full testing and fixing, provide:
+A. Full bug list
+bug title
+module
+severity
+status
+fix summary
+B. Fixed code
+Apply all necessary fixes in codebase.
+C. Test summary
+passed
+failed
+fixed
+retested
+D. Risk summary
+Mention any remaining limitations honestly.
+E. Production readiness report
+State whether app is:
+not ready
+partially ready
+ready for pilot
+ready for production
+30. EXTRA HIGH-PRIORITY TEST SCENARIOS
+Must specifically test these realistic scenarios:
+Scenario 1 – Basic Daily Operations
+create purchase
+create expense
+enter sales
+enter waste
+enter stock closing
+verify dashboard and daily P&L
+Scenario 2 – Recipe Cost Change Impact
+update ingredient purchase cost
+verify menu item cost updates correctly
+verify profitability changes correctly
+Scenario 3 – Waste Spike
+enter high waste for milk/bread/coffee
+verify stock reduction
+verify waste analytics
+verify waste % alert
+Scenario 4 – Trial to Final Item
+create trial
+create V1 and V2
+approve V2
+convert to menu recipe
+sell item
+check profitability
+Scenario 5 – Permission Isolation
+login as viewer
+try create/edit/delete through UI and API
+ensure blocked everywhere
+Scenario 6 – Import Errors
+import bad sales CSV
+validate error handling
+import corrected file
+validate success
+Scenario 7 – Fixed Cost Allocation
+add monthly rent, electricity, pest control
+verify daily allocation
+verify daily and monthly P&L
+Scenario 8 – Variance Detection
+create sales-based expected usage
+enter closing stock producing mismatch
+verify variance report and values
+31. FINAL INSTRUCTION TO REPLIT
+Now perform a full end-to-end QA, code review, bug fixing, security review, logic validation, and regression cycle for the complete Epic Poetry Cafe application.
+Work module by module, use case by use case, role by role, and formula by formula.
+Do not stop at identifying issues.
+Fix the issues, retest them, and strengthen the codebase.
+The final result should be a stable, secure, user-friendly, calculation-accurate, production-ready application suitable for real cafe operations.

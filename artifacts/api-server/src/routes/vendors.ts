@@ -78,7 +78,7 @@ router.get("/vendors/:id", async (req, res): Promise<void> => {
 router.patch("/vendors/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateVendorParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateVendorBody.safeParse(req.body);
+  const parsed = UpdateVendorBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const [old] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, params.data.id));
@@ -86,6 +86,15 @@ router.patch("/vendors/:id", authMiddleware, async (req, res): Promise<void> => 
   if (!vendor) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("vendors", vendor.id, "update", old, vendor);
   res.json({ ...vendor, categoryName: null });
+});
+
+router.delete("/vendors/:id", authMiddleware, async (req, res): Promise<void> => {
+  const params = UpdateVendorParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [vendor] = await db.delete(vendorsTable).where(eq(vendorsTable.id, params.data.id)).returning();
+  if (!vendor) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("vendors", vendor.id, "delete", vendor, null);
+  res.json({ success: true });
 });
 
 router.get("/vendors/:id/spend-summary", async (req, res): Promise<void> => {

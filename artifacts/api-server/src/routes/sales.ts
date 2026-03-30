@@ -51,12 +51,15 @@ router.post("/sales", authMiddleware, async (req, res): Promise<void> => {
 router.patch("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateSalesEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateSalesEntryBody.safeParse(req.body);
+  const parsed = UpdateSalesEntryBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const [existing] = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   const updates: any = { ...parsed.data };
-  if (parsed.data.quantity && parsed.data.sellingPrice) {
-    updates.totalAmount = parsed.data.quantity * parsed.data.sellingPrice - (parsed.data.discount ?? 0);
-  }
+  const qty = parsed.data.quantity ?? existing.quantity;
+  const price = parsed.data.sellingPrice ?? existing.sellingPrice;
+  const disc = parsed.data.discount ?? existing.discount;
+  updates.totalAmount = qty * price - disc;
   const [entry] = await db.update(salesEntriesTable).set(updates).where(eq(salesEntriesTable.id, params.data.id)).returning();
   if (!entry) { res.status(404).json({ error: "Not found" }); return; }
   const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, entry.menuItemId));

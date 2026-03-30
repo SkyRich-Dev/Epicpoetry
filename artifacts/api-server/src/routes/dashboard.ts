@@ -53,15 +53,31 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
 
   const topByRevenue = Array.from(itemRevenueMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
 
-  const topByProfit = topByRevenue.map(item => ({
-    menuItemId: item.menuItemId,
-    menuItemName: item.menuItemName,
-    quantitySold: item.quantity,
-    revenue: item.revenue,
-    productionCost: 0,
-    grossProfit: item.revenue,
-    marginPercent: 100,
-  }));
+  const topByProfit = [];
+  for (const item of topByRevenue) {
+    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, item.menuItemId));
+    let unitCost = 0;
+    for (const line of recipeLines) {
+      const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+      if (ing) {
+        const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
+        const costPerRecipeUnit = ing.weightedAvgCost / (ing.conversionFactor || 1);
+        unitCost += costPerRecipeUnit * netQty;
+      }
+    }
+    const productionCost = unitCost * item.quantity;
+    const grossProfit = item.revenue - productionCost;
+    const marginPercent = item.revenue > 0 ? (grossProfit / item.revenue) * 100 : 0;
+    topByProfit.push({
+      menuItemId: item.menuItemId,
+      menuItemName: item.menuItemName,
+      quantitySold: item.quantity,
+      revenue: item.revenue,
+      productionCost,
+      grossProfit,
+      marginPercent,
+    });
+  }
 
   const alerts: any[] = [];
   lowStockIngredients.filter(i => i.currentStock <= i.reorderLevel).forEach(i => {
@@ -117,7 +133,8 @@ router.get("/dashboard/profitability", async (req, res): Promise<void> => {
       const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
       if (ing) {
         const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-        unitCost += ing.weightedAvgCost * netQty;
+        const costPerRecipeUnit = ing.weightedAvgCost / (ing.conversionFactor || 1);
+        unitCost += costPerRecipeUnit * netQty;
       }
     }
 
@@ -158,7 +175,8 @@ router.get("/dashboard/daily-pl", async (req, res): Promise<void> => {
       const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
       if (ing) {
         const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-        materialCost += ing.weightedAvgCost * netQty * s.quantity;
+        const costPerRecipeUnit = ing.weightedAvgCost / (ing.conversionFactor || 1);
+        materialCost += costPerRecipeUnit * netQty * s.quantity;
       }
     }
   }
@@ -192,9 +210,11 @@ router.get("/dashboard/consumption-variance", async (req, res): Promise<void> =>
   for (const s of sales) {
     const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, s.menuItemId));
     for (const line of recipeLines) {
+      const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+      const conversionFactor = ing?.conversionFactor || 1;
       const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-      const consumed = netQty * s.quantity;
-      theoreticalMap.set(line.ingredientId, (theoreticalMap.get(line.ingredientId) || 0) + consumed);
+      const consumedInStockUom = (netQty * s.quantity) / conversionFactor;
+      theoreticalMap.set(line.ingredientId, (theoreticalMap.get(line.ingredientId) || 0) + consumedInStockUom);
     }
   }
 

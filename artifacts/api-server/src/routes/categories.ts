@@ -38,7 +38,7 @@ router.post("/categories", authMiddleware, async (req, res): Promise<void> => {
 router.patch("/categories/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateCategoryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateCategoryBody.safeParse(req.body);
+  const parsed = UpdateCategoryBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const [old] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, params.data.id));

@@ -21,7 +21,7 @@ router.post("/uom", authMiddleware, async (req, res): Promise<void> => {
 router.patch("/uom/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateUomParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateUomBody.safeParse(req.body);
+  const parsed = UpdateUomBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [uom] = await db.update(uomTable).set(parsed.data).where(eq(uomTable.id, params.data.id)).returning();
   if (!uom) { res.status(404).json({ error: "Not found" }); return; }

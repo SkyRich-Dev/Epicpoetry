@@ -56,15 +56,15 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Categories**: GET/POST /categories, PATCH/DELETE /categories/:id
 - **UOM**: GET/POST /uom, PATCH /uom/:id
 - **Config**: GET/PATCH /config
-- **Vendors**: GET/POST /vendors, GET/PATCH /vendors/:id, GET /vendors/:id/spend-summary
-- **Ingredients**: GET/POST /ingredients, GET/PATCH /ingredients/:id, GET/POST /ingredients/:id/vendor-mappings
-- **Menu Items**: GET/POST /menu-items, GET/PATCH /menu-items/:id, GET/PUT /menu-items/:id/recipe, GET /menu-items/:id/costing
+- **Vendors**: GET/POST /vendors, GET/PATCH/DELETE /vendors/:id, GET /vendors/:id/spend-summary
+- **Ingredients**: GET/POST /ingredients, GET/PATCH/DELETE /ingredients/:id, GET/POST /ingredients/:id/vendor-mappings
+- **Menu Items**: GET/POST /menu-items, GET/PATCH/DELETE /menu-items/:id, GET/PUT /menu-items/:id/recipe, GET /menu-items/:id/costing
 - **Purchases**: GET/POST /purchases, GET /purchases/:id
-- **Expenses**: GET/POST /expenses, GET/PATCH /expenses/:id
+- **Expenses**: GET/POST /expenses, GET/PATCH/DELETE /expenses/:id
 - **Inventory**: GET /inventory/stock-overview, GET/POST /inventory/stock-snapshots, POST /inventory/adjustments
 - **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
-- **Waste**: GET/POST /waste, PATCH /waste/:id, GET /waste/summary
-- **Trials**: GET/POST /trials, GET/PATCH /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
+- **Waste**: GET/POST /waste, PATCH/DELETE /waste/:id, GET /waste/summary
+- **Trials**: GET/POST /trials, GET/PATCH/DELETE /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
 - **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend
 - **Reports**: GET /reports/export?reportType=...
 - **Audit Logs**: GET /audit-logs
@@ -77,10 +77,12 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 
 ## Key Features
 
-- **Costing Engine**: Weighted average (default), latest, or standard cost methods
+- **Costing Engine**: Weighted average (default), latest, or standard cost methods. Uses UOM conversion factor (stock-to-recipe) for accurate recipe line costing.
 - **Auto code generation**: VND0001, ING0001, MNU0001, PUR0001, EXP0001, WST0001, TRL0001
 - **Purchase -> Inventory**: Purchases auto-update ingredient stock + weighted avg cost
 - **Waste -> Stock**: Ingredient waste auto-deducts from stock
 - **Trial -> Menu**: Convert approved trial versions to menu item recipes
 - **Daily P&L**: Real-time profit/loss calculation from sales, material cost, waste, expenses
-- **Consumption Variance**: Compare actual vs theoretical ingredient consumption
+- **Consumption Variance**: Compare actual vs theoretical ingredient consumption (converted to stock UOM)
+- **Auth Token**: Frontend uses setAuthTokenGetter from custom-fetch for global API auth header injection
+- **PATCH operations**: All update schemas use .partial() for optional field updates

@@ -86,12 +86,21 @@ router.get("/trials/:id", async (req, res): Promise<void> => {
 router.patch("/trials/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateTrialParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateTrialBody.safeParse(req.body);
+  const parsed = UpdateTrialBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [trial] = await db.update(trialsTable).set(parsed.data).where(eq(trialsTable.id, params.data.id)).returning();
   if (!trial) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("trials", trial.id, "update", null, trial);
   res.json({ ...trial, categoryName: null });
+});
+
+router.delete("/trials/:id", authMiddleware, async (req, res): Promise<void> => {
+  const params = UpdateTrialParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [trial] = await db.delete(trialsTable).where(eq(trialsTable.id, params.data.id)).returning();
+  if (!trial) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("trials", trial.id, "delete", trial, null);
+  res.json({ success: true });
 });
 
 router.post("/trials/:id/versions", authMiddleware, async (req, res): Promise<void> => {
@@ -107,7 +116,9 @@ router.post("/trials/:id/versions", authMiddleware, async (req, res): Promise<vo
   const ingredientData = [];
   for (const ingLine of parsed.data.ingredients) {
     const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, ingLine.ingredientId));
-    const costPerUnit = ing ? ing.weightedAvgCost : 0;
+    const costPerStockUnit = ing ? ing.weightedAvgCost : 0;
+    const conversionFactor = ing ? (ing.conversionFactor || 1) : 1;
+    const costPerUnit = costPerStockUnit / conversionFactor;
     const lineCost = costPerUnit * ingLine.actualQty;
     totalCost += lineCost;
     ingredientData.push({ ...ingLine, costPerUnit, totalCost: lineCost, ingredientName: ing?.name ?? "" });

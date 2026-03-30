@@ -85,13 +85,22 @@ router.get("/ingredients/:id", async (req, res): Promise<void> => {
 router.patch("/ingredients/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateIngredientParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateIngredientBody.safeParse(req.body);
+  const parsed = UpdateIngredientBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [old] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, params.data.id));
   const [ing] = await db.update(ingredientsTable).set(parsed.data).where(eq(ingredientsTable.id, params.data.id)).returning();
   if (!ing) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("ingredients", ing.id, "update", old, ing);
   res.json({ ...ing, categoryName: null });
+});
+
+router.delete("/ingredients/:id", authMiddleware, async (req, res): Promise<void> => {
+  const params = UpdateIngredientParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [ing] = await db.delete(ingredientsTable).where(eq(ingredientsTable.id, params.data.id)).returning();
+  if (!ing) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("ingredients", ing.id, "delete", ing, null);
+  res.json({ success: true });
 });
 
 router.get("/ingredients/:id/vendor-mappings", async (req, res): Promise<void> => {

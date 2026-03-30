@@ -8,15 +8,23 @@ import { generateCode } from "../lib/codeGenerator";
 
 const router: IRouter = Router();
 
-async function getIngredientCost(ingredientId: number): Promise<number> {
+async function getIngredientCostAndConversion(ingredientId: number): Promise<{ costPerStockUnit: number; conversionFactor: number }> {
   const configs = await db.select().from(systemConfigTable);
   const config = configs[0];
   const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, ingredientId));
-  if (!ing) return 0;
+  if (!ing) return { costPerStockUnit: 0, conversionFactor: 1 };
   const method = config?.costingMethod || "weighted_average";
-  if (method === "latest") return ing.latestCost;
-  if (method === "standard") return ing.currentCost;
-  return ing.weightedAvgCost;
+  let costPerStockUnit = ing.weightedAvgCost;
+  if (method === "latest") costPerStockUnit = ing.latestCost;
+  else if (method === "standard") costPerStockUnit = ing.currentCost;
+  return { costPerStockUnit, conversionFactor: ing.conversionFactor || 1 };
+}
+
+function computeLineCost(costPerStockUnit: number, conversionFactor: number, recipeQty: number, wastagePercent: number): { netQty: number; costPerRecipeUnit: number; lineCost: number } {
+  const costPerRecipeUnit = costPerStockUnit / conversionFactor;
+  const netQty = recipeQty * (1 + (wastagePercent || 0) / 100);
+  const lineCost = costPerRecipeUnit * netQty;
+  return { netQty, costPerRecipeUnit, lineCost };
 }
 
 async function calculateItemCost(menuItemId: number): Promise<{ ingredientCost: number; packagingCost: number; total: number }> {
@@ -24,9 +32,8 @@ async function calculateItemCost(menuItemId: number): Promise<{ ingredientCost: 
   let ingredientCost = 0;
   let packagingCost = 0;
   for (const line of lines) {
-    const costPerUnit = await getIngredientCost(line.ingredientId);
-    const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-    const lineCost = costPerUnit * netQty;
+    const { costPerStockUnit, conversionFactor } = await getIngredientCostAndConversion(line.ingredientId);
+    const { lineCost } = computeLineCost(costPerStockUnit, conversionFactor, line.quantity, line.wastagePercent || 0);
     ingredientCost += lineCost;
   }
   return { ingredientCost, packagingCost, total: ingredientCost + packagingCost };
@@ -129,13 +136,13 @@ router.get("/menu-items/:id", async (req, res): Promise<void> => {
 
   const enrichedLines = [];
   for (const line of recipeLines) {
-    const costPerUnit = await getIngredientCost(line.ingredientId);
-    const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
+    const { costPerStockUnit, conversionFactor } = await getIngredientCostAndConversion(line.ingredientId);
+    const { netQty, costPerRecipeUnit, lineCost } = computeLineCost(costPerStockUnit, conversionFactor, line.quantity, line.wastagePercent || 0);
     enrichedLines.push({
       ...line,
       netQuantity: netQty,
-      costPerUnit,
-      lineCost: costPerUnit * netQty,
+      costPerUnit: costPerRecipeUnit,
+      lineCost,
     });
   }
 
@@ -148,7 +155,7 @@ router.get("/menu-items/:id", async (req, res): Promise<void> => {
 router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateMenuItemParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateMenuItemBody.safeParse(req.body);
+  const parsed = UpdateMenuItemBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [old] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
   const [item] = await db.update(menuItemsTable).set(parsed.data).where(eq(menuItemsTable.id, params.data.id)).returning();
@@ -158,6 +165,16 @@ router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> 
   const margin = item.sellingPrice - costing.total;
   const marginPercent = item.sellingPrice > 0 ? (margin / item.sellingPrice) * 100 : 0;
   res.json({ ...item, categoryName: null, productionCost: costing.total, margin, marginPercent });
+});
+
+router.delete("/menu-items/:id", authMiddleware, async (req, res): Promise<void> => {
+  const params = GetMenuItemParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  await db.delete(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, params.data.id));
+  const [item] = await db.delete(menuItemsTable).where(eq(menuItemsTable.id, params.data.id)).returning();
+  if (!item) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("menu_items", item.id, "delete", item, null);
+  res.json({ success: true });
 });
 
 router.get("/menu-items/:id/recipe", async (req, res): Promise<void> => {
@@ -182,9 +199,9 @@ router.get("/menu-items/:id/recipe", async (req, res): Promise<void> => {
 
   const enrichedLines = [];
   for (const line of lines) {
-    const costPerUnit = await getIngredientCost(line.ingredientId);
-    const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-    enrichedLines.push({ ...line, netQuantity: netQty, costPerUnit, lineCost: costPerUnit * netQty });
+    const { costPerStockUnit, conversionFactor } = await getIngredientCostAndConversion(line.ingredientId);
+    const { netQty, costPerRecipeUnit, lineCost } = computeLineCost(costPerStockUnit, conversionFactor, line.quantity, line.wastagePercent || 0);
+    enrichedLines.push({ ...line, netQuantity: netQty, costPerUnit: costPerRecipeUnit, lineCost });
   }
   res.json(enrichedLines);
 });
@@ -211,14 +228,14 @@ router.put("/menu-items/:id/recipe", authMiddleware, async (req, res): Promise<v
     }).returning();
 
     const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
-    const costPerUnit = await getIngredientCost(line.ingredientId);
-    const netQty = inserted.quantity * (1 + (inserted.wastagePercent || 0) / 100);
+    const { costPerStockUnit, conversionFactor } = await getIngredientCostAndConversion(line.ingredientId);
+    const { netQty, costPerRecipeUnit, lineCost } = computeLineCost(costPerStockUnit, conversionFactor, inserted.quantity, inserted.wastagePercent || 0);
     insertedLines.push({
       ...inserted,
       ingredientName: ing?.name ?? "",
       netQuantity: netQty,
-      costPerUnit,
-      lineCost: costPerUnit * netQty,
+      costPerUnit: costPerRecipeUnit,
+      lineCost,
     });
   }
 
@@ -249,16 +266,15 @@ router.get("/menu-items/:id/costing", async (req, res): Promise<void> => {
   let ingredientCost = 0;
   const costingLines = [];
   for (const line of lines) {
-    const costPerUnit = await getIngredientCost(line.ingredientId);
-    const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-    const lineCost = costPerUnit * netQty;
+    const { costPerStockUnit, conversionFactor } = await getIngredientCostAndConversion(line.ingredientId);
+    const { netQty, costPerRecipeUnit, lineCost } = computeLineCost(costPerStockUnit, conversionFactor, line.quantity, line.wastagePercent || 0);
     ingredientCost += lineCost;
     costingLines.push({
       ingredientId: line.ingredientId,
       ingredientName: line.ingredientName ?? "",
       quantity: netQty,
       uom: line.uom,
-      costPerUnit,
+      costPerUnit: costPerRecipeUnit,
       lineCost,
     });
   }

@@ -62,7 +62,8 @@ router.post("/waste", authMiddleware, async (req, res): Promise<void> => {
       const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
       if (ing) {
         const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-        costValue += ing.weightedAvgCost * netQty * parsed.data.quantity;
+        const costPerRecipeUnit = ing.weightedAvgCost / (ing.conversionFactor || 1);
+        costValue += costPerRecipeUnit * netQty * parsed.data.quantity;
       }
     }
   }
@@ -94,11 +95,19 @@ router.post("/waste", authMiddleware, async (req, res): Promise<void> => {
 router.patch("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateWasteEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateWasteEntryBody.safeParse(req.body);
+  const parsed = UpdateWasteEntryBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [entry] = await db.update(wasteEntriesTable).set(parsed.data).where(eq(wasteEntriesTable.id, params.data.id)).returning();
   if (!entry) { res.status(404).json({ error: "Not found" }); return; }
   res.json({ ...entry, ingredientName: null, menuItemName: null, categoryName: null });
+});
+
+router.delete("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
+  const params = UpdateWasteEntryParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [entry] = await db.delete(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id)).returning();
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ success: true });
 });
 
 router.get("/waste/summary", async (_req, res): Promise<void> => {

@@ -94,17 +94,29 @@ router.get("/expenses/:id", async (req, res): Promise<void> => {
 router.patch("/expenses/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateExpenseParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const parsed = UpdateExpenseBody.safeParse(req.body);
+  const parsed = UpdateExpenseBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const updates: any = { ...parsed.data };
-  if (parsed.data.amount !== undefined) {
-    updates.totalAmount = parsed.data.amount + (parsed.data.taxAmount ?? 0);
-  }
   const [old] = await db.select().from(expensesTable).where(eq(expensesTable.id, params.data.id));
+  if (!old) { res.status(404).json({ error: "Not found" }); return; }
+  const updates: any = { ...parsed.data };
+  const newAmount = parsed.data.amount ?? old.amount;
+  const newTax = parsed.data.taxAmount ?? old.taxAmount;
+  if (parsed.data.amount !== undefined || parsed.data.taxAmount !== undefined) {
+    updates.totalAmount = newAmount + newTax;
+  }
   const [expense] = await db.update(expensesTable).set(updates).where(eq(expensesTable.id, params.data.id)).returning();
   if (!expense) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("expenses", expense.id, "update", old, expense);
   res.json({ ...expense, categoryName: null, vendorName: null });
+});
+
+router.delete("/expenses/:id", authMiddleware, async (req, res): Promise<void> => {
+  const params = UpdateExpenseParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [expense] = await db.delete(expensesTable).where(eq(expensesTable.id, params.data.id)).returning();
+  if (!expense) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("expenses", expense.id, "delete", expense, null);
+  res.json({ success: true });
 });
 
 export default router;
