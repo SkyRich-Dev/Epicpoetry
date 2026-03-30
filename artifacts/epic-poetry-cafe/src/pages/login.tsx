@@ -44,8 +44,8 @@ export default function Login() {
         <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700">
           
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-xl mb-6 border border-border/50">
-              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Logo" className="w-14 h-14 object-contain" />
+            <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-white shadow-xl mb-6 border border-border/50">
+              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Logo" className="w-20 h-20 object-contain" />
             </div>
             <h1 className="text-3xl font-display font-bold text-foreground">Welcome Back</h1>
             <p className="text-muted-foreground mt-2">Sign in to manage Epic Poetry Cafe</p>
