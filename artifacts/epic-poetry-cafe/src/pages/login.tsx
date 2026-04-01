@@ -34,7 +34,7 @@ export default function Login() {
           className="w-full h-full object-cover"
         />
         <div className="absolute bottom-12 left-12 z-20 text-white max-w-md">
-          <h2 className="text-4xl font-display font-bold mb-4 drop-shadow-lg">Where Coffee Meets Art.</h2>
+          <h2 className="text-4xl font-display font-bold mb-4 drop-shadow-lg">Where Love Meets Flavor & Vibe.</h2>
           <p className="text-white/90 text-lg drop-shadow-md">Operational intelligence for the modern cafe.</p>
         </div>
       </div>
