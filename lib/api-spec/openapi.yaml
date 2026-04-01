@@ -43,6 +43,10 @@ tags:
     description: Reports
   - name: auditLogs
     description: Audit logs
+  - name: settlements
+    description: Daily sales settlement
+  - name: pettyCash
+    description: Petty cash ledger
 
 paths:
   /healthz:
@@ -1452,6 +1456,236 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuditLogList"
+
+  /settlements:
+    get:
+      operationId: listSettlements
+      tags: [settlements]
+      summary: List settlements
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Settlements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Settlement"
+    post:
+      operationId: createSettlement
+      tags: [settlements]
+      summary: Create settlement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSettlementRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settlement"
+
+  /settlements/{id}:
+    get:
+      operationId: getSettlement
+      tags: [settlements]
+      summary: Get settlement with lines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Settlement detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementDetail"
+    patch:
+      operationId: updateSettlement
+      tags: [settlements]
+      summary: Update settlement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSettlementRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settlement"
+    delete:
+      operationId: deleteSettlement
+      tags: [settlements]
+      summary: Delete settlement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /settlements/{id}/verify:
+    post:
+      operationId: verifySettlement
+      tags: [settlements]
+      summary: Verify settlement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settlement"
+
+  /settlements/sales-summary:
+    get:
+      operationId: getSettlementSalesSummary
+      tags: [settlements]
+      summary: Get sales summary for a date
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sales summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementSalesSummary"
+
+  /petty-cash:
+    get:
+      operationId: listPettyCash
+      tags: [pettyCash]
+      summary: List petty cash transactions
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+        - name: transactionType
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PettyCashTransaction"
+    post:
+      operationId: createPettyCash
+      tags: [pettyCash]
+      summary: Create petty cash transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePettyCashRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PettyCashTransaction"
+
+  /petty-cash/{id}:
+    delete:
+      operationId: deletePettyCash
+      tags: [pettyCash]
+      summary: Delete petty cash transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /petty-cash/summary:
+    get:
+      operationId: getPettyCashSummary
+      tags: [pettyCash]
+      summary: Petty cash balance summary
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PettyCashSummary"
 
 components:
   schemas:
@@ -3093,3 +3327,214 @@ components:
         - recordId
         - action
         - changedAt
+
+    Settlement:
+      type: object
+      properties:
+        id:
+          type: integer
+        settlementDate:
+          type: string
+        grossSalesAmount:
+          type: number
+        discountAmount:
+          type: number
+        netSalesAmount:
+          type: number
+        totalSettlementAmount:
+          type: number
+        differenceAmount:
+          type: number
+        differenceType:
+          type: string
+        status:
+          type: string
+        remarks:
+          type: ["string", "null"]
+        createdBy:
+          type: ["integer", "null"]
+        verifiedBy:
+          type: ["integer", "null"]
+        verifiedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - settlementDate
+        - grossSalesAmount
+        - netSalesAmount
+        - totalSettlementAmount
+        - differenceAmount
+        - differenceType
+        - status
+
+    SettlementLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        settlementId:
+          type: integer
+        paymentMode:
+          type: string
+        amount:
+          type: number
+        referenceNote:
+          type: ["string", "null"]
+      required:
+        - id
+        - settlementId
+        - paymentMode
+        - amount
+
+    SettlementDetail:
+      type: object
+      properties:
+        settlement:
+          $ref: "#/components/schemas/Settlement"
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/SettlementLine"
+      required:
+        - settlement
+        - lines
+
+    CreateSettlementRequest:
+      type: object
+      properties:
+        settlementDate:
+          type: string
+        remarks:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              paymentMode:
+                type: string
+              amount:
+                type: number
+              referenceNote:
+                type: string
+            required:
+              - paymentMode
+              - amount
+      required:
+        - settlementDate
+        - lines
+
+    SettlementSalesSummary:
+      type: object
+      properties:
+        date:
+          type: string
+        grossSales:
+          type: number
+        totalDiscount:
+          type: number
+        netSales:
+          type: number
+        itemCount:
+          type: integer
+      required:
+        - date
+        - grossSales
+        - totalDiscount
+        - netSales
+        - itemCount
+
+    PettyCashTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        transactionDate:
+          type: string
+        transactionType:
+          type: string
+        amount:
+          type: number
+        method:
+          type: ["string", "null"]
+        counterpartyName:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        linkedExpenseId:
+          type: ["integer", "null"]
+        description:
+          type: ["string", "null"]
+        runningBalance:
+          type: number
+        approvalStatus:
+          type: string
+        createdBy:
+          type: ["integer", "null"]
+        approvedBy:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - transactionDate
+        - transactionType
+        - amount
+        - runningBalance
+        - approvalStatus
+
+    CreatePettyCashRequest:
+      type: object
+      properties:
+        transactionDate:
+          type: string
+        transactionType:
+          type: string
+          enum: [receipt, expense, adjustment]
+        amount:
+          type: number
+        method:
+          type: string
+        counterpartyName:
+          type: string
+        category:
+          type: string
+        linkedExpenseId:
+          type: integer
+        description:
+          type: string
+      required:
+        - transactionDate
+        - transactionType
+        - amount
+
+    PettyCashSummary:
+      type: object
+      properties:
+        openingBalance:
+          type: number
+        totalReceipts:
+          type: number
+        totalExpenses:
+          type: number
+        totalAdjustments:
+          type: number
+        closingBalance:
+          type: number
+        currentBalance:
+          type: number
+        transactionCount:
+          type: integer
+      required:
+        - openingBalance
+        - totalReceipts
+        - totalExpenses
+        - totalAdjustments
+        - closingBalance
+        - currentBalance
+        - transactionCount

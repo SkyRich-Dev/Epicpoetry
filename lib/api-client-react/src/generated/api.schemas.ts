@@ -757,6 +757,115 @@ export interface AuditLogList {
   items: AuditLogEntry[];
 }
 
+export interface Settlement {
+  id: number;
+  settlementDate: string;
+  grossSalesAmount: number;
+  discountAmount?: number;
+  netSalesAmount: number;
+  totalSettlementAmount: number;
+  differenceAmount: number;
+  differenceType: string;
+  status: string;
+  /** @nullable */
+  remarks?: string | null;
+  /** @nullable */
+  createdBy?: number | null;
+  /** @nullable */
+  verifiedBy?: number | null;
+  /** @nullable */
+  verifiedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface SettlementLine {
+  id: number;
+  settlementId: number;
+  paymentMode: string;
+  amount: number;
+  /** @nullable */
+  referenceNote?: string | null;
+}
+
+export interface SettlementDetail {
+  settlement: Settlement;
+  lines: SettlementLine[];
+}
+
+export type CreateSettlementRequestLinesItem = {
+  paymentMode: string;
+  amount: number;
+  referenceNote?: string;
+};
+
+export interface CreateSettlementRequest {
+  settlementDate: string;
+  remarks?: string;
+  lines: CreateSettlementRequestLinesItem[];
+}
+
+export interface SettlementSalesSummary {
+  date: string;
+  grossSales: number;
+  totalDiscount: number;
+  netSales: number;
+  itemCount: number;
+}
+
+export interface PettyCashTransaction {
+  id: number;
+  transactionDate: string;
+  transactionType: string;
+  amount: number;
+  /** @nullable */
+  method?: string | null;
+  /** @nullable */
+  counterpartyName?: string | null;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  linkedExpenseId?: number | null;
+  /** @nullable */
+  description?: string | null;
+  runningBalance: number;
+  approvalStatus: string;
+  /** @nullable */
+  createdBy?: number | null;
+  /** @nullable */
+  approvedBy?: number | null;
+  createdAt?: string;
+}
+
+export type CreatePettyCashRequestTransactionType =
+  (typeof CreatePettyCashRequestTransactionType)[keyof typeof CreatePettyCashRequestTransactionType];
+
+export const CreatePettyCashRequestTransactionType = {
+  receipt: "receipt",
+  expense: "expense",
+  adjustment: "adjustment",
+} as const;
+
+export interface CreatePettyCashRequest {
+  transactionDate: string;
+  transactionType: CreatePettyCashRequestTransactionType;
+  amount: number;
+  method?: string;
+  counterpartyName?: string;
+  category?: string;
+  linkedExpenseId?: number;
+  description?: string;
+}
+
+export interface PettyCashSummary {
+  openingBalance: number;
+  totalReceipts: number;
+  totalExpenses: number;
+  totalAdjustments: number;
+  closingBalance: number;
+  currentBalance: number;
+  transactionCount: number;
+}
+
 export type ListCategoriesParams = {
   type?: string;
 };
@@ -860,4 +969,32 @@ export type ListAuditLogsParams = {
   toDate?: string;
   limit?: number;
   offset?: number;
+};
+
+export type ListSettlementsParams = {
+  fromDate?: string;
+  toDate?: string;
+  status?: string;
+};
+
+export type DeleteSettlement200 = {
+  success?: boolean;
+};
+
+export type GetSettlementSalesSummaryParams = {
+  date: string;
+};
+
+export type ListPettyCashParams = {
+  fromDate?: string;
+  toDate?: string;
+  transactionType?: string;
+};
+
+export type DeletePettyCash200 = {
+  success?: boolean;
+};
+
+export type GetPettyCashSummaryParams = {
+  date?: string;
 };

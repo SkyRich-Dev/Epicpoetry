@@ -4,7 +4,8 @@ import { useAuth } from '../lib/auth';
 import { 
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
-  FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3
+  FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
+  Banknote, Wallet
 } from 'lucide-react';
 import { cn } from './ui-extras';
 
@@ -22,8 +23,10 @@ const navGroups: NavGroup[] = [
     title: 'Operations',
     items: [
       { name: 'Sales', path: '/sales', icon: Receipt },
+      { name: 'Settlements', path: '/settlements', icon: Banknote },
       { name: 'Purchases', path: '/purchases', icon: ShoppingCart },
       { name: 'Expenses', path: '/expenses', icon: FileText },
+      { name: 'Petty Cash', path: '/petty-cash', icon: Wallet },
       { name: 'Waste Management', path: '/waste', icon: Trash2 },
     ]
   },

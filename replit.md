@@ -60,7 +60,9 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Ingredients**: GET/POST /ingredients, GET/PATCH/DELETE /ingredients/:id, GET/POST /ingredients/:id/vendor-mappings
 - **Menu Items**: GET/POST /menu-items, GET/PATCH/DELETE /menu-items/:id, GET/PUT /menu-items/:id/recipe, GET /menu-items/:id/costing
 - **Purchases**: GET/POST /purchases, GET /purchases/:id
-- **Expenses**: GET/POST /expenses, GET/PATCH/DELETE /expenses/:id
+- **Expenses**: GET/POST /expenses, GET/PATCH/DELETE /expenses/:id (Petty Cash payment mode auto-creates linked petty cash ledger entry)
+- **Settlements**: GET/POST /settlements, GET/PATCH/DELETE /settlements/:id, POST /settlements/:id/verify, GET /settlements/sales-summary?date=
+- **Petty Cash**: GET/POST /petty-cash, DELETE /petty-cash/:id, GET /petty-cash/summary
 - **Inventory**: GET /inventory/stock-overview, GET/POST /inventory/stock-snapshots, POST /inventory/adjustments
 - **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
 - **Waste**: GET/POST /waste, PATCH/DELETE /waste/:id, GET /waste/summary
@@ -87,6 +89,9 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Purchase -> Inventory**: Purchases auto-update ingredient stock + weighted avg cost
 - **Waste -> Stock**: Ingredient waste auto-deducts from stock
 - **Trial -> Menu**: Convert approved trial versions to menu item recipes
+- **Daily Sales Settlement**: Reconcile daily sales against payment collections (Cash, Card, QR, UPI, etc.); one settlement per date; auto-calculates difference (matched/short/excess); admin-only verification workflow
+- **Petty Cash Ledger**: Full petty cash management (receipts, expenses, adjustments); running balance tracking; negative balance protection; auto-linked when expenses use "Petty Cash" payment mode
+- **Expense-Petty Cash Link**: Creating expense with "Petty Cash" payment mode auto-creates petty cash ledger entry; deleting expense auto-removes linked petty cash entry; linked entries cannot be deleted directly from petty cash
 - **Daily P&L**: Real-time profit/loss calculation from sales, material cost, waste, expenses
 - **Consumption Variance**: Compare actual vs theoretical ingredient consumption (converted to stock UOM)
 - **Excel Upload**: Bulk import sales, purchases, expenses from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results

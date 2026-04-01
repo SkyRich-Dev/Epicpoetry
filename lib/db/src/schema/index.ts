@@ -12,3 +12,5 @@ export * from "./sales";
 export * from "./waste";
 export * from "./trials";
 export * from "./auditLogs";
+export * from "./settlements";
+export * from "./pettyCash";

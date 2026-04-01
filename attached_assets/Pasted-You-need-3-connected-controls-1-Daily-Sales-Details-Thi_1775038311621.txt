@@ -1,0 +1,577 @@
+You need 3 connected controls:
+1. Daily Sales Details
+This comes from:
+Petpooja upload
+manual sales entry
+item-wise daily sales records
+This gives:
+total sales amount
+discount
+net sales
+item-wise sales
+2. Daily Sales Settlement
+This is a separate daily reconciliation entry.
+Example:
+Daily sales total = ₹10,000
+Settlement entered as:
+cash = ₹2,000
+card = ₹6,000
+QR = ₹2,000
+System should verify:
+cash + card + QR + other payment modes = daily sales total
+If not matching, system must show:
+difference amount
+excess or shortage
+settlement status
+3. Petty Cash Module
+This is for:
+petty cash received
+petty cash issued
+petty cash expenses
+petty cash balance
+This should be fully tracked and also linked with expense module.
+Correct system design
+A. DAILY SALES SETTLEMENT MODULE
+This is a separate module.
+Purpose
+To record how the day’s total sales amount was settled by payment mode and compare it against uploaded daily sales.
+Important rule
+Settlement is not sales entry.
+It is a separate reconciliation/control entry.
+A1. Settlement master fields
+Create a new module:
+Daily Sales Settlement
+Header fields
+settlement date
+outlet
+linked sales date
+linked uploaded sales batch optional
+total sales amount auto-fetched
+total discount optional auto-fetched
+net sales amount auto-fetched
+total settlement entered
+difference amount
+settlement status
+remarks
+created by
+verified by
+verified at
+A2. Settlement detail lines
+Allow multiple payment mode lines.
+Example lines
+cash
+card
+QR
+UPI
+bank transfer
+swiggy
+zomato
+other wallet
+Fields
+payment mode
+amount
+reference notes optional
+A3. Settlement verification logic
+Formula
+Total Settlement = Sum of all settlement line amounts
+Difference
+Difference = Net Sales - Total Settlement
+Status rules
+if difference = 0 → Matched
+if difference > 0 → Short settlement
+if difference < 0 → Excess settlement
+Display
+Show clearly:
+sales total
+settlement total
+difference
+matched / mismatch
+A4. Example
+Uploaded daily sales total = ₹10,000
+Settlement entered:
+cash ₹2,000
+card ₹6,000
+QR ₹1,800
+Total settlement = ₹9,800
+Difference = ₹200 short
+System should show:
+status = mismatch
+shortage = ₹200
+If entered:
+cash ₹2,000
+card ₹6,000
+QR ₹2,100
+Total settlement = ₹10,100
+Difference = ₹100 excess
+System should show:
+status = mismatch
+excess = ₹100
+A5. Required controls
+Required validations
+one settlement per date per outlet unless override
+payment mode cannot repeat unless merge is allowed
+amount cannot be negative
+settlement cannot be submitted without linked sales total
+verified status only for authorized users
+Recommended workflow
+upload/import daily sales
+system calculates daily sales total
+user enters settlement
+system compares sales vs settlement
+manager/owner verifies
+status stored
+A6. Settlement reports needed
+daily settlement report
+mismatch report
+payment mode-wise collection report
+date-wise settlement report
+verified vs pending settlement report
+B. PETTY CASH MANAGEMENT MODULE
+You need a proper petty cash module, not just a payment mode field.
+This module should track:
+petty cash received
+petty cash source
+petty cash expenses
+opening petty cash
+closing petty cash
+running balance
+B1. Petty cash purpose
+This module is for small operating cash handling such as:
+local purchases
+cleaning items
+petty maintenance
+delivery charges
+tea/snacks/staff emergency spend
+small repairs
+local transport
+urgent market purchase
+B2. Petty cash transactions to support
+Inward / Receipt
+Petty cash added to cash box
+Examples:
+owner gave ₹5,000 cash
+manager transferred ₹2,000 via UPI for petty use
+cashier returned unused advance
+Outward / Expense
+Petty cash used
+Examples:
+bought vegetables ₹450
+paid courier ₹120
+local cleaning purchase ₹230
+petty repair ₹300
+Adjustment
+cash correction
+balance adjustment
+approved cash count correction
+B3. Petty cash transaction fields
+Create module:
+Petty Cash Ledger
+Fields
+transaction date
+transaction type
+receipt
+expense
+adjustment
+amount
+payment/receipt method
+received from / paid to
+reference person
+category
+linked expense optional
+description
+attachment optional
+approved by
+remarks
+created by
+B4. Petty cash receipt fields detail
+For receipt/inward:
+date
+amount
+received from whom
+method received
+cash
+bank withdrawal
+UPI
+card withdrawal
+owner contribution
+manager float
+note/reference
+Example:
+Date: 01-04-2026
+Received from: Owner
+Method: Cash
+Amount: ₹5,000
+B5. Petty cash expense fields detail
+For petty cash outward:
+date
+expense category
+amount
+paid to
+payment method = petty cash
+description
+attachment/bill optional
+linked to expense entry = yes
+Example:
+Date: 01-04-2026
+Category: Local purchase
+Paid to: Vegetable Shop
+Amount: ₹450
+Payment mode: Petty Cash
+B6. Petty cash balance formula
+Running balance
+Petty Cash Balance = Opening Balance + Receipts - Expenses ± Adjustments
+This must always be shown live.
+B7. Petty cash summary required
+Show:
+opening petty cash
+total receipts
+total petty expenses
+adjustments
+closing petty cash
+current available balance
+C. LINK PETTY CASH WITH EXPENSE MODULE
+You specifically asked:
+In expense module add petty cash also a payment mode and that need to reflect in petty cash expense as well as overall expense.
+Correct. This is mandatory.
+C1. Update expense module
+Add payment modes including:
+cash
+bank
+card
+UPI
+QR
+petty cash
+credit/vendor payable
+other
+C2. Required petty cash behavior in expense module
+If user creates an expense and chooses:
+Payment Mode = Petty Cash
+Then system must automatically do 2 things:
+1. Create expense record
+This appears in:
+overall expenses
+expense reports
+category-wise expenses
+daily/monthly P&L
+2. Create petty cash ledger outward entry
+This appears in:
+petty cash expense ledger
+petty cash balance deduction
+petty cash summary
+This must happen automatically.
+C3. Example
+Expense entered:
+date = 01-04-2026
+category = Cleaning Materials
+amount = ₹300
+payment mode = Petty Cash
+System should:
+post ₹300 to overall expense
+post ₹300 to petty cash ledger as expense
+reduce petty cash balance by ₹300
+C4. Reverse/update logic
+If expense is edited or deleted:
+linked petty cash transaction must also update/reverse safely
+maintain audit trail
+D. REQUIRED MODULES TO ADD / UPDATE
+You need these changes:
+New modules
+Daily Sales Settlement
+Petty Cash Ledger
+Updated modules
+Expense module
+Reports
+Dashboard
+Audit log
+Settings / payment modes master
+E. DATABASE / MODEL REQUIREMENTS
+E1. DailySalesSettlement model
+Fields:
+id
+settlement_date
+outlet_id
+sales_date
+linked_sales_batch_id optional
+gross_sales_amount
+discount_amount
+net_sales_amount
+total_settlement_amount
+difference_amount
+difference_type
+matched
+short
+excess
+status
+draft
+submitted
+verified
+remarks
+created_by
+verified_by
+verified_at
+created_at
+updated_at
+E2. DailySalesSettlementLine model
+Fields:
+id
+settlement_id
+payment_mode
+amount
+reference_note
+created_at
+updated_at
+E3. PettyCashLedger model
+Fields:
+id
+transaction_date
+outlet_id
+transaction_type
+receipt
+expense
+adjustment
+amount
+method
+counterparty_name
+category
+linked_expense_id optional
+description
+attachment optional
+running_balance optional calculated/stored
+approval_status
+created_by
+approved_by
+created_at
+updated_at
+E4. Expense model update
+Add / ensure:
+payment_mode
+linked_petty_cash_ledger_id optional
+is_petty_cash_expense boolean optional
+F. API REQUIREMENTS
+F1. Settlement APIs
+create settlement
+update draft settlement
+get settlement by date
+submit settlement
+verify settlement
+list settlements
+mismatch report
+payment-mode summary report
+F2. Petty cash APIs
+create petty cash receipt
+create petty cash adjustment
+list petty cash transactions
+petty cash balance summary
+petty cash ledger report
+petty cash daily summary
+petty cash date-range report
+F3. Expense API update
+When payment mode is petty cash:
+auto-create petty cash transaction
+link it properly
+G. FRONTEND UI REQUIREMENTS
+Keep it simple and operational.
+G1. Daily Sales Settlement screen
+Top summary cards
+sales total
+settlement total
+difference
+status
+Payment mode input table
+Payment Mode	Amount
+Cash	
+Card	
+QR	
+UPI	
+Swiggy	
+Zomato	
+Output
+total settlement
+difference
+matched / short / excess indicator
+Actions
+save draft
+submit
+verify
+G2. Petty Cash Dashboard
+Show:
+opening balance
+total received today
+total petty expenses today
+current balance
+last 10 transactions
+G3. Petty Cash Receipt screen
+Simple form:
+date
+amount
+received from
+method
+remarks
+G4. Petty Cash Expense handling
+Do not create separate duplicate screen if expense module already exists.
+Instead:
+expense form includes payment mode
+when petty cash selected, show petty cash warning/balance
+auto-link to petty cash ledger
+G5. Petty Cash Ledger screen
+Table columns:
+date
+type
+amount in
+amount out
+method
+from/to
+category
+linked expense
+balance
+H. REPORTS REQUIRED
+All reports must support:
+daily
+weekly
+monthly
+custom date range
+H1. Daily Sales vs Settlement Report
+Show:
+sales total
+settlement total
+difference
+status
+H2. Payment Mode Collection Report
+Show totals by:
+cash
+card
+QR
+UPI
+delivery partners
+others
+H3. Settlement Mismatch Report
+Show only mismatched dates with:
+short/excess amount
+remarks
+verification status
+H4. Petty Cash Ledger Report
+Show:
+opening balance
+receipts
+expenses
+adjustments
+closing balance
+H5. Petty Cash Expense Report
+Show petty-cash-paid expenses by:
+date
+category
+amount
+vendor/person
+linked expense
+H6. Overall Expense Report
+This must include all expenses, including petty-cash-paid expenses.
+I. DASHBOARD ADDITIONS
+Add these cards:
+Finance summary cards
+today sales
+today settlement
+today difference
+petty cash balance
+petty cash spent today
+unsettled/mismatched days count
+J. BUSINESS RULES
+Rule 1
+Sales and settlement are separate records.
+Rule 2
+Settlement must reconcile against uploaded/manual sales totals.
+Rule 3
+Petty cash is a ledger, not only a field.
+Rule 4
+Expense paid by petty cash must affect:
+overall expenses
+petty cash balance
+Rule 5
+Deleting/updating linked expense must also safely update petty cash ledger.
+Rule 6
+Settlement verification should be role-based.
+Rule 7
+Do not allow negative petty cash balance unless special override config exists.
+K. CALCULATION RULES
+K1. Settlement total
+Settlement Total = sum of all settlement line amounts
+K2. Settlement difference
+Difference = Net Sales - Settlement Total
+K3. Petty cash balance
+Balance = Opening + Receipts - Expenses ± Adjustments
+L. RECOMMENDED FLOW
+Daily cashier/manager workflow
+upload/import daily sales
+system computes total sales
+enter settlement split by payment mode
+system verifies match/difference
+enter expenses
+if petty cash used, system auto-posts to petty cash ledger
+manager checks petty cash balance
+owner reviews mismatch report
+M. BEST REQUIREMENT STATEMENT FOR YOUR SYSTEM
+Use this in your project update:
+The system shall support a separate daily sales settlement module where users can record payment-mode-wise settlement amounts such as cash, card, QR, UPI, and other collection channels independent of sales entry. The system shall automatically compare settlement totals against uploaded or recorded daily sales totals and display matched, shortage, or excess differences. The system shall also support a petty cash ledger module to record petty cash receipts, petty cash expenses, and adjustments with running balance tracking. When an expense is recorded using payment mode ‘Petty Cash’, the system shall automatically create a corresponding petty cash ledger deduction while also reflecting the transaction in the overall expense module and reports.
+N. REPLIT UPDATE PROMPT
+Use this directly in Replit:
+REPLIT UPDATE PROMPT
+Update the existing Epic Poetry Cafe system to add a Daily Sales Settlement module and a Petty Cash Management module.
+Daily Sales Settlement requirements
+Build a separate settlement module that is independent from sales entry. It must:
+fetch or link the daily uploaded sales total
+allow entry of settlement by payment modes such as cash, card, QR, UPI, wallet, swiggy, zomato, bank transfer, and others
+calculate total settlement
+compare with daily net sales total
+show difference as matched, shortage, or excess
+allow save draft, submit, and verify actions
+support one settlement per date per outlet
+generate settlement reports and mismatch reports
+Petty Cash requirements
+Build a petty cash ledger module that supports:
+petty cash receipt/inward
+petty cash expense/outward
+petty cash adjustment
+running balance
+date, amount, from whom, method received, category, description, linked expense, remarks
+opening balance, receipts, expenses, adjustments, closing balance summary
+Expense module update
+Update the expense module to include Petty Cash as a payment mode.
+When an expense is saved with payment mode = Petty Cash:
+save it in overall expense records
+automatically create linked petty cash ledger expense entry
+reduce petty cash balance
+preserve link between expense and petty cash transaction
+on expense edit/delete, update linked petty cash ledger accordingly with audit logs
+Reports and dashboards
+Add:
+daily sales vs settlement report
+payment mode collection report
+settlement mismatch report
+petty cash ledger report
+petty cash expense report
+petty cash balance summary
+dashboard cards for petty cash balance and settlement difference
+Backend
+Add models, migrations, services, APIs, validations, audit logs, and tests.
+Frontend
+Add:
+daily settlement entry screen
+petty cash dashboard
+petty cash receipt screen
+petty cash ledger screen
+expense form update for petty cash mode
+summary cards and date filters
+Validation
+settlement total must compare with net sales total
+petty cash balance cannot go negative unless config override exists
+duplicate settlement date per outlet blocked
+negative amounts blocked
+payment mode required
+linked petty cash transaction maintained with expense records
+Final result
+The system must clearly control:
+daily sales total
+actual settled payment split
+mismatch amount
+petty cash inward/outward
+petty cash balance
+overall expenses including petty cash-paid expenses

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { db, salesEntriesTable, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable } from "@workspace/db";
+import { db, salesEntriesTable, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable, dailySalesSettlementsTable, pettyCashLedgerTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -84,10 +84,31 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     alerts.push({ type: "low_stock", severity: "warning", message: `${i.name} stock is low (${i.currentStock} ${i.stockUom})`, relatedId: i.id });
   });
 
+  const todaySettlement = await db.select().from(dailySalesSettlementsTable).where(eq(dailySalesSettlementsTable.settlementDate, date));
+  const todaySettlementTotal = todaySettlement.reduce((s, e) => s + e.totalSettlementAmount, 0);
+  const todaySettlementDiff = todaySettlement.length > 0 ? todaySettlement[0].differenceAmount : 0;
+
+  const pcResult = await db.select({
+    totalReceipts: sql<number>`COALESCE(SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END), 0)`,
+    totalExpenses: sql<number>`COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0)`,
+    totalAdjustments: sql<number>`COALESCE(SUM(CASE WHEN transaction_type = 'adjustment' THEN amount ELSE 0 END), 0)`,
+  }).from(pettyCashLedgerTable);
+  const pettyCashBalance = Number(pcResult[0]?.totalReceipts || 0) - Number(pcResult[0]?.totalExpenses || 0) + Number(pcResult[0]?.totalAdjustments || 0);
+
+  const todayPcExpenses = await db.select({
+    total: sql<number>`COALESCE(SUM(amount), 0)`,
+  }).from(pettyCashLedgerTable).where(and(eq(pettyCashLedgerTable.transactionDate, date), eq(pettyCashLedgerTable.transactionType, 'expense')));
+  const pettyCashSpentToday = Number(todayPcExpenses[0]?.total || 0);
+
+  const unsettledDays = await db.select({
+    count: sql<number>`COUNT(*)`,
+  }).from(dailySalesSettlementsTable).where(sql`${dailySalesSettlementsTable.differenceType} != 'matched' AND ${dailySalesSettlementsTable.status} != 'verified'`);
+
   const insights: string[] = [];
   if (todaySalesTotal > 0) insights.push(`Today's sales: ${todaySalesTotal.toFixed(0)}`);
   if (todayWasteTotal > 0) insights.push(`Today's waste value: ${todayWasteTotal.toFixed(0)}`);
   if (lowStockCount > 0) insights.push(`${lowStockCount} ingredients are below reorder level`);
+  if (Number(unsettledDays[0]?.count || 0) > 0) insights.push(`${unsettledDays[0]?.count} unsettled/mismatched days`);
 
   res.json({
     todaySales: todaySalesTotal,
@@ -105,6 +126,11 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     topWasteItems: [],
     alerts,
     insights,
+    todaySettlement: todaySettlementTotal,
+    todaySettlementDiff,
+    pettyCashBalance,
+    pettyCashSpentToday,
+    unsettledDaysCount: Number(unsettledDays[0]?.count || 0),
   });
 });
 

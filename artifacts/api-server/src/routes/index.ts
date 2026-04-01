@@ -18,6 +18,8 @@ import dashboardRouter from "./dashboard";
 import reportsRouter from "./reports";
 import auditLogsRouter from "./auditLogs";
 import uploadRouter from "./upload";
+import settlementsRouter from "./settlements";
+import pettyCashRouter from "./pettyCash";
 
 const router: IRouter = Router();
 
@@ -40,5 +42,7 @@ router.use(dashboardRouter);
 router.use(reportsRouter);
 router.use(auditLogsRouter);
 router.use(uploadRouter);
+router.use(settlementsRouter);
+router.use(pettyCashRouter);
 
 export default router;

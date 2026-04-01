@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useGetDashboardSummary } from '@workspace/api-client-react';
 import { PageHeader, StatCard, formatCurrency, Badge, cn } from '../components/ui-extras';
-import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 
 export default function Dashboard() {
@@ -49,6 +49,34 @@ export default function Dashboard() {
           value={formatCurrency(summary.todayWaste)} 
           icon={PackageMinus}
           colorClass="text-amber-600 bg-amber-100"
+        />
+      </div>
+
+      {/* Finance Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard 
+          title="Today's Settlement" 
+          value={formatCurrency((summary as any).todaySettlement || 0)} 
+          icon={Banknote}
+          colorClass="text-blue-600 bg-blue-100"
+        />
+        <StatCard 
+          title="Settlement Difference" 
+          value={formatCurrency(Math.abs((summary as any).todaySettlementDiff || 0))} 
+          icon={Banknote}
+          colorClass={((summary as any).todaySettlementDiff || 0) === 0 ? "text-emerald-600 bg-emerald-100" : "text-amber-600 bg-amber-100"}
+        />
+        <StatCard 
+          title="Petty Cash Balance" 
+          value={formatCurrency((summary as any).pettyCashBalance || 0)} 
+          icon={Wallet}
+          colorClass="text-violet-600 bg-violet-100"
+        />
+        <StatCard 
+          title="Petty Cash Spent Today" 
+          value={formatCurrency((summary as any).pettyCashSpentToday || 0)} 
+          icon={Wallet}
+          colorClass="text-rose-500 bg-rose-100"
         />
       </div>
 

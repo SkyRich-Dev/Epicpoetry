@@ -23,6 +23,8 @@ import Masters from "./pages/masters";
 import AuditLogs from "./pages/audit-logs";
 import UploadPage from "./pages/upload";
 import AnalyticsPage from "./pages/analytics";
+import Settlements from "./pages/settlements";
+import PettyCash from "./pages/petty-cash";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,6 +70,8 @@ function Router() {
       <Route path="/masters" component={() => <ProtectedRoute component={Masters} />} />
       <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsPage} />} />
       <Route path="/upload" component={() => <ProtectedRoute component={UploadPage} />} />
+      <Route path="/settlements" component={() => <ProtectedRoute component={Settlements} />} />
+      <Route path="/petty-cash" component={() => <ProtectedRoute component={PettyCash} />} />
       <Route path="/audit-logs" component={() => <ProtectedRoute component={AuditLogs} />} />
       <Route component={NotFound} />
     </Switch>

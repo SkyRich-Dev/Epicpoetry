@@ -1621,3 +1621,235 @@ export const ListAuditLogsResponse = zod.object({
     }),
   ),
 });
+
+/**
+ * @summary List settlements
+ */
+export const ListSettlementsQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+});
+
+export const ListSettlementsResponseItem = zod.object({
+  id: zod.number(),
+  settlementDate: zod.string(),
+  grossSalesAmount: zod.number(),
+  discountAmount: zod.number().optional(),
+  netSalesAmount: zod.number(),
+  totalSettlementAmount: zod.number(),
+  differenceAmount: zod.number(),
+  differenceType: zod.string(),
+  status: zod.string(),
+  remarks: zod.string().nullish(),
+  createdBy: zod.number().nullish(),
+  verifiedBy: zod.number().nullish(),
+  verifiedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+export const ListSettlementsResponse = zod.array(ListSettlementsResponseItem);
+
+/**
+ * @summary Create settlement
+ */
+export const CreateSettlementBody = zod.object({
+  settlementDate: zod.string(),
+  remarks: zod.string().optional(),
+  lines: zod.array(
+    zod.object({
+      paymentMode: zod.string(),
+      amount: zod.number(),
+      referenceNote: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get settlement with lines
+ */
+export const GetSettlementParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetSettlementResponse = zod.object({
+  settlement: zod.object({
+    id: zod.number(),
+    settlementDate: zod.string(),
+    grossSalesAmount: zod.number(),
+    discountAmount: zod.number().optional(),
+    netSalesAmount: zod.number(),
+    totalSettlementAmount: zod.number(),
+    differenceAmount: zod.number(),
+    differenceType: zod.string(),
+    status: zod.string(),
+    remarks: zod.string().nullish(),
+    createdBy: zod.number().nullish(),
+    verifiedBy: zod.number().nullish(),
+    verifiedAt: zod.coerce.date().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  }),
+  lines: zod.array(
+    zod.object({
+      id: zod.number(),
+      settlementId: zod.number(),
+      paymentMode: zod.string(),
+      amount: zod.number(),
+      referenceNote: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Update settlement
+ */
+export const UpdateSettlementParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateSettlementBody = zod.object({
+  settlementDate: zod.string(),
+  remarks: zod.string().optional(),
+  lines: zod.array(
+    zod.object({
+      paymentMode: zod.string(),
+      amount: zod.number(),
+      referenceNote: zod.string().optional(),
+    }),
+  ),
+});
+
+export const UpdateSettlementResponse = zod.object({
+  id: zod.number(),
+  settlementDate: zod.string(),
+  grossSalesAmount: zod.number(),
+  discountAmount: zod.number().optional(),
+  netSalesAmount: zod.number(),
+  totalSettlementAmount: zod.number(),
+  differenceAmount: zod.number(),
+  differenceType: zod.string(),
+  status: zod.string(),
+  remarks: zod.string().nullish(),
+  createdBy: zod.number().nullish(),
+  verifiedBy: zod.number().nullish(),
+  verifiedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete settlement
+ */
+export const DeleteSettlementParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteSettlementResponse = zod.object({
+  success: zod.boolean().optional(),
+});
+
+/**
+ * @summary Verify settlement
+ */
+export const VerifySettlementParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const VerifySettlementResponse = zod.object({
+  id: zod.number(),
+  settlementDate: zod.string(),
+  grossSalesAmount: zod.number(),
+  discountAmount: zod.number().optional(),
+  netSalesAmount: zod.number(),
+  totalSettlementAmount: zod.number(),
+  differenceAmount: zod.number(),
+  differenceType: zod.string(),
+  status: zod.string(),
+  remarks: zod.string().nullish(),
+  createdBy: zod.number().nullish(),
+  verifiedBy: zod.number().nullish(),
+  verifiedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Get sales summary for a date
+ */
+export const GetSettlementSalesSummaryQueryParams = zod.object({
+  date: zod.coerce.string(),
+});
+
+export const GetSettlementSalesSummaryResponse = zod.object({
+  date: zod.string(),
+  grossSales: zod.number(),
+  totalDiscount: zod.number(),
+  netSales: zod.number(),
+  itemCount: zod.number(),
+});
+
+/**
+ * @summary List petty cash transactions
+ */
+export const ListPettyCashQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  transactionType: zod.coerce.string().optional(),
+});
+
+export const ListPettyCashResponseItem = zod.object({
+  id: zod.number(),
+  transactionDate: zod.string(),
+  transactionType: zod.string(),
+  amount: zod.number(),
+  method: zod.string().nullish(),
+  counterpartyName: zod.string().nullish(),
+  category: zod.string().nullish(),
+  linkedExpenseId: zod.number().nullish(),
+  description: zod.string().nullish(),
+  runningBalance: zod.number(),
+  approvalStatus: zod.string(),
+  createdBy: zod.number().nullish(),
+  approvedBy: zod.number().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+export const ListPettyCashResponse = zod.array(ListPettyCashResponseItem);
+
+/**
+ * @summary Create petty cash transaction
+ */
+export const CreatePettyCashBody = zod.object({
+  transactionDate: zod.string(),
+  transactionType: zod.enum(["receipt", "expense", "adjustment"]),
+  amount: zod.number(),
+  method: zod.string().optional(),
+  counterpartyName: zod.string().optional(),
+  category: zod.string().optional(),
+  linkedExpenseId: zod.number().optional(),
+  description: zod.string().optional(),
+});
+
+/**
+ * @summary Delete petty cash transaction
+ */
+export const DeletePettyCashParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeletePettyCashResponse = zod.object({
+  success: zod.boolean().optional(),
+});
+
+/**
+ * @summary Petty cash balance summary
+ */
+export const GetPettyCashSummaryQueryParams = zod.object({
+  date: zod.coerce.string().optional(),
+});
+
+export const GetPettyCashSummaryResponse = zod.object({
+  openingBalance: zod.number(),
+  totalReceipts: zod.number(),
+  totalExpenses: zod.number(),
+  totalAdjustments: zod.number(),
+  closingBalance: zod.number(),
+  currentBalance: zod.number(),
+  transactionCount: zod.number(),
+});

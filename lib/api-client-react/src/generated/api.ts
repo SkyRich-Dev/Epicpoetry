@@ -26,8 +26,10 @@ import type {
   CreateIngredientRequest,
   CreateIngredientVendorMappingRequest,
   CreateMenuItemRequest,
+  CreatePettyCashRequest,
   CreatePurchaseRequest,
   CreateSalesEntryRequest,
+  CreateSettlementRequest,
   CreateStockAdjustmentRequest,
   CreateTrialRequest,
   CreateTrialVersionRequest,
@@ -38,6 +40,8 @@ import type {
   DailyPL,
   DailySalesSummary,
   DashboardSummary,
+  DeletePettyCash200,
+  DeleteSettlement200,
   Expense,
   ExportReportParams,
   GetConsumptionVarianceParams,
@@ -46,7 +50,9 @@ import type {
   GetDashboardSummaryParams,
   GetExpenseBreakdownParams,
   GetItemProfitabilityParams,
+  GetPettyCashSummaryParams,
   GetSalesTrendParams,
+  GetSettlementSalesSummaryParams,
   GetVendorSpendAnalyticsParams,
   GetWasteSummaryParams,
   HealthStatus,
@@ -58,8 +64,10 @@ import type {
   ListExpensesParams,
   ListIngredientsParams,
   ListMenuItemsParams,
+  ListPettyCashParams,
   ListPurchasesParams,
   ListSalesParams,
+  ListSettlementsParams,
   ListStockSnapshotsParams,
   ListVendorsParams,
   ListWasteEntriesParams,
@@ -68,12 +76,17 @@ import type {
   MenuItem,
   MenuItemCosting,
   MenuItemDetail,
+  PettyCashSummary,
+  PettyCashTransaction,
   Purchase,
   PurchaseDetail,
   RecipeLine,
   SalesEntry,
   SaveRecipeRequest,
   SaveStockSnapshotRequest,
+  Settlement,
+  SettlementDetail,
+  SettlementSalesSummary,
   StockAdjustment,
   StockOverviewItem,
   StockSnapshot,
@@ -6068,6 +6081,1001 @@ export function useListAuditLogs<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListAuditLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List settlements
+ */
+export const getListSettlementsUrl = (params?: ListSettlementsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/settlements?${stringifiedParams}`
+    : `/api/settlements`;
+};
+
+export const listSettlements = async (
+  params?: ListSettlementsParams,
+  options?: RequestInit,
+): Promise<Settlement[]> => {
+  return customFetch<Settlement[]>(getListSettlementsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSettlementsQueryKey = (params?: ListSettlementsParams) => {
+  return [`/api/settlements`, ...(params ? [params] : [])] as const;
+};
+
+export const getListSettlementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSettlements>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListSettlementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSettlements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListSettlementsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listSettlements>>> = ({
+    signal,
+  }) => listSettlements(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSettlements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSettlementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSettlements>>
+>;
+export type ListSettlementsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List settlements
+ */
+
+export function useListSettlements<
+  TData = Awaited<ReturnType<typeof listSettlements>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListSettlementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSettlements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSettlementsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create settlement
+ */
+export const getCreateSettlementUrl = () => {
+  return `/api/settlements`;
+};
+
+export const createSettlement = async (
+  createSettlementRequest: CreateSettlementRequest,
+  options?: RequestInit,
+): Promise<Settlement> => {
+  return customFetch<Settlement>(getCreateSettlementUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSettlementRequest),
+  });
+};
+
+export const getCreateSettlementMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSettlement>>,
+    TError,
+    { data: BodyType<CreateSettlementRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSettlement>>,
+  TError,
+  { data: BodyType<CreateSettlementRequest> },
+  TContext
+> => {
+  const mutationKey = ["createSettlement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSettlement>>,
+    { data: BodyType<CreateSettlementRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createSettlement(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSettlementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSettlement>>
+>;
+export type CreateSettlementMutationBody = BodyType<CreateSettlementRequest>;
+export type CreateSettlementMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create settlement
+ */
+export const useCreateSettlement = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSettlement>>,
+    TError,
+    { data: BodyType<CreateSettlementRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSettlement>>,
+  TError,
+  { data: BodyType<CreateSettlementRequest> },
+  TContext
+> => {
+  return useMutation(getCreateSettlementMutationOptions(options));
+};
+
+/**
+ * @summary Get settlement with lines
+ */
+export const getGetSettlementUrl = (id: number) => {
+  return `/api/settlements/${id}`;
+};
+
+export const getSettlement = async (
+  id: number,
+  options?: RequestInit,
+): Promise<SettlementDetail> => {
+  return customFetch<SettlementDetail>(getGetSettlementUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSettlementQueryKey = (id: number) => {
+  return [`/api/settlements/${id}`] as const;
+};
+
+export const getGetSettlementQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSettlement>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSettlement>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSettlementQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSettlement>>> = ({
+    signal,
+  }) => getSettlement(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSettlement>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSettlementQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSettlement>>
+>;
+export type GetSettlementQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get settlement with lines
+ */
+
+export function useGetSettlement<
+  TData = Awaited<ReturnType<typeof getSettlement>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSettlement>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSettlementQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update settlement
+ */
+export const getUpdateSettlementUrl = (id: number) => {
+  return `/api/settlements/${id}`;
+};
+
+export const updateSettlement = async (
+  id: number,
+  createSettlementRequest: CreateSettlementRequest,
+  options?: RequestInit,
+): Promise<Settlement> => {
+  return customFetch<Settlement>(getUpdateSettlementUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSettlementRequest),
+  });
+};
+
+export const getUpdateSettlementMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSettlement>>,
+    TError,
+    { id: number; data: BodyType<CreateSettlementRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateSettlement>>,
+  TError,
+  { id: number; data: BodyType<CreateSettlementRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateSettlement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateSettlement>>,
+    { id: number; data: BodyType<CreateSettlementRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateSettlement(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateSettlementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateSettlement>>
+>;
+export type UpdateSettlementMutationBody = BodyType<CreateSettlementRequest>;
+export type UpdateSettlementMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update settlement
+ */
+export const useUpdateSettlement = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSettlement>>,
+    TError,
+    { id: number; data: BodyType<CreateSettlementRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateSettlement>>,
+  TError,
+  { id: number; data: BodyType<CreateSettlementRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateSettlementMutationOptions(options));
+};
+
+/**
+ * @summary Delete settlement
+ */
+export const getDeleteSettlementUrl = (id: number) => {
+  return `/api/settlements/${id}`;
+};
+
+export const deleteSettlement = async (
+  id: number,
+  options?: RequestInit,
+): Promise<DeleteSettlement200> => {
+  return customFetch<DeleteSettlement200>(getDeleteSettlementUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteSettlementMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSettlement>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteSettlement>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteSettlement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteSettlement>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteSettlement(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteSettlementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteSettlement>>
+>;
+
+export type DeleteSettlementMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete settlement
+ */
+export const useDeleteSettlement = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSettlement>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteSettlement>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteSettlementMutationOptions(options));
+};
+
+/**
+ * @summary Verify settlement
+ */
+export const getVerifySettlementUrl = (id: number) => {
+  return `/api/settlements/${id}/verify`;
+};
+
+export const verifySettlement = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Settlement> => {
+  return customFetch<Settlement>(getVerifySettlementUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getVerifySettlementMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifySettlement>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verifySettlement>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["verifySettlement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verifySettlement>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return verifySettlement(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerifySettlementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verifySettlement>>
+>;
+
+export type VerifySettlementMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Verify settlement
+ */
+export const useVerifySettlement = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifySettlement>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verifySettlement>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getVerifySettlementMutationOptions(options));
+};
+
+/**
+ * @summary Get sales summary for a date
+ */
+export const getGetSettlementSalesSummaryUrl = (
+  params: GetSettlementSalesSummaryParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/settlements/sales-summary?${stringifiedParams}`
+    : `/api/settlements/sales-summary`;
+};
+
+export const getSettlementSalesSummary = async (
+  params: GetSettlementSalesSummaryParams,
+  options?: RequestInit,
+): Promise<SettlementSalesSummary> => {
+  return customFetch<SettlementSalesSummary>(
+    getGetSettlementSalesSummaryUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetSettlementSalesSummaryQueryKey = (
+  params?: GetSettlementSalesSummaryParams,
+) => {
+  return [
+    `/api/settlements/sales-summary`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetSettlementSalesSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSettlementSalesSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetSettlementSalesSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSettlementSalesSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSettlementSalesSummaryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSettlementSalesSummary>>
+  > = ({ signal }) =>
+    getSettlementSalesSummary(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSettlementSalesSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSettlementSalesSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSettlementSalesSummary>>
+>;
+export type GetSettlementSalesSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get sales summary for a date
+ */
+
+export function useGetSettlementSalesSummary<
+  TData = Awaited<ReturnType<typeof getSettlementSalesSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetSettlementSalesSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSettlementSalesSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSettlementSalesSummaryQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List petty cash transactions
+ */
+export const getListPettyCashUrl = (params?: ListPettyCashParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/petty-cash?${stringifiedParams}`
+    : `/api/petty-cash`;
+};
+
+export const listPettyCash = async (
+  params?: ListPettyCashParams,
+  options?: RequestInit,
+): Promise<PettyCashTransaction[]> => {
+  return customFetch<PettyCashTransaction[]>(getListPettyCashUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPettyCashQueryKey = (params?: ListPettyCashParams) => {
+  return [`/api/petty-cash`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPettyCashQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPettyCash>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPettyCashParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPettyCash>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPettyCashQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPettyCash>>> = ({
+    signal,
+  }) => listPettyCash(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPettyCash>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPettyCashQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPettyCash>>
+>;
+export type ListPettyCashQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List petty cash transactions
+ */
+
+export function useListPettyCash<
+  TData = Awaited<ReturnType<typeof listPettyCash>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPettyCashParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPettyCash>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPettyCashQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create petty cash transaction
+ */
+export const getCreatePettyCashUrl = () => {
+  return `/api/petty-cash`;
+};
+
+export const createPettyCash = async (
+  createPettyCashRequest: CreatePettyCashRequest,
+  options?: RequestInit,
+): Promise<PettyCashTransaction> => {
+  return customFetch<PettyCashTransaction>(getCreatePettyCashUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createPettyCashRequest),
+  });
+};
+
+export const getCreatePettyCashMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPettyCash>>,
+    TError,
+    { data: BodyType<CreatePettyCashRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPettyCash>>,
+  TError,
+  { data: BodyType<CreatePettyCashRequest> },
+  TContext
+> => {
+  const mutationKey = ["createPettyCash"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPettyCash>>,
+    { data: BodyType<CreatePettyCashRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPettyCash(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePettyCashMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPettyCash>>
+>;
+export type CreatePettyCashMutationBody = BodyType<CreatePettyCashRequest>;
+export type CreatePettyCashMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create petty cash transaction
+ */
+export const useCreatePettyCash = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPettyCash>>,
+    TError,
+    { data: BodyType<CreatePettyCashRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPettyCash>>,
+  TError,
+  { data: BodyType<CreatePettyCashRequest> },
+  TContext
+> => {
+  return useMutation(getCreatePettyCashMutationOptions(options));
+};
+
+/**
+ * @summary Delete petty cash transaction
+ */
+export const getDeletePettyCashUrl = (id: number) => {
+  return `/api/petty-cash/${id}`;
+};
+
+export const deletePettyCash = async (
+  id: number,
+  options?: RequestInit,
+): Promise<DeletePettyCash200> => {
+  return customFetch<DeletePettyCash200>(getDeletePettyCashUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeletePettyCashMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePettyCash>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deletePettyCash>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deletePettyCash"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deletePettyCash>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deletePettyCash(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeletePettyCashMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deletePettyCash>>
+>;
+
+export type DeletePettyCashMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete petty cash transaction
+ */
+export const useDeletePettyCash = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePettyCash>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deletePettyCash>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeletePettyCashMutationOptions(options));
+};
+
+/**
+ * @summary Petty cash balance summary
+ */
+export const getGetPettyCashSummaryUrl = (
+  params?: GetPettyCashSummaryParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/petty-cash/summary?${stringifiedParams}`
+    : `/api/petty-cash/summary`;
+};
+
+export const getPettyCashSummary = async (
+  params?: GetPettyCashSummaryParams,
+  options?: RequestInit,
+): Promise<PettyCashSummary> => {
+  return customFetch<PettyCashSummary>(getGetPettyCashSummaryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPettyCashSummaryQueryKey = (
+  params?: GetPettyCashSummaryParams,
+) => {
+  return [`/api/petty-cash/summary`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetPettyCashSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPettyCashSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetPettyCashSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPettyCashSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPettyCashSummaryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPettyCashSummary>>
+  > = ({ signal }) =>
+    getPettyCashSummary(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPettyCashSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPettyCashSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPettyCashSummary>>
+>;
+export type GetPettyCashSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Petty cash balance summary
+ */
+
+export function useGetPettyCashSummary<
+  TData = Awaited<ReturnType<typeof getPettyCashSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetPettyCashSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPettyCashSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPettyCashSummaryQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
