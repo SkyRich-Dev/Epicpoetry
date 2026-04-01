@@ -108,7 +108,8 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Excel Upload**: Bulk import sales, purchases, expenses from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results
 - **Auth Token**: Frontend uses setAuthTokenGetter from custom-fetch for global API auth header injection
 - **PATCH operations**: All update schemas use .partial() for optional field updates
-- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, insights, top items. Manager/viewer sees "Operations Dashboard" with only: today's sales (with yesterday & last week same day comparisons), today's expenses, today's waste, petty cash balance, petty cash spent today
+- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, insights, top items. Manager/viewer sees "Operations Dashboard" with only: sales (with comparison badges), expenses, waste, petty cash balance, petty cash spent
+- **Dashboard Date Filters**: Filter bar with Today/Date/Date Range/This Week/This Month modes. Week and month modes have prev/next navigation arrows. Labels dynamically adjust (e.g., "Today's Sales" → "Weekly Sales" → "Monthly Sales"). Backend accepts fromDate/toDate query params, falling back to single date for backward compat. Range mode compares vs previous equivalent period
 - **Menu Cost Visibility**: Production cost and margin columns on Menu Items page are hidden from non-admin users
 - **Route-level Access Control**: Admin-only pages (Trials, Analytics, Reports, Masters, Upload) show "Access Restricted" page for non-admin users, even if accessed via direct URL
 - **Employee Module**: Full employee management with auto-generated codes (EMP0001...), contact, position, salary, part-time/full-time. Admin-only CRUD; non-admin sees only name, code, position, type (no salary/contact)

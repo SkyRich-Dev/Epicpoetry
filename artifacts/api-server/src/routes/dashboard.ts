@@ -13,32 +13,50 @@ function getMonthStart(date: string): string {
 }
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
-  const date = (req.query.date as string) || getToday();
-  const monthStart = getMonthStart(date);
+  const fromDate = (req.query.fromDate as string) || (req.query.date as string) || getToday();
+  const toDate = (req.query.toDate as string) || (req.query.date as string) || getToday();
+  const isSingleDay = fromDate === toDate;
+  const monthStart = getMonthStart(toDate);
 
-  const todaySales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, date));
-  const todayExpenses = await db.select().from(expensesTable).where(eq(expensesTable.expenseDate, date));
-  const todayWaste = await db.select().from(wasteEntriesTable).where(eq(wasteEntriesTable.wasteDate, date));
+  const rangeSales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, fromDate), lte(salesEntriesTable.salesDate, toDate)));
+  const rangeExpenses = await db.select().from(expensesTable).where(and(gte(expensesTable.expenseDate, fromDate), lte(expensesTable.expenseDate, toDate)));
+  const rangeWaste = await db.select().from(wasteEntriesTable).where(and(gte(wasteEntriesTable.wasteDate, fromDate), lte(wasteEntriesTable.wasteDate, toDate)));
 
-  const mtdSales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, monthStart), lte(salesEntriesTable.salesDate, date)));
-  const mtdExpenses = await db.select().from(expensesTable).where(and(gte(expensesTable.expenseDate, monthStart), lte(expensesTable.expenseDate, date)));
-  const mtdWaste = await db.select().from(wasteEntriesTable).where(and(gte(wasteEntriesTable.wasteDate, monthStart), lte(wasteEntriesTable.wasteDate, date)));
+  const mtdSales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, monthStart), lte(salesEntriesTable.salesDate, toDate)));
+  const mtdExpenses = await db.select().from(expensesTable).where(and(gte(expensesTable.expenseDate, monthStart), lte(expensesTable.expenseDate, toDate)));
+  const mtdWaste = await db.select().from(wasteEntriesTable).where(and(gte(wasteEntriesTable.wasteDate, monthStart), lte(wasteEntriesTable.wasteDate, toDate)));
 
-  const yesterday = new Date(date);
+  const yesterday = new Date(fromDate);
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split("T")[0];
-  const lastWeekSameDay = new Date(date);
+  const lastWeekSameDay = new Date(fromDate);
   lastWeekSameDay.setDate(lastWeekSameDay.getDate() - 7);
   const lastWeekSameDayStr = lastWeekSameDay.toISOString().split("T")[0];
 
-  const yesterdaySales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, yesterdayStr));
-  const lastWeekSales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, lastWeekSameDayStr));
-  const yesterdaySalesTotal = yesterdaySales.reduce((s, e) => s + e.totalAmount, 0);
-  const lastWeekSameDaySalesTotal = lastWeekSales.reduce((s, e) => s + e.totalAmount, 0);
+  const dayCount = Math.max(1, Math.round((new Date(toDate).getTime() - new Date(fromDate).getTime()) / 86400000) + 1);
+  const prevRangeEnd = new Date(fromDate);
+  prevRangeEnd.setDate(prevRangeEnd.getDate() - 1);
+  const prevRangeStart = new Date(prevRangeEnd);
+  prevRangeStart.setDate(prevRangeStart.getDate() - dayCount + 1);
+  const prevRangeStartStr = prevRangeStart.toISOString().split("T")[0];
+  const prevRangeEndStr = prevRangeEnd.toISOString().split("T")[0];
 
-  const todaySalesTotal = todaySales.reduce((s, e) => s + e.totalAmount, 0);
-  const todayExpensesTotal = todayExpenses.reduce((s, e) => s + e.totalAmount, 0);
-  const todayWasteTotal = todayWaste.reduce((s, e) => s + e.costValue, 0);
+  let yesterdaySalesTotal = 0;
+  let lastWeekSameDaySalesTotal = 0;
+  if (isSingleDay) {
+    const yesterdaySales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, yesterdayStr));
+    const lastWeekSales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, lastWeekSameDayStr));
+    yesterdaySalesTotal = yesterdaySales.reduce((s, e) => s + e.totalAmount, 0);
+    lastWeekSameDaySalesTotal = lastWeekSales.reduce((s, e) => s + e.totalAmount, 0);
+  } else {
+    const prevSales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, prevRangeStartStr), lte(salesEntriesTable.salesDate, prevRangeEndStr)));
+    yesterdaySalesTotal = prevSales.reduce((s, e) => s + e.totalAmount, 0);
+    lastWeekSameDaySalesTotal = 0;
+  }
+
+  const todaySalesTotal = rangeSales.reduce((s, e) => s + e.totalAmount, 0);
+  const todayExpensesTotal = rangeExpenses.reduce((s, e) => s + e.totalAmount, 0);
+  const todayWasteTotal = rangeWaste.reduce((s, e) => s + e.costValue, 0);
   const todayProfit = todaySalesTotal - todayExpensesTotal - todayWasteTotal;
 
   const mtdSalesTotal = mtdSales.reduce((s, e) => s + e.totalAmount, 0);
@@ -50,7 +68,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const lowStockCount = lowStockIngredients.filter(i => i.currentStock <= i.reorderLevel).length;
 
   const itemRevenueMap = new Map<number, { menuItemId: number; menuItemName: string; quantity: number; revenue: number }>();
-  for (const s of mtdSales) {
+  for (const s of rangeSales) {
     const existing = itemRevenueMap.get(s.menuItemId) || { menuItemId: s.menuItemId, menuItemName: "", quantity: 0, revenue: 0 };
     existing.quantity += s.quantity;
     existing.revenue += s.totalAmount;
@@ -96,9 +114,9 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     alerts.push({ type: "low_stock", severity: "warning", message: `${i.name} stock is low (${i.currentStock} ${i.stockUom})`, relatedId: i.id });
   });
 
-  const todaySettlement = await db.select().from(dailySalesSettlementsTable).where(eq(dailySalesSettlementsTable.settlementDate, date));
+  const todaySettlement = await db.select().from(dailySalesSettlementsTable).where(and(gte(dailySalesSettlementsTable.settlementDate, fromDate), lte(dailySalesSettlementsTable.settlementDate, toDate)));
   const todaySettlementTotal = todaySettlement.reduce((s, e) => s + e.totalSettlementAmount, 0);
-  const todaySettlementDiff = todaySettlement.length > 0 ? todaySettlement[0].differenceAmount : 0;
+  const todaySettlementDiff = todaySettlement.reduce((s, e) => s + e.differenceAmount, 0);
 
   const pcResult = await db.select({
     totalReceipts: sql<number>`COALESCE(SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END), 0)`,
@@ -109,7 +127,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
 
   const todayPcExpenses = await db.select({
     total: sql<number>`COALESCE(SUM(amount), 0)`,
-  }).from(pettyCashLedgerTable).where(and(eq(pettyCashLedgerTable.transactionDate, date), eq(pettyCashLedgerTable.transactionType, 'expense')));
+  }).from(pettyCashLedgerTable).where(and(gte(pettyCashLedgerTable.transactionDate, fromDate), lte(pettyCashLedgerTable.transactionDate, toDate), eq(pettyCashLedgerTable.transactionType, 'expense')));
   const pettyCashSpentToday = Number(todayPcExpenses[0]?.total || 0);
 
   const unsettledDays = await db.select({
@@ -123,6 +141,9 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   if (Number(unsettledDays[0]?.count || 0) > 0) insights.push(`${unsettledDays[0]?.count} unsettled/mismatched days`);
 
   res.json({
+    fromDate,
+    toDate,
+    isSingleDay,
     todaySales: todaySalesTotal,
     todayExpenses: todayExpensesTotal,
     todayWaste: todayWasteTotal,
