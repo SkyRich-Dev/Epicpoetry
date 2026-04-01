@@ -51,7 +51,7 @@ const navGroups: NavGroup[] = [
     title: 'Admin',
     items: [
       { name: 'Analytics', path: '/analytics', icon: BarChart3, adminOnly: true },
-      { name: 'Excel Upload', path: '/upload', icon: Upload, adminOnly: true },
+      { name: 'Excel Upload', path: '/upload', icon: Upload },
       { name: 'Reports', path: '/reports', icon: ClipboardList, adminOnly: true },
       { name: 'Masters & Config', path: '/masters', icon: Settings, adminOnly: true },
     ]

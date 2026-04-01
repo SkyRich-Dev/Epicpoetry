@@ -82,7 +82,7 @@ function Router() {
       <Route path="/reports" component={() => <ProtectedRoute component={Reports} adminOnly />} />
       <Route path="/masters" component={() => <ProtectedRoute component={Masters} adminOnly />} />
       <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsPage} adminOnly />} />
-      <Route path="/upload" component={() => <ProtectedRoute component={UploadPage} adminOnly />} />
+      <Route path="/upload" component={() => <ProtectedRoute component={UploadPage} />} />
       <Route path="/settlements" component={() => <ProtectedRoute component={Settlements} />} />
       <Route path="/petty-cash" component={() => <ProtectedRoute component={PettyCash} />} />
       <Route path="/employees" component={() => <ProtectedRoute component={EmployeesPage} />} />
