@@ -35,7 +35,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
-    window.location.href = import.meta.env.BASE_URL || '/';
   };
 
   return (
