@@ -78,6 +78,7 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - Custom JWT auth: POST /auth/login, GET /auth/me
 - Roles: `admin` (full access), `manager` (daily operations only), `viewer` (read-only)
 - Admin-only routes: config PATCH, users CRUD, audit-logs, upload, reports, trials
+- **User Management page**: Admin can create users, assign roles (Admin/Manager/Viewer), edit profiles, change passwords, activate/deactivate accounts
 - Manager can access: dashboard, sales, purchases, expenses, waste, menu, ingredients, inventory, vendors
 - Default users: admin / admin123 (admin role), manager / manager123 (manager role)
 - JWT stored in localStorage, sent as Authorization: Bearer header

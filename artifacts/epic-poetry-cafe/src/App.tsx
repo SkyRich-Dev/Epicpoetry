@@ -25,6 +25,7 @@ import UploadPage from "./pages/upload";
 import AnalyticsPage from "./pages/analytics";
 import Settlements from "./pages/settlements";
 import PettyCash from "./pages/petty-cash";
+import UsersPage from "./pages/users";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,6 +73,7 @@ function Router() {
       <Route path="/upload" component={() => <ProtectedRoute component={UploadPage} />} />
       <Route path="/settlements" component={() => <ProtectedRoute component={Settlements} />} />
       <Route path="/petty-cash" component={() => <ProtectedRoute component={PettyCash} />} />
+      <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
       <Route path="/audit-logs" component={() => <ProtectedRoute component={AuditLogs} />} />
       <Route component={NotFound} />
     </Switch>
