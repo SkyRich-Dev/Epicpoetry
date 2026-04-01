@@ -2,11 +2,11 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { db, auditLogsTable } from "@workspace/db";
 import { ListAuditLogsQueryParams } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 
 const router: IRouter = Router();
 
-router.get("/audit-logs", authMiddleware, async (req, res): Promise<void> => {
+router.get("/audit-logs", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const query = ListAuditLogsQueryParams.safeParse(req.query);
   const limit = query.success && query.data.limit ? query.data.limit : 50;
   const offset = query.success && query.data.offset ? query.data.offset : 0;

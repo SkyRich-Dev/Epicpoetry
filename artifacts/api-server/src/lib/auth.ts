@@ -45,3 +45,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   (req as any).userRole = payload.role;
   next();
 }
+
+export function adminOnly(req: Request, res: Response, next: NextFunction): void {
+  if ((req as any).userRole !== "admin") {
+    res.status(403).json({ error: "Admin access required" });
+    return;
+  }
+  next();
+}

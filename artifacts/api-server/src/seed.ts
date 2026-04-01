@@ -15,14 +15,24 @@ export async function seed() {
 
   console.log("Seeding database...");
 
-  await db.insert(usersTable).values({
-    username: "admin",
-    passwordHash: hashPassword("admin123"),
-    fullName: "Admin User",
-    email: "admin@epicpoetrycafe.com",
-    role: "admin",
-    active: true,
-  });
+  await db.insert(usersTable).values([
+    {
+      username: "admin",
+      passwordHash: hashPassword("admin123"),
+      fullName: "Admin User",
+      email: "admin@epicpoetrycafe.com",
+      role: "admin",
+      active: true,
+    },
+    {
+      username: "manager",
+      passwordHash: hashPassword("manager123"),
+      fullName: "Cafe Manager",
+      email: "manager@epicpoetrycafe.com",
+      role: "manager",
+      active: true,
+    },
+  ]);
 
   await db.insert(systemConfigTable).values({
     costingMethod: "weighted_average",

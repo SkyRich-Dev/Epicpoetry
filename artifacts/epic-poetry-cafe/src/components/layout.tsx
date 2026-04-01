@@ -8,7 +8,10 @@ import {
 } from 'lucide-react';
 import { cn } from './ui-extras';
 
-const navGroups = [
+type NavItem = { name: string; path: string; icon: any; adminOnly?: boolean };
+type NavGroup = { title: string; items: NavItem[] };
+
+const navGroups: NavGroup[] = [
   {
     title: 'Overview',
     items: [
@@ -31,19 +34,28 @@ const navGroups = [
       { name: 'Ingredients', path: '/ingredients', icon: Package },
       { name: 'Inventory', path: '/inventory', icon: PackageSearch },
       { name: 'Vendors', path: '/vendors', icon: Users },
-      { name: 'Trials & R&D', path: '/trials', icon: FlaskConical },
+      { name: 'Trials & R&D', path: '/trials', icon: FlaskConical, adminOnly: true },
     ]
   },
   {
     title: 'Admin',
     items: [
-      { name: 'Analytics', path: '/analytics', icon: BarChart3 },
-      { name: 'Excel Upload', path: '/upload', icon: Upload },
-      { name: 'Reports', path: '/reports', icon: ClipboardList },
-      { name: 'Masters & Config', path: '/masters', icon: Settings },
+      { name: 'Analytics', path: '/analytics', icon: BarChart3, adminOnly: true },
+      { name: 'Excel Upload', path: '/upload', icon: Upload, adminOnly: true },
+      { name: 'Reports', path: '/reports', icon: ClipboardList, adminOnly: true },
+      { name: 'Masters & Config', path: '/masters', icon: Settings, adminOnly: true },
     ]
   }
 ];
+
+function getNavForRole(role: string): NavGroup[] {
+  return navGroups
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !item.adminOnly || role === 'admin'),
+    }))
+    .filter(group => group.items.length > 0);
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -82,7 +94,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 md:py-2 custom-scrollbar">
-          {navGroups.map((group, idx) => (
+          {getNavForRole(user?.role || 'viewer').map((group, idx) => (
             <div key={idx} className="mb-8">
               <h3 className="px-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3">
                 {group.title}

@@ -2,12 +2,11 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { ListUsersResponse, CreateUserBody, UpdateUserBody, UpdateUserParams } from "@workspace/api-zod";
-import { hashPassword } from "../lib/auth";
-import { authMiddleware } from "../lib/auth";
+import { hashPassword, authMiddleware, adminOnly } from "../lib/auth";
 
 const router: IRouter = Router();
 
-router.get("/users", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/users", authMiddleware, adminOnly, async (_req, res): Promise<void> => {
   const users = await db.select({
     id: usersTable.id,
     username: usersTable.username,
@@ -20,7 +19,7 @@ router.get("/users", authMiddleware, async (_req, res): Promise<void> => {
   res.json(ListUsersResponse.parse(users));
 });
 
-router.post("/users", authMiddleware, async (req, res): Promise<void> => {
+router.post("/users", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const parsed = CreateUserBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -47,7 +46,7 @@ router.post("/users", authMiddleware, async (req, res): Promise<void> => {
   });
 });
 
-router.patch("/users/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/users/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const params = UpdateUserParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

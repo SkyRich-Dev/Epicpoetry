@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, systemConfigTable } from "@workspace/db";
 import { GetConfigResponse, UpdateConfigBody, UpdateConfigResponse } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
@@ -21,7 +21,7 @@ router.get("/config", async (_req, res): Promise<void> => {
   res.json(GetConfigResponse.parse(config));
 });
 
-router.patch("/config", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/config", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const parsed = UpdateConfigBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const old = await ensureConfig();
