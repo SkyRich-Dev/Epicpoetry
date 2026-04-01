@@ -1,5 +1,5 @@
-import React from 'react';
-import { X } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, CalendarDays, RotateCcw } from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -125,6 +125,34 @@ export function Select({ className, children, ...props }: any) {
 
 export function Label({ className, children, ...props }: any) {
   return <label className={cn("block text-sm font-medium text-foreground mb-1.5", className)} {...props}>{children}</label>;
+}
+
+export function DateFilter({ fromDate, toDate, onChange }: { fromDate: string; toDate: string; onChange: (from: string, to: string) => void }) {
+  const today = new Date().toISOString().split('T')[0];
+  const setPreset = (days: number) => {
+    const to = today;
+    const from = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+    onChange(from, to);
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/50 rounded-xl border border-border">
+      <CalendarDays size={16} className="text-muted-foreground" />
+      <Input type="date" value={fromDate} onChange={(e: any) => onChange(e.target.value, toDate)} className="w-[150px] h-9 text-sm" />
+      <span className="text-muted-foreground text-sm">to</span>
+      <Input type="date" value={toDate} onChange={(e: any) => onChange(fromDate, e.target.value)} className="w-[150px] h-9 text-sm" />
+      <div className="flex gap-1 ml-2">
+        <button onClick={() => onChange(today, today)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-background border border-border hover:bg-accent transition-colors">Today</button>
+        <button onClick={() => setPreset(7)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-background border border-border hover:bg-accent transition-colors">7D</button>
+        <button onClick={() => setPreset(30)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-background border border-border hover:bg-accent transition-colors">30D</button>
+        <button onClick={() => setPreset(90)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-background border border-border hover:bg-accent transition-colors">90D</button>
+      </div>
+      {(fromDate || toDate) && (
+        <button onClick={() => onChange('', '')} className="ml-1 p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent transition-colors" title="Clear filter">
+          <RotateCcw size={14} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function Badge({ children, variant = 'default', className }: any) {

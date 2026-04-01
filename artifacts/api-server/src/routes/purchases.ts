@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable } from "@workspace/db";
 import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurchaseResponse } from "@workspace/api-zod";
 import { authMiddleware } from "../lib/auth";
@@ -8,8 +8,13 @@ import { generateCode } from "../lib/codeGenerator";
 
 const router: IRouter = Router();
 
-router.get("/purchases", async (_req, res): Promise<void> => {
-  const purchases = await db
+router.get("/purchases", async (req, res): Promise<void> => {
+  const conditions = [];
+  if (req.query.fromDate) conditions.push(gte(purchasesTable.purchaseDate, req.query.fromDate as string));
+  if (req.query.toDate) conditions.push(lte(purchasesTable.purchaseDate, req.query.toDate as string));
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const query = db
     .select({
       id: purchasesTable.id,
       purchaseNumber: purchasesTable.purchaseNumber,
@@ -24,8 +29,11 @@ router.get("/purchases", async (_req, res): Promise<void> => {
       createdAt: purchasesTable.createdAt,
     })
     .from(purchasesTable)
-    .leftJoin(vendorsTable, eq(purchasesTable.vendorId, vendorsTable.id))
-    .orderBy(purchasesTable.createdAt);
+    .leftJoin(vendorsTable, eq(purchasesTable.vendorId, vendorsTable.id));
+
+  const purchases = whereClause
+    ? await query.where(whereClause).orderBy(purchasesTable.createdAt)
+    : await query.orderBy(purchasesTable.createdAt);
   res.json(ListPurchasesResponse.parse(purchases));
 });
 

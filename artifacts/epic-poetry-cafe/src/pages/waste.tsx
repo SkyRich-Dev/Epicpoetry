@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useListWasteEntries, useCreateWasteEntry, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter } from '../components/ui-extras';
 import { Plus, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function Waste() {
   const queryClient = useQueryClient();
-  const { data: waste, isLoading } = useListWasteEntries();
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
+  const { data: waste, isLoading } = useListWasteEntries(Object.keys(dateParams).length ? dateParams : undefined);
   const { data: ingredients } = useListIngredients();
   const createMut = useCreateWasteEntry();
   
@@ -33,6 +36,8 @@ export default function Waste() {
       <PageHeader title="Waste Log" description="Track spoiled, expired, or damaged items">
         <Button onClick={() => setIsModalOpen(true)} variant="danger"><Trash2 size={18} className="mr-1"/> Log Waste</Button>
       </PageHeader>
+
+      <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
 
       <div className="table-container">
         <table className="w-full text-sm text-left">

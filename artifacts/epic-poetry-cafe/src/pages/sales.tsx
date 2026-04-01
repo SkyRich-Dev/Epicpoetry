@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useListSales, useCreateSalesEntry, useListMenuItems } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter } from '../components/ui-extras';
 import { Plus, Receipt } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function Sales() {
   const queryClient = useQueryClient();
-  const { data: sales, isLoading } = useListSales();
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const params = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
+  const { data: sales, isLoading } = useListSales(Object.keys(params).length ? params : undefined);
   const { data: menuItems } = useListMenuItems({ active: true });
   const createMut = useCreateSalesEntry();
   
@@ -37,6 +40,8 @@ export default function Sales() {
       <PageHeader title="Sales Entry" description="Log daily aggregated sales or individual receipts">
         <Button onClick={() => setIsModalOpen(true)}><Plus size={18}/> Log Sales</Button>
       </PageHeader>
+
+      <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
 
       <div className="table-container">
         <table className="w-full text-sm text-left">

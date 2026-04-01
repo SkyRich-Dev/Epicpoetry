@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useListExpenses, useCreateExpense } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter } from '../components/ui-extras';
 import { Plus } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function Expenses() {
   const queryClient = useQueryClient();
-  const { data: expenses, isLoading } = useListExpenses();
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
+  const { data: expenses, isLoading } = useListExpenses(Object.keys(dateParams).length ? dateParams : undefined);
   const createMut = useCreateExpense();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,6 +34,8 @@ export default function Expenses() {
       <PageHeader title="Expenses" description="Manage operational costs, utilities, and generic expenses">
         <Button onClick={() => setIsModalOpen(true)}><Plus size={18}/> Log Expense</Button>
       </PageHeader>
+
+      <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
 
       <div className="table-container">
         <table className="w-full text-sm text-left">

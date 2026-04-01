@@ -8,7 +8,12 @@ import { createAuditLog } from "../lib/audit";
 const router: IRouter = Router();
 
 router.get("/sales", async (req, res): Promise<void> => {
-  const sales = await db
+  const conditions = [];
+  if (req.query.fromDate) conditions.push(gte(salesEntriesTable.salesDate, req.query.fromDate as string));
+  if (req.query.toDate) conditions.push(lte(salesEntriesTable.salesDate, req.query.toDate as string));
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const query = db
     .select({
       id: salesEntriesTable.id,
       salesDate: salesEntriesTable.salesDate,
@@ -23,8 +28,11 @@ router.get("/sales", async (req, res): Promise<void> => {
       createdAt: salesEntriesTable.createdAt,
     })
     .from(salesEntriesTable)
-    .leftJoin(menuItemsTable, eq(salesEntriesTable.menuItemId, menuItemsTable.id))
-    .orderBy(salesEntriesTable.createdAt);
+    .leftJoin(menuItemsTable, eq(salesEntriesTable.menuItemId, menuItemsTable.id));
+
+  const sales = whereClause
+    ? await query.where(whereClause).orderBy(salesEntriesTable.createdAt)
+    : await query.orderBy(salesEntriesTable.createdAt);
   res.json(ListSalesResponse.parse(sales));
 });
 

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { db, wasteEntriesTable, ingredientsTable, menuItemsTable, categoriesTable, recipeLinesTable } from "@workspace/db";
 import { ListWasteEntriesResponse, CreateWasteEntryBody, UpdateWasteEntryParams, UpdateWasteEntryBody, GetWasteSummaryResponse } from "@workspace/api-zod";
 import { authMiddleware } from "../lib/auth";
@@ -8,8 +8,13 @@ import { generateCode } from "../lib/codeGenerator";
 
 const router: IRouter = Router();
 
-router.get("/waste", async (_req, res): Promise<void> => {
-  const entries = await db
+router.get("/waste", async (req, res): Promise<void> => {
+  const conditions = [];
+  if (req.query.fromDate) conditions.push(gte(wasteEntriesTable.wasteDate, req.query.fromDate as string));
+  if (req.query.toDate) conditions.push(lte(wasteEntriesTable.wasteDate, req.query.toDate as string));
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const query = db
     .select({
       id: wasteEntriesTable.id,
       wasteNumber: wasteEntriesTable.wasteNumber,
@@ -31,8 +36,11 @@ router.get("/waste", async (_req, res): Promise<void> => {
     })
     .from(wasteEntriesTable)
     .leftJoin(ingredientsTable, eq(wasteEntriesTable.ingredientId, ingredientsTable.id))
-    .leftJoin(categoriesTable, eq(wasteEntriesTable.categoryId, categoriesTable.id))
-    .orderBy(wasteEntriesTable.createdAt);
+    .leftJoin(categoriesTable, eq(wasteEntriesTable.categoryId, categoriesTable.id));
+
+  const entries = whereClause
+    ? await query.where(whereClause).orderBy(wasteEntriesTable.createdAt)
+    : await query.orderBy(wasteEntriesTable.createdAt);
 
   const result = entries.map(e => {
     return { ...e, menuItemName: null };

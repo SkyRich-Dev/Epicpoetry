@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, expensesTable, categoriesTable, vendorsTable, pettyCashLedgerTable } from "@workspace/db";
 import { ListExpensesResponse, CreateExpenseBody, GetExpenseParams, GetExpenseResponse, UpdateExpenseParams, UpdateExpenseBody } from "@workspace/api-zod";
 import { authMiddleware } from "../lib/auth";
@@ -20,8 +20,13 @@ async function getPettyCashBalance(): Promise<number> {
 
 const router: IRouter = Router();
 
-router.get("/expenses", async (_req, res): Promise<void> => {
-  const expenses = await db
+router.get("/expenses", async (req, res): Promise<void> => {
+  const conditions = [];
+  if (req.query.fromDate) conditions.push(gte(expensesTable.expenseDate, req.query.fromDate as string));
+  if (req.query.toDate) conditions.push(lte(expensesTable.expenseDate, req.query.toDate as string));
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const query = db
     .select({
       id: expensesTable.id,
       expenseNumber: expensesTable.expenseNumber,
@@ -43,8 +48,11 @@ router.get("/expenses", async (_req, res): Promise<void> => {
     })
     .from(expensesTable)
     .leftJoin(categoriesTable, eq(expensesTable.categoryId, categoriesTable.id))
-    .leftJoin(vendorsTable, eq(expensesTable.vendorId, vendorsTable.id))
-    .orderBy(expensesTable.createdAt);
+    .leftJoin(vendorsTable, eq(expensesTable.vendorId, vendorsTable.id));
+
+  const expenses = whereClause
+    ? await query.where(whereClause).orderBy(expensesTable.createdAt)
+    : await query.orderBy(expensesTable.createdAt);
   res.json(ListExpensesResponse.parse(expenses));
 });
 

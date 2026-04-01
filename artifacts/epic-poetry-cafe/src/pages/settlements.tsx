@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListSettlements, useCreateSettlement, useGetSettlementSalesSummary, useVerifySettlement, useDeleteSettlement, useGetSettlement } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter } from '../components/ui-extras';
 import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode, Trash2, Eye, ShieldCheck } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -18,7 +18,10 @@ function StatusBadge({ type, status }: { type: string; status: string }) {
 export default function Settlements() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { data: settlements, isLoading } = useListSettlements();
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+  const filterParams = { ...(filterFrom ? { fromDate: filterFrom } : {}), ...(filterTo ? { toDate: filterTo } : {}) };
+  const { data: settlements, isLoading } = useListSettlements(Object.keys(filterParams).length ? filterParams : undefined);
   const createMut = useCreateSettlement();
   const verifyMut = useVerifySettlement();
   const deleteMut = useDeleteSettlement();
@@ -108,6 +111,8 @@ export default function Settlements() {
         <StatCard title="Matched" value={matched} icon={CheckCircle} colorClass="text-emerald-600" />
         <StatCard title="Mismatched" value={mismatched} icon={AlertTriangle} colorClass="text-amber-600" />
       </div>
+
+      <DateFilter fromDate={filterFrom} toDate={filterTo} onChange={(f, t) => { setFilterFrom(f); setFilterTo(t); }} />
 
       <div className="table-container">
         <table className="w-full text-sm text-left">

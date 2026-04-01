@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListPettyCash, useCreatePettyCash, useGetPettyCashSummary, useDeletePettyCash } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter } from '../components/ui-extras';
 import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -15,7 +15,10 @@ function TypeBadge({ type }: { type: string }) {
 
 export default function PettyCash() {
   const queryClient = useQueryClient();
-  const { data: transactions, isLoading } = useListPettyCash();
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
+  const { data: transactions, isLoading } = useListPettyCash(Object.keys(dateParams).length ? dateParams : undefined);
   const { data: summary } = useGetPettyCashSummary();
   const createMut = useCreatePettyCash();
   const deleteMut = useDeletePettyCash();
@@ -83,6 +86,8 @@ export default function PettyCash() {
         <StatCard title="Adjustments" value={formatCurrency(summary?.totalAdjustments)} icon={RefreshCw} colorClass="text-blue-500" />
         <StatCard title="Current Balance" value={formatCurrency(summary?.currentBalance)} icon={Wallet} colorClass="text-primary" />
       </div>
+
+      <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
 
       <div className="table-container">
         <table className="w-full text-sm text-left">

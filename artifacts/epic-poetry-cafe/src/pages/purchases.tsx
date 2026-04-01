@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useListPurchases, useCreatePurchase, useListVendors, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter } from '../components/ui-extras';
 import { Plus, Receipt, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function Purchases() {
   const queryClient = useQueryClient();
-  const { data: purchases, isLoading } = useListPurchases();
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
+  const { data: purchases, isLoading } = useListPurchases(Object.keys(dateParams).length ? dateParams : undefined);
   const { data: vendors } = useListVendors();
   const { data: ingredients } = useListIngredients();
   
@@ -62,6 +65,8 @@ export default function Purchases() {
       <PageHeader title="Purchases" description="Record inward inventory and vendor bills">
         <Button onClick={openCreate}><Plus size={18}/> New Purchase</Button>
       </PageHeader>
+
+      <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
 
       <div className="table-container">
         <table className="w-full text-sm text-left">
