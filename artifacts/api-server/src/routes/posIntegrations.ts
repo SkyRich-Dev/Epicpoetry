@@ -4,6 +4,7 @@ import { db, posIntegrationsTable, petpoojaItemMappingsTable, menuItemsTable,
 import { eq, and, sql } from "drizzle-orm";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { isFutureDate } from "../lib/dateValidation";
 import crypto from "crypto";
 
 const router = Router();
@@ -214,6 +215,13 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
     try {
       const salesDate = order.order_date || order.date || new Date().toISOString().split("T")[0];
       const invoiceNo = order.order_id || order.invoice_no || `PP-${Date.now()}`;
+
+      if (isFutureDate(salesDate)) {
+        errors.push(`Order ${invoiceNo}: Date cannot be in the future (${salesDate})`);
+        failedCount++;
+        continue;
+      }
+
       const invoiceTime = order.order_time || order.time || "";
       const orderType = (order.order_type || integration.defaultOrderType || "dine-in").toLowerCase().replace(/\s+/g, "-");
       const customerName = order.customer_name || order.customer || "";

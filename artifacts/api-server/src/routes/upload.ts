@@ -21,6 +21,7 @@ import {
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { isFutureDate, getTodayISO } from "../lib/dateValidation";
 import { generateCode } from "../lib/codeGenerator";
 import { logger } from "../lib/logger";
 
@@ -136,6 +137,7 @@ router.post("/upload/sales", authMiddleware, handleUpload, async (req, res): Pro
     const raw = normalizeRow(rows[i]);
     try {
       const salesDate = toDateStr(raw.date || raw.sales_date);
+      if (isFutureDate(salesDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${salesDate}). Today is ${getTodayISO()}.` }); continue; }
       const itemName = String(raw.item || raw.menu_item || raw.item_name || raw.menu_item_name || "").trim();
       const itemId = toNum(raw.item_id || raw.menu_item_id);
       const quantity = toNum(raw.quantity || raw.qty);
@@ -222,6 +224,7 @@ router.post("/upload/purchases", authMiddleware, handleUpload, async (req, res):
     const raw = normalizeRow(rows[i]);
     try {
       const purchaseDate = toDateStr(raw.date || raw.purchase_date);
+      if (isFutureDate(purchaseDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${purchaseDate}). Today is ${getTodayISO()}.` }); continue; }
       const vendorName = String(raw.vendor || raw.vendor_name || "").trim();
       const vendorId = toNum(raw.vendor_id);
       const ingredientName = String(raw.ingredient || raw.ingredient_name || raw.item || raw.item_name || "").trim();
@@ -338,6 +341,7 @@ router.post("/upload/expenses", authMiddleware, handleUpload, async (req, res): 
     const raw = normalizeRow(rows[i]);
     try {
       const expenseDate = toDateStr(raw.date || raw.expense_date);
+      if (isFutureDate(expenseDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${expenseDate}). Today is ${getTodayISO()}.` }); continue; }
       const costType = String(raw.cost_type || raw.type || "fixed").toLowerCase().trim();
       const category = String(raw.category || "").trim();
       const description = String(raw.description || raw.desc || raw.details || "").trim();
@@ -582,6 +586,7 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
     const raw = normalizeRow(rows[i]);
     try {
       const salesDate = toDateStr(raw.date || raw.sales_date || raw.invoice_date);
+      if (isFutureDate(salesDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${salesDate}). Today is ${getTodayISO()}.` }); continue; }
       const invoiceNo = String(raw.invoice_no || raw.invoice_number || raw.invoice || "").trim();
       const invoiceTime = String(raw.time || raw.invoice_time || "").trim();
       const orderType = String(raw.order_type || raw.type || "dine-in").toLowerCase().replace(/\s+/g, "-");
@@ -723,6 +728,7 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
     const raw = normalizeRow(rows[i]);
     try {
       const salesDate = toDateStr(raw.date || raw.order_date || raw.sales_date);
+      if (isFutureDate(salesDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${salesDate}). Today is ${getTodayISO()}.` }); continue; }
       const invoiceNo = String(raw.order_id || raw.invoice_no || raw.order_no || raw.invoice || "").trim();
       const invoiceTime = String(raw.time || raw.order_time || "").trim();
       const orderType = String(raw.order_type || raw.type || "dine-in").toLowerCase().replace(/\s+/g, "-");

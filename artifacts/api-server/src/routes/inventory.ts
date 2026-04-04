@@ -4,6 +4,7 @@ import { db, ingredientsTable, stockSnapshotsTable, stockAdjustmentsTable, purch
 import { SaveStockSnapshotBody, CreateStockAdjustmentBody, ListStockSnapshotsQueryParams } from "@workspace/api-zod";
 import { authMiddleware } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -67,6 +68,9 @@ router.get("/inventory/stock-snapshots", async (req, res): Promise<void> => {
 router.post("/inventory/stock-snapshots", authMiddleware, async (req, res): Promise<void> => {
   const parsed = SaveStockSnapshotBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const dateErr = validateNotFutureDate(parsed.data.snapshotDate, "Snapshot date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   await db.delete(stockSnapshotsTable).where(eq(stockSnapshotsTable.snapshotDate, parsed.data.snapshotDate));
 
