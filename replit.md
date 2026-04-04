@@ -45,7 +45,7 @@ artifacts-monorepo/
 
 ## Database Tables (22+)
 
-users, categories, uom, system_config, vendors, ingredients, ingredient_vendor_mapping, menu_items, recipe_lines, purchases, purchase_lines, expenses, stock_snapshots, stock_adjustments, sales_entries, waste_entries, trials, trial_versions, trial_ingredient_lines, audit_logs, vendor_payments, vendor_payment_allocations, vendor_ledger, sales_invoices, sales_invoice_lines, sales_import_batches, petpooja_item_mappings
+users, categories, uom, system_config, vendors, ingredients, ingredient_vendor_mapping, menu_items, recipe_lines, purchases, purchase_lines, expenses, stock_snapshots, stock_adjustments, sales_entries, waste_entries, trials, trial_versions, trial_ingredient_lines, audit_logs, vendor_payments, vendor_payment_allocations, vendor_ledger, sales_invoices, sales_invoice_lines, sales_import_batches, petpooja_item_mappings, pos_integrations
 
 ## API Routes
 
@@ -69,6 +69,9 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Trials**: GET/POST /trials, GET/PATCH/DELETE /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
 - **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses, /upload/menu, /upload/sales-invoices, /upload/petpooja (multipart file), GET /upload/template/:type (xlsx template download, type=sales|purchases|expenses|menu|sales-invoices|petpooja)
 - **Petpooja Mappings**: GET /petpooja-mappings, PATCH /petpooja-mappings/:id (admin), DELETE /petpooja-mappings/:id (admin)
+- **POS Integrations**: GET/POST /pos-integrations (admin), GET/PATCH/DELETE /pos-integrations/:id (admin), POST /pos-integrations/:id/test-connection (admin), POST /pos-integrations/:id/regenerate-webhook-secret (admin), GET /pos-integrations/:id/webhook-secret (admin), GET /pos-integrations/:id/stats (admin)
+- **Webhook**: POST /webhook/petpooja/:integrationId (public, webhook-secret validated)
+- **Unified Sales**: GET /sales-unified (merges sales_entries + sales_invoices, date filtered)
 - **Reports (Analytics)**: GET /reports/item-profitability, /reports/item-wastage (params: period=daily|weekly|monthly|custom, fromDate, toDate)
 - **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend, /trend (authenticated)
 - **Reports**: GET /reports/export?reportType=...
@@ -132,3 +135,6 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Sales Tab Interconnection**: Unified summary bar (Combined Sales, Quick Sales, Invoice Sales, GST Collected) visible across all 5 tabs; clickable summary cards switch tabs; daily summary rows drill down to invoices for that date; consumption tab includes estimated cost column (rate × qty from last purchase price) with total row
 - **Future Date Prevention**: System-wide enforcement — all date entry inputs have `max={today}` in frontend; backend `validateNotFutureDate()` helper rejects future dates on all POST/PATCH handlers for sales, purchases, expenses, waste, settlements, petty cash, vendor payments, sales invoices, attendance, leaves
 - **Date Validation Helper**: `artifacts/api-server/src/lib/dateValidation.ts` — `validateNotFutureDate(dateStr, fieldName)` returns error string or null; `isFutureDate(dateStr)` returns boolean
+- **POS Integrations Module**: Masters tab for managing POS integrations (Petpooja, POSist, UrbanPiper, custom). CRUD for integrations with API key management, webhook URL display, test connection, sync stats. Secrets redacted in audit logs. All endpoints admin-only. Webhook endpoints bypass auth but validate via X-Webhook-Secret header
+- **Unified Sales View**: "All Sales" tab in Sales page merges quick sales + invoices into single sortable table with type badges (Invoice/Quick), filter pills (All/Invoices/Quick), totals row. Backend GET /sales-unified returns combined records with summary stats
+- **Public Webhook Routes**: `/api/webhook/*` paths bypass JWT auth middleware (validated by integration-specific secret instead)

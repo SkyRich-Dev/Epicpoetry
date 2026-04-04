@@ -31,9 +31,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const PUBLIC_PATHS = ["/api/healthz", "/api/auth/login"];
+const PUBLIC_PREFIXES = ["/api/webhook/"];
 app.use("/api", (req: Request, res: Response, next: NextFunction) => {
   const path = req.path.startsWith("/") ? `/api${req.path}` : `/api/${req.path}`;
-  if (PUBLIC_PATHS.some(p => path === p)) {
+  if (PUBLIC_PATHS.some(p => path === p) || PUBLIC_PREFIXES.some(p => path.startsWith(p))) {
     return next();
   }
   const authHeader = req.headers.authorization;

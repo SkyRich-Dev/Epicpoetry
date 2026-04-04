@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useListSales, useCreateSalesEntry, useListMenuItems } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
-import { Plus, Pencil, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, ShoppingBag, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, ShoppingBag, TrendingUp, IndianRupee, ArrowRight, ListChecks } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -27,7 +27,7 @@ export default function Sales() {
   const { toast } = useToast();
   const { data: menuItems } = useListMenuItems({ active: true });
 
-  const [tab, setTab] = useState<'quick' | 'invoices' | 'items' | 'daily' | 'consumption'>('quick');
+  const [tab, setTab] = useState<'unified' | 'quick' | 'invoices' | 'items' | 'daily' | 'consumption'>('unified');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -82,8 +82,23 @@ export default function Sales() {
     try { const data = await apiFetch(`sales-invoices-consumption?${buildParams()}`); setConsumption(data); } catch {}
   }, [fromDate, toDate]);
 
+  const [unified, setUnified] = useState<any[]>([]);
+  const [unifiedSummary, setUnifiedSummary] = useState<any>(null);
+  const [unifiedLoading, setUnifiedLoading] = useState(false);
+  const [unifiedFilter, setUnifiedFilter] = useState<'all' | 'invoice' | 'quick'>('all');
+
+  const loadUnified = useCallback(async () => {
+    setUnifiedLoading(true);
+    try {
+      const data = await apiFetch(`sales-unified?${buildParams()}`);
+      setUnified(data.records || []);
+      setUnifiedSummary(data.summary || null);
+    } catch {} finally { setUnifiedLoading(false); }
+  }, [fromDate, toDate]);
+
   useEffect(() => {
-    if (tab === 'invoices') loadInvoices();
+    if (tab === 'unified') loadUnified();
+    else if (tab === 'invoices') loadInvoices();
     else if (tab === 'items') loadItemSummary();
     else if (tab === 'daily') loadDailySummary();
     else if (tab === 'consumption') loadConsumption();
@@ -197,7 +212,13 @@ export default function Sales() {
     setTab('invoices');
   };
 
+  const filteredUnified = useMemo(() => {
+    if (unifiedFilter === 'all') return unified;
+    return unified.filter(r => r.type === unifiedFilter);
+  }, [unified, unifiedFilter]);
+
   const tabs = [
+    { key: 'unified' as const, label: 'All Sales', icon: ListChecks },
     { key: 'quick' as const, label: 'Quick Sales', icon: ShoppingBag },
     { key: 'invoices' as const, label: 'Invoices', icon: FileText },
     { key: 'items' as const, label: 'Item Summary', icon: Package },
@@ -245,6 +266,82 @@ export default function Sales() {
         </div>
         <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
       </div>
+
+      {tab === 'unified' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Filter:</span>
+            {(['all', 'invoice', 'quick'] as const).map(f => (
+              <button key={f} onClick={() => setUnifiedFilter(f)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${unifiedFilter === f ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
+                {f === 'all' ? `All (${unified.length})` : f === 'invoice' ? `Invoices (${unifiedSummary?.invoiceCount || 0})` : `Quick (${unifiedSummary?.quickCount || 0})`}
+              </button>
+            ))}
+          </div>
+          <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b bg-muted/50">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Source</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Invoice / Items</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Type</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Qty</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Gross</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Disc</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Final</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+              </tr></thead>
+              <tbody>
+                {unifiedLoading ? (
+                  <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
+                ) : filteredUnified.length === 0 ? (
+                  <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">No sales records found</td></tr>
+                ) : filteredUnified.map(r => (
+                  <tr key={r.id} className="border-b hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 text-muted-foreground">{formatDate(r.date)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${r.type === 'invoice' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'}`}>
+                        {r.type === 'invoice' ? <FileText size={10} /> : <ShoppingBag size={10} />}
+                        {r.type === 'invoice' ? 'Invoice' : 'Quick'}
+                      </span>
+                      {r.source !== 'manual' && <div className="text-xs text-muted-foreground capitalize mt-0.5">{r.source}</div>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.invoiceNo && <div className="font-medium text-xs">{r.invoiceNo}</div>}
+                      <div className="text-xs text-muted-foreground truncate max-w-[200px]" title={r.items}>{r.items || '-'}</div>
+                      {r.customerName && <div className="text-xs text-muted-foreground">{r.customerName}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-xs capitalize">{r.orderType}</td>
+                    <td className="px-4 py-3 text-right font-numbers">{r.totalQty}</td>
+                    <td className="px-4 py-3 text-right font-numbers">{formatCurrency(r.grossAmount)}</td>
+                    <td className="px-4 py-3 text-right font-numbers text-orange-600">{r.discount > 0 ? formatCurrency(r.discount) : '-'}</td>
+                    <td className="px-4 py-3 text-right font-numbers text-blue-600">{r.gstAmount > 0 ? formatCurrency(r.gstAmount) : '-'}</td>
+                    <td className="px-4 py-3 text-right font-numbers font-semibold text-emerald-600">{formatCurrency(r.finalAmount)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        {r.verified ? <CheckCircle2 size={14} className="text-emerald-500" /> : <span className="text-xs text-muted-foreground">-</span>}
+                        {r.matchStatus && r.matchStatus !== 'matched' && <span className="text-xs text-red-500">mismatch</span>}
+                        {r.paymentMode && <span className="text-xs text-muted-foreground capitalize">{r.paymentMode}</span>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredUnified.length > 0 && (
+                  <tr className="border-t-2 bg-muted/30 font-semibold">
+                    <td colSpan={5} className="px-4 py-3 text-right">Totals ({filteredUnified.length} records)</td>
+                    <td className="px-4 py-3 text-right font-numbers">{formatCurrency(filteredUnified.reduce((s, r) => s + r.grossAmount, 0))}</td>
+                    <td className="px-4 py-3 text-right font-numbers text-orange-600">{formatCurrency(filteredUnified.reduce((s, r) => s + r.discount, 0))}</td>
+                    <td className="px-4 py-3 text-right font-numbers text-blue-600">{formatCurrency(filteredUnified.reduce((s, r) => s + r.gstAmount, 0))}</td>
+                    <td className="px-4 py-3 text-right font-numbers text-emerald-600">{formatCurrency(filteredUnified.reduce((s, r) => s + r.finalAmount, 0))}</td>
+                    <td></td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {tab === 'quick' && (
         <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">

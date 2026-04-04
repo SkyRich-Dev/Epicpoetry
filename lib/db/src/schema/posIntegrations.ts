@@ -1,0 +1,25 @@
+import { pgTable, text, serial, boolean, integer, timestamp } from "drizzle-orm/pg-core";
+
+export const posIntegrationsTable = pgTable("pos_integrations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  provider: text("provider").notNull().default("petpooja"),
+  apiKey: text("api_key"),
+  apiSecret: text("api_secret"),
+  webhookSecret: text("webhook_secret"),
+  restaurantId: text("restaurant_id"),
+  baseUrl: text("base_url"),
+  accessToken: text("access_token"),
+  autoSync: boolean("auto_sync").notNull().default(false),
+  syncMenuItems: boolean("sync_menu_items").notNull().default(true),
+  syncOrders: boolean("sync_orders").notNull().default(true),
+  defaultGstPercent: integer("default_gst_percent").notNull().default(5),
+  defaultOrderType: text("default_order_type").notNull().default("dine-in"),
+  active: boolean("active").notNull().default(true),
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  lastSyncStatus: text("last_sync_status"),
+  lastSyncMessage: text("last_sync_message"),
+  totalOrdersSynced: integer("total_orders_synced").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});

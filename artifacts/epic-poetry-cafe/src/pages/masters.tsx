@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, Badge } from '../components/ui-extras';
-import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2 } from 'lucide-react';
+import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, formatDate } from '../components/ui-extras';
+import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, ExternalLink, AlertTriangle, CheckCircle2, Link2, Trash } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 const TABS = [
   { id: 'config', label: 'Categories & Config', icon: FolderCog },
   { id: 'users', label: 'User Management', icon: UserCog },
+  { id: 'pos', label: 'POS & Integrations', icon: Plug },
   { id: 'audit', label: 'Audit Logs', icon: ScrollText },
 ] as const;
 
@@ -593,6 +595,365 @@ function AuditLogsTab() {
   );
 }
 
+const BASE = import.meta.env.BASE_URL || '/';
+async function posApiFetch(path: string, opts?: any) {
+  const token = localStorage.getItem('token');
+  const headers: any = { 'Authorization': `Bearer ${token}` };
+  if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
+  if (!res.ok) { const t = await res.text(); throw new Error(t); }
+  return res.json();
+}
+
+const PROVIDERS = [
+  { value: 'petpooja', label: 'Petpooja', description: 'POS system with order sync, item mapping, and Excel/API import' },
+  { value: 'posist', label: 'POSist', description: 'Cloud-based POS with menu sync and order push' },
+  { value: 'urbanpiper', label: 'UrbanPiper', description: 'Aggregator middleware for Swiggy/Zomato/direct orders' },
+  { value: 'custom', label: 'Custom / Generic', description: 'Generic webhook-based integration for any POS system' },
+];
+
+function POSIntegrationsTab() {
+  const { toast } = useToast();
+  const [integrations, setIntegrations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [detailView, setDetailView] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<any>(null);
+
+  const [form, setForm] = useState({
+    name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
+    accessToken: '', autoSync: false, syncMenuItems: true, syncOrders: true,
+    defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true,
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { const data = await posApiFetch('pos-integrations'); setIntegrations(data); } catch {} finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openCreate = () => {
+    setEditId(null);
+    setForm({ name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
+      accessToken: '', autoSync: false, syncMenuItems: true, syncOrders: true,
+      defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true });
+    setShowModal(true);
+  };
+
+  const openEdit = (i: any) => {
+    setEditId(i.id);
+    setForm({
+      name: i.name, provider: i.provider, apiKey: '', apiSecret: '', restaurantId: i.restaurantId || '',
+      baseUrl: i.baseUrl || '', accessToken: '', autoSync: i.autoSync, syncMenuItems: i.syncMenuItems,
+      syncOrders: i.syncOrders, defaultGstPercent: i.defaultGstPercent, defaultOrderType: i.defaultOrderType, active: i.active,
+    });
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      const body: any = { ...form };
+      if (!body.apiKey) delete body.apiKey;
+      if (!body.apiSecret) delete body.apiSecret;
+      if (!body.accessToken) delete body.accessToken;
+      if (!body.baseUrl) delete body.baseUrl;
+      if (editId) {
+        await posApiFetch(`pos-integrations/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
+        toast({ title: 'Integration updated' });
+      } else {
+        await posApiFetch('pos-integrations', { method: 'POST', body: JSON.stringify(body) });
+        toast({ title: 'Integration created' });
+      }
+      setShowModal(false);
+      load();
+    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    try {
+      await posApiFetch(`pos-integrations/${deleteConfirm.id}`, { method: 'DELETE' });
+      toast({ title: 'Deleted' });
+      setDeleteConfirm(null);
+      if (detailView?.id === deleteConfirm.id) setDetailView(null);
+      load();
+    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+  };
+
+  const viewDetail = async (i: any) => {
+    setDetailView(i);
+    setWebhookSecret(null);
+    try { const s = await posApiFetch(`pos-integrations/${i.id}/stats`); setStats(s); } catch { setStats(null); }
+  };
+
+  const showSecret = async (id: number) => {
+    try { const data = await posApiFetch(`pos-integrations/${id}/webhook-secret`); setWebhookSecret(data.webhookSecret); } catch {}
+  };
+
+  const regenerateSecret = async (id: number) => {
+    try {
+      const data = await posApiFetch(`pos-integrations/${id}/regenerate-webhook-secret`, { method: 'POST' });
+      setWebhookSecret(data.webhookSecret);
+      toast({ title: 'Webhook secret regenerated' });
+      load();
+    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+  };
+
+  const testConnection = async (id: number) => {
+    try {
+      const data = await posApiFetch(`pos-integrations/${id}/test-connection`, { method: 'POST' });
+      toast({ title: data.success ? 'Connection OK' : 'Connection Issue', description: data.message, variant: data.success ? 'default' : 'destructive' });
+    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: 'Copied to clipboard' });
+  };
+
+  const webhookUrl = (id: number) => {
+    const base = window.location.origin;
+    return `${base}${BASE}api/webhook/petpooja/${id}`;
+  };
+
+  if (detailView) {
+    const provInfo = PROVIDERS.find(p => p.value === detailView.provider);
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => { setDetailView(null); setStats(null); }} className="text-sm text-primary hover:underline">&larr; Back to Integrations</button>
+          <h3 className="text-lg font-semibold">{detailView.name}</h3>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${detailView.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+            {detailView.active ? <Wifi size={11} /> : <WifiOff size={11} />} {detailView.active ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="bg-card rounded-xl border p-5 space-y-4">
+            <h4 className="font-semibold flex items-center gap-2"><Settings size={16} /> Configuration</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">Provider</span><span className="font-medium capitalize">{provInfo?.label || detailView.provider}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Restaurant ID</span><span className="font-medium">{detailView.restaurantId || '-'}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">API Key</span><span className="font-medium">{detailView.apiKey || '-'}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Auto Sync</span><span className="font-medium">{detailView.autoSync ? 'Yes' : 'No'}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Default GST %</span><span className="font-medium">{detailView.defaultGstPercent}%</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Default Order Type</span><span className="font-medium capitalize">{detailView.defaultOrderType}</span></div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => openEdit(detailView)} className="gap-1"><Pencil size={14} /> Edit</Button>
+              <Button variant="outline" onClick={() => testConnection(detailView.id)} className="gap-1"><RefreshCw size={14} /> Test</Button>
+              <Button variant="danger" onClick={() => setDeleteConfirm(detailView)} className="gap-1"><Trash size={14} /> Delete</Button>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-xl border p-5 space-y-4">
+            <h4 className="font-semibold flex items-center gap-2"><Link2 size={16} /> Webhook Endpoint</h4>
+            <p className="text-xs text-muted-foreground">Use this URL in your POS system to push orders automatically.</p>
+            <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookUrl(detailView.id)}</div>
+            <button onClick={() => copyToClipboard(webhookUrl(detailView.id))} className="text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy URL</button>
+
+            <div className="border-t pt-3">
+              <h5 className="text-sm font-medium mb-2">Webhook Secret</h5>
+              {webhookSecret ? (
+                <div className="space-y-2">
+                  <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookSecret}</div>
+                  <div className="flex gap-2">
+                    <button onClick={() => copyToClipboard(webhookSecret)} className="text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy</button>
+                    <button onClick={() => setWebhookSecret(null)} className="text-xs text-muted-foreground hover:underline">Hide</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => showSecret(detailView.id)} className="text-xs">Show Secret</Button>
+                  <Button variant="outline" onClick={() => regenerateSecret(detailView.id)} className="text-xs gap-1"><RefreshCw size={12} /> Regenerate</Button>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t pt-3 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground mb-1">Request Format:</p>
+              <p>POST with header <code className="bg-muted px-1 rounded">X-Webhook-Secret: &lt;secret&gt;</code></p>
+              <p className="mt-1">Body: <code className="bg-muted px-1 rounded">{'{ "orders": [{ "order_id", "order_date", "items": [...] }] }'}</code></p>
+            </div>
+          </div>
+        </div>
+
+        {stats && detailView.provider === 'petpooja' && (
+          <div className="space-y-4">
+            <h4 className="font-semibold">Sync Statistics</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-card rounded-xl border p-4">
+                <p className="text-xs text-muted-foreground uppercase">Total Orders Synced</p>
+                <p className="text-xl font-bold font-numbers">{stats.totalOrdersSynced}</p>
+              </div>
+              <div className="bg-card rounded-xl border p-4">
+                <p className="text-xs text-muted-foreground uppercase">Invoices Imported</p>
+                <p className="text-xl font-bold font-numbers">{stats.totalInvoicesImported}</p>
+              </div>
+              <div className="bg-card rounded-xl border p-4">
+                <p className="text-xs text-muted-foreground uppercase">Mapped Items</p>
+                <p className="text-xl font-bold font-numbers text-emerald-600">{stats.mappedItems}</p>
+              </div>
+              <div className="bg-card rounded-xl border p-4">
+                <p className="text-xs text-muted-foreground uppercase">Unmapped Items</p>
+                <p className="text-xl font-bold font-numbers text-orange-600">{stats.unmappedItems}</p>
+                {stats.unmappedItems > 0 && <a href="/petpooja-mappings" className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"><ExternalLink size={10} /> Map Items</a>}
+              </div>
+            </div>
+
+            {detailView.lastSyncAt && (
+              <div className="bg-card rounded-xl border p-4 text-sm">
+                <p className="text-muted-foreground">Last Sync: <span className="text-foreground font-medium">{new Date(detailView.lastSyncAt).toLocaleString()}</span></p>
+                <p className="text-muted-foreground">Status: <span className={`font-medium ${detailView.lastSyncStatus === 'success' ? 'text-emerald-600' : 'text-orange-600'}`}>{detailView.lastSyncStatus || 'Never synced'}</span></p>
+                {detailView.lastSyncMessage && <p className="text-muted-foreground">Message: <span className="text-foreground">{detailView.lastSyncMessage}</span></p>}
+              </div>
+            )}
+
+            {stats.recentBatches?.length > 0 && (
+              <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+                <div className="p-4 border-b"><h5 className="font-semibold text-sm">Recent Import Batches</h5></div>
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b bg-muted/50">
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">File</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Invoices</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Success</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Failed</th>
+                  </tr></thead>
+                  <tbody>
+                    {stats.recentBatches.map((b: any) => (
+                      <tr key={b.id} className="border-b">
+                        <td className="px-4 py-2">{new Date(b.createdAt).toLocaleString()}</td>
+                        <td className="px-4 py-2">{b.fileName || '-'}</td>
+                        <td className="px-4 py-2 text-right font-numbers">{b.invoiceCount}</td>
+                        <td className="px-4 py-2 text-right font-numbers text-emerald-600">{b.successCount}</td>
+                        <td className="px-4 py-2 text-right font-numbers text-red-600">{b.failedCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Integration"
+          footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+          <p className="py-2 text-sm text-muted-foreground">Delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This removes the configuration only — imported invoices are preserved.</p>
+        </Modal>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">POS & Third-Party Integrations</h3>
+          <p className="text-sm text-muted-foreground">Connect your POS systems to automatically sync orders, menu items, and sales data.</p>
+        </div>
+        <Button onClick={openCreate} className="gap-1"><Plus size={16} /> Add Integration</Button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8 text-muted-foreground">Loading...</div>
+      ) : integrations.length === 0 ? (
+        <div className="bg-card rounded-xl border p-8 text-center space-y-3">
+          <Plug size={40} className="mx-auto text-muted-foreground" />
+          <h4 className="font-semibold">No Integrations Configured</h4>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">Add a POS integration to start syncing orders automatically. Supported: Petpooja, POSist, UrbanPiper, or any custom POS via webhook.</p>
+          <Button onClick={openCreate} className="gap-1"><Plus size={16} /> Add Your First Integration</Button>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-4">
+          {integrations.map(i => {
+            const provInfo = PROVIDERS.find(p => p.value === i.provider);
+            return (
+              <div key={i.id} className="bg-card rounded-xl border p-5 hover:border-primary/50 transition-colors cursor-pointer" onClick={() => viewDetail(i)}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${i.active ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                    <h4 className="font-semibold">{i.name}</h4>
+                  </div>
+                  <span className="text-xs text-muted-foreground capitalize bg-muted px-2 py-0.5 rounded-full">{provInfo?.label || i.provider}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">{provInfo?.description}</p>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  {i.restaurantId && <span>ID: {i.restaurantId}</span>}
+                  <span>{i.totalOrdersSynced} orders synced</span>
+                  {i.lastSyncAt && <span>Last: {new Date(i.lastSyncAt).toLocaleDateString()}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="bg-muted/50 rounded-xl border p-5 space-y-3">
+        <h4 className="font-semibold text-sm flex items-center gap-2"><AlertTriangle size={14} className="text-orange-500" /> Integration Guide</h4>
+        <div className="grid md:grid-cols-3 gap-4 text-xs text-muted-foreground">
+          <div>
+            <p className="font-medium text-foreground mb-1">1. Add Integration</p>
+            <p>Configure your POS provider, enter API credentials, and set defaults (GST%, order type).</p>
+          </div>
+          <div>
+            <p className="font-medium text-foreground mb-1">2. Set Up Webhook</p>
+            <p>Copy the webhook URL and secret into your POS system settings. Orders push automatically.</p>
+          </div>
+          <div>
+            <p className="font-medium text-foreground mb-1">3. Map Menu Items</p>
+            <p>Go to Petpooja Mapping to link POS items with your cafe menu. Unmapped items are auto-registered.</p>
+          </div>
+        </div>
+      </div>
+
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Edit Integration" : "Add POS Integration"}
+        footer={<><Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update' : 'Create'}</Button></>}>
+        <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-4">
+            <div><Label>Integration Name *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Petpooja Main Branch" /></div>
+            <div><Label>Provider *</Label><Select value={form.provider} onChange={(e: any) => setForm({ ...form, provider: e.target.value })}>
+              {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </Select></div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><Label>Restaurant ID</Label><Input value={form.restaurantId} onChange={e => setForm({ ...form, restaurantId: e.target.value })} placeholder="Your POS restaurant ID" /></div>
+            <div><Label>Base URL</Label><Input value={form.baseUrl} onChange={e => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.petpooja.com" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><Label>API Key</Label><Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} /></div>
+            <div><Label>Access Token</Label><Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div><Label>Default GST %</Label><Input type="number" min="0" max="28" value={form.defaultGstPercent} onChange={e => setForm({ ...form, defaultGstPercent: Number(e.target.value) })} /></div>
+            <div><Label>Default Order Type</Label><Select value={form.defaultOrderType} onChange={(e: any) => setForm({ ...form, defaultOrderType: e.target.value })}>
+              <option value="dine-in">Dine In</option>
+              <option value="takeaway">Takeaway</option>
+              <option value="delivery">Delivery</option>
+              <option value="online">Online</option>
+            </Select></div>
+            <div className="flex flex-col justify-end">
+              <label className="flex items-center gap-2 text-sm cursor-pointer h-10">
+                <input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} className="rounded" />
+                Active
+              </label>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.syncOrders} onChange={e => setForm({ ...form, syncOrders: e.target.checked })} className="rounded" /> Sync Orders</label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.syncMenuItems} onChange={e => setForm({ ...form, syncMenuItems: e.target.checked })} className="rounded" /> Sync Menu Items</label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.autoSync} onChange={e => setForm({ ...form, autoSync: e.target.checked })} className="rounded" /> Auto Sync</label>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 export default function Masters() {
   const [activeTab, setActiveTab] = useState<TabId>('config');
 
@@ -647,6 +1008,7 @@ export default function Masters() {
 
       {activeTab === 'config' && <CategoriesConfigTab />}
       {activeTab === 'users' && <UsersTab />}
+      {activeTab === 'pos' && <POSIntegrationsTab />}
       {activeTab === 'audit' && <AuditLogsTab />}
     </div>
   );

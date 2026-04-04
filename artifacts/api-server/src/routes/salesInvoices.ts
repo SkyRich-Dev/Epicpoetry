@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
+import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
 import {
   db, salesInvoicesTable, salesInvoiceLinesTable, menuItemsTable,
-  salesImportBatchesTable, recipeLinesTable, ingredientsTable
+  salesImportBatchesTable, recipeLinesTable, ingredientsTable, salesEntriesTable
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -396,6 +396,140 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
     totalQty: Math.round(c.totalQty * 1000) / 1000,
     estimatedCost: Math.round(c.totalQty * c.lastPrice * 100) / 100,
   })));
+});
+
+router.get("/sales-unified", authMiddleware, async (req, res): Promise<void> => {
+  const conditions: any[] = [];
+  if (req.query.fromDate) conditions.push(gte(salesInvoicesTable.salesDate, req.query.fromDate as string));
+  if (req.query.toDate) conditions.push(lte(salesInvoicesTable.salesDate, req.query.toDate as string));
+  const invWhere = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const qConditions: any[] = [];
+  if (req.query.fromDate) qConditions.push(gte(salesEntriesTable.salesDate, req.query.fromDate as string));
+  if (req.query.toDate) qConditions.push(lte(salesEntriesTable.salesDate, req.query.toDate as string));
+  const qWhere = qConditions.length > 0 ? and(...qConditions) : undefined;
+
+  const invoices = invWhere
+    ? await db.select().from(salesInvoicesTable).where(invWhere).orderBy(desc(salesInvoicesTable.salesDate))
+    : await db.select().from(salesInvoicesTable).orderBy(desc(salesInvoicesTable.salesDate));
+
+  const invoiceIds = invoices.map(i => i.id);
+  let allLines: any[] = [];
+  if (invoiceIds.length > 0) {
+    allLines = await db.select({
+      invoiceId: salesInvoiceLinesTable.invoiceId,
+      menuItemId: salesInvoiceLinesTable.menuItemId,
+      itemName: salesInvoiceLinesTable.itemNameSnapshot,
+      quantity: salesInvoiceLinesTable.quantity,
+      fixedPrice: salesInvoiceLinesTable.fixedPrice,
+      grossLineAmount: salesInvoiceLinesTable.grossLineAmount,
+      lineDiscountAmount: salesInvoiceLinesTable.lineDiscountAmount,
+      gstPercent: salesInvoiceLinesTable.gstPercent,
+      gstAmount: salesInvoiceLinesTable.gstAmount,
+      finalLineAmount: salesInvoiceLinesTable.finalLineAmount,
+    }).from(salesInvoiceLinesTable)
+      .where(inArray(salesInvoiceLinesTable.invoiceId, invoiceIds));
+  }
+
+  const linesByInvoice = new Map<number, any[]>();
+  for (const line of allLines) {
+    const arr = linesByInvoice.get(line.invoiceId) || [];
+    arr.push(line);
+    linesByInvoice.set(line.invoiceId, arr);
+  }
+
+  const quickSales = qWhere
+    ? await db.select({
+        id: salesEntriesTable.id,
+        salesDate: salesEntriesTable.salesDate,
+        menuItemId: salesEntriesTable.menuItemId,
+        menuItemName: menuItemsTable.name,
+        quantity: salesEntriesTable.quantity,
+        sellingPrice: salesEntriesTable.sellingPrice,
+        totalAmount: salesEntriesTable.totalAmount,
+        discount: salesEntriesTable.discount,
+        channel: salesEntriesTable.channel,
+        verified: salesEntriesTable.verified,
+      }).from(salesEntriesTable)
+        .leftJoin(menuItemsTable, eq(salesEntriesTable.menuItemId, menuItemsTable.id))
+        .where(qWhere).orderBy(desc(salesEntriesTable.salesDate))
+    : await db.select({
+        id: salesEntriesTable.id,
+        salesDate: salesEntriesTable.salesDate,
+        menuItemId: salesEntriesTable.menuItemId,
+        menuItemName: menuItemsTable.name,
+        quantity: salesEntriesTable.quantity,
+        sellingPrice: salesEntriesTable.sellingPrice,
+        totalAmount: salesEntriesTable.totalAmount,
+        discount: salesEntriesTable.discount,
+        channel: salesEntriesTable.channel,
+        verified: salesEntriesTable.verified,
+      }).from(salesEntriesTable)
+        .leftJoin(menuItemsTable, eq(salesEntriesTable.menuItemId, menuItemsTable.id))
+        .orderBy(desc(salesEntriesTable.salesDate));
+
+  const unified: any[] = [];
+
+  for (const inv of invoices) {
+    const lines = linesByInvoice.get(inv.id) || [];
+    unified.push({
+      id: `inv-${inv.id}`,
+      type: "invoice",
+      date: inv.salesDate,
+      invoiceNo: inv.invoiceNo,
+      source: inv.sourceType,
+      orderType: inv.orderType,
+      customerName: inv.customerName,
+      paymentMode: inv.paymentMode,
+      itemCount: lines.length,
+      items: lines.map(l => l.itemName).filter(Boolean).join(", "),
+      totalQty: lines.reduce((s, l) => s + l.quantity, 0),
+      grossAmount: inv.grossAmount,
+      discount: inv.totalDiscount,
+      taxableAmount: inv.taxableAmount,
+      gstAmount: inv.gstAmount,
+      finalAmount: inv.finalAmount,
+      verified: inv.verified,
+      matchStatus: inv.matchStatus,
+    });
+  }
+
+  for (const q of quickSales) {
+    unified.push({
+      id: `qs-${q.id}`,
+      type: "quick",
+      date: q.salesDate,
+      invoiceNo: null,
+      source: "manual",
+      orderType: q.channel?.replace("_", "-").toLowerCase() || "dine-in",
+      customerName: null,
+      paymentMode: null,
+      itemCount: 1,
+      items: q.menuItemName || "",
+      totalQty: q.quantity,
+      grossAmount: Number(q.sellingPrice) * Number(q.quantity),
+      discount: Number(q.discount || 0),
+      taxableAmount: Number(q.totalAmount),
+      gstAmount: 0,
+      finalAmount: Number(q.totalAmount),
+      verified: q.verified,
+      matchStatus: null,
+    });
+  }
+
+  unified.sort((a, b) => b.date.localeCompare(a.date));
+
+  const summary = unified.reduce((acc, r) => ({
+    totalRecords: acc.totalRecords + 1,
+    totalGross: acc.totalGross + r.grossAmount,
+    totalDiscount: acc.totalDiscount + r.discount,
+    totalGst: acc.totalGst + r.gstAmount,
+    totalFinal: acc.totalFinal + r.finalAmount,
+    invoiceCount: acc.invoiceCount + (r.type === "invoice" ? 1 : 0),
+    quickCount: acc.quickCount + (r.type === "quick" ? 1 : 0),
+  }), { totalRecords: 0, totalGross: 0, totalDiscount: 0, totalGst: 0, totalFinal: 0, invoiceCount: 0, quickCount: 0 });
+
+  res.json({ records: unified, summary });
 });
 
 export default router;
