@@ -83,7 +83,7 @@ export default function Inventory() {
               <h4 className="font-semibold text-foreground">Snapshot Date</h4>
               <p className="text-xs text-muted-foreground">Record the actual physical stock to adjust theoretical values.</p>
             </div>
-            <Input type="date" className="w-auto" value={snapshotDate} onChange={(e:any) => setSnapshotDate(e.target.value)} />
+            <Input type="date" max={new Date().toISOString().split('T')[0]} className="w-auto" value={snapshotDate} onChange={(e:any) => setSnapshotDate(e.target.value)} />
           </div>
 
           <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">

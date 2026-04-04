@@ -7,6 +7,7 @@ import {
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { validateNotFutureDate } from "../lib/dateValidation";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -93,6 +94,8 @@ router.post("/vendor-payments", authMiddleware, async (req, res): Promise<void> 
   if (!vendorId || !paymentDate || !paymentMethod || !totalAmount) {
     res.status(400).json({ error: "vendorId, paymentDate, paymentMethod, totalAmount required" }); return;
   }
+  const dateErr = validateNotFutureDate(paymentDate, "Payment date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   if (allocations && Array.isArray(allocations)) {
     let allocTotal = 0;

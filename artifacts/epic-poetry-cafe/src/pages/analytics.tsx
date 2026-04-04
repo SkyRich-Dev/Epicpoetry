@@ -82,17 +82,17 @@ function PeriodSelector({ period, setPeriod, date, setDate, fromDate, setFromDat
         <>
           <div>
             <Label className="text-xs">From</Label>
-            <Input type="date" value={fromDate} onChange={(e: any) => setFromDate(e.target.value)} className="h-9 text-sm w-36" />
+            <Input type="date" max={new Date().toISOString().split('T')[0]} value={fromDate} onChange={(e: any) => setFromDate(e.target.value)} className="h-9 text-sm w-36" />
           </div>
           <div>
             <Label className="text-xs">To</Label>
-            <Input type="date" value={toDate} onChange={(e: any) => setToDate(e.target.value)} className="h-9 text-sm w-36" />
+            <Input type="date" max={new Date().toISOString().split('T')[0]} value={toDate} onChange={(e: any) => setToDate(e.target.value)} className="h-9 text-sm w-36" />
           </div>
         </>
       ) : (
         <div>
           <Label className="text-xs">{period === 'daily' ? 'Date' : period === 'weekly' ? 'Week of' : 'Month'}</Label>
-          <Input type="date" value={date} onChange={(e: any) => setDate(e.target.value)} className="h-9 text-sm w-36" />
+          <Input type="date" max={new Date().toISOString().split('T')[0]} value={date} onChange={(e: any) => setDate(e.target.value)} className="h-9 text-sm w-36" />
         </div>
       )}
     </div>

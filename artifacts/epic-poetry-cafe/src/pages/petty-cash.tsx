@@ -238,7 +238,7 @@ export default function PettyCash() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Date</Label>
-              <Input type="date" value={formData.transactionDate} onChange={(e: any) => setFormData({ ...formData, transactionDate: e.target.value })} />
+              <Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.transactionDate} onChange={(e: any) => setFormData({ ...formData, transactionDate: e.target.value })} />
             </div>
             <div>
               <Label>Type</Label>

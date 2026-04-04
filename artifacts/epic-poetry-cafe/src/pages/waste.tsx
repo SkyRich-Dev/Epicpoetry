@@ -105,7 +105,7 @@ export default function Waste() {
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} variant="danger" disabled={createMut.isPending}>{editId ? 'Update' : 'Confirm Log'}</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Date</Label><Input type="date" value={formData.wasteDate} onChange={(e:any) => setFormData({...formData, wasteDate: e.target.value})} /></div>
+            <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.wasteDate} onChange={(e:any) => setFormData({...formData, wasteDate: e.target.value})} /></div>
             <div><Label>Waste Type</Label><Select value={formData.wasteType} onChange={(e:any) => setFormData({...formData, wasteType: e.target.value})}><option value="INGREDIENT">Raw Ingredient</option><option value="MENU_ITEM">Prepared Menu Item</option></Select></div>
           </div>
           <div><Label>Item</Label><Select value={formData.ingredientId} onChange={(e:any) => setFormData({...formData, ingredientId: Number(e.target.value)})}><option value={0}>Select Item...</option>{ingredients?.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</Select></div>

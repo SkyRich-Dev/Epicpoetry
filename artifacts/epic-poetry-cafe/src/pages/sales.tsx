@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useListSales, useCreateSalesEntry, useListMenuItems } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
-import { Plus, Pencil, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, Receipt, ShoppingBag } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, ShoppingBag, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -172,10 +172,30 @@ export default function Sales() {
     try { await apiFetch(`sales-invoices/${deleteConfirmInv.id}`, { method: 'DELETE' }); toast({ title: 'Deleted' }); setDeleteConfirmInv(null); loadInvoices(); } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
   };
 
-  const invStats = invoices.reduce((acc, inv) => ({
+  const invStats = useMemo(() => invoices.reduce((acc, inv) => ({
     count: acc.count + 1, gross: acc.gross + inv.grossAmount, discount: acc.discount + inv.totalDiscount,
     gst: acc.gst + inv.gstAmount, final: acc.final + inv.finalAmount, mismatched: acc.mismatched + (inv.matchStatus === 'mismatched' ? 1 : 0),
-  }), { count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0 });
+  }), { count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0 }), [invoices]);
+
+  const quickStats = useMemo(() => {
+    if (!sales?.length) return { count: 0, total: 0, discount: 0 };
+    return sales.reduce((acc: any, s: any) => ({
+      count: acc.count + 1, total: acc.total + Number(s.totalAmount), discount: acc.discount + Number(s.discount || 0),
+    }), { count: 0, total: 0, discount: 0 });
+  }, [sales]);
+
+  const combinedTotal = quickStats.total + invStats.final;
+  const combinedCount = quickStats.count + invStats.count;
+
+  useEffect(() => {
+    loadInvoices();
+  }, [fromDate, toDate]);
+
+  const drillToDate = (date: string) => {
+    setFromDate(date);
+    setToDate(date);
+    setTab('invoices');
+  };
 
   const tabs = [
     { key: 'quick' as const, label: 'Quick Sales', icon: ShoppingBag },
@@ -192,15 +212,28 @@ export default function Sales() {
         {!isViewer && tab === 'invoices' && <Button onClick={openInvoiceCreate}><Plus size={18}/> New Invoice</Button>}
       </PageHeader>
 
-      {tab === 'invoices' && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-card rounded-xl border p-4"><p className="text-xs text-muted-foreground uppercase">Invoices</p><p className="text-xl font-bold font-numbers">{invStats.count}</p></div>
-          <div className="bg-card rounded-xl border p-4"><p className="text-xs text-muted-foreground uppercase">Gross</p><p className="text-xl font-bold font-numbers">{formatCurrency(invStats.gross)}</p></div>
-          <div className="bg-card rounded-xl border p-4"><p className="text-xs text-muted-foreground uppercase">Discount</p><p className="text-xl font-bold font-numbers text-orange-600">{formatCurrency(invStats.discount)}</p></div>
-          <div className="bg-card rounded-xl border p-4"><p className="text-xs text-muted-foreground uppercase">GST</p><p className="text-xl font-bold font-numbers text-blue-600">{formatCurrency(invStats.gst)}</p></div>
-          <div className="bg-card rounded-xl border p-4"><p className="text-xs text-muted-foreground uppercase">Net Sales</p><p className="text-xl font-bold font-numbers text-emerald-600">{formatCurrency(invStats.final)}</p></div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-card rounded-xl border p-4">
+          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><TrendingUp size={12} /> Combined Sales</p>
+          <p className="text-2xl font-bold font-numbers text-emerald-600">{formatCurrency(combinedTotal)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{combinedCount} entries total</p>
         </div>
-      )}
+        <div className="bg-card rounded-xl border p-4 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setTab('quick')}>
+          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><ShoppingBag size={12} /> Quick Sales</p>
+          <p className="text-xl font-bold font-numbers">{formatCurrency(quickStats.total)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{quickStats.count} entries{quickStats.discount > 0 ? ` · ${formatCurrency(quickStats.discount)} disc` : ''}</p>
+        </div>
+        <div className="bg-card rounded-xl border p-4 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setTab('invoices')}>
+          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><FileText size={12} /> Invoice Sales</p>
+          <p className="text-xl font-bold font-numbers">{formatCurrency(invStats.final)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{invStats.count} invoices{invStats.mismatched > 0 ? <span className="text-red-500 ml-1">· {invStats.mismatched} mismatched</span> : ''}</p>
+        </div>
+        <div className="bg-card rounded-xl border p-4">
+          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><IndianRupee size={12} /> GST Collected</p>
+          <p className="text-xl font-bold font-numbers text-blue-600">{formatCurrency(invStats.gst)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Discount: {formatCurrency(invStats.discount + quickStats.discount)}</p>
+        </div>
+      </div>
 
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex gap-1 bg-muted rounded-lg p-1 flex-wrap">
@@ -359,8 +392,8 @@ export default function Sales() {
               {dailySummary.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No data</td></tr>
               ) : dailySummary.map((day: any) => (
-                <tr key={day.date} className="border-b hover:bg-muted/30">
-                  <td className="px-4 py-3 font-medium">{formatDate(day.date)}</td>
+                <tr key={day.date} className="border-b hover:bg-muted/30 cursor-pointer group" onClick={() => drillToDate(day.date)} title="Click to view invoices for this date">
+                  <td className="px-4 py-3 font-medium text-primary group-hover:underline flex items-center gap-1">{formatDate(day.date)} <ArrowRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" /></td>
                   <td className="px-4 py-3 text-right font-numbers">{day.totalInvoices}</td>
                   <td className="px-4 py-3 text-right font-numbers">{formatCurrency(day.totalGross)}</td>
                   <td className="px-4 py-3 text-right font-numbers text-orange-600">{day.totalDiscount > 0 ? formatCurrency(day.totalDiscount) : '-'}</td>
@@ -381,17 +414,27 @@ export default function Sales() {
               <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Ingredient</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Required Qty</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">UOM</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Rate (Last)</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Est. Cost</th>
             </tr></thead>
             <tbody>
               {consumption.length === 0 ? (
-                <tr><td colSpan={3} className="px-6 py-8 text-center text-muted-foreground">No consumption data</td></tr>
+                <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No consumption data</td></tr>
               ) : consumption.map((c: any) => (
                 <tr key={c.ingredientId} className="border-b hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium">{c.ingredientName}</td>
                   <td className="px-4 py-3 text-right font-numbers">{c.totalQty}</td>
                   <td className="px-4 py-3 text-muted-foreground">{c.uom}</td>
+                  <td className="px-4 py-3 text-right font-numbers text-muted-foreground">{c.lastPrice > 0 ? formatCurrency(c.lastPrice) : '-'}</td>
+                  <td className="px-4 py-3 text-right font-numbers font-semibold text-orange-600">{c.estimatedCost > 0 ? formatCurrency(c.estimatedCost) : '-'}</td>
                 </tr>
               ))}
+              {consumption.length > 0 && (
+                <tr className="border-t-2 bg-muted/30">
+                  <td colSpan={4} className="px-4 py-3 font-semibold text-right">Total Estimated Material Cost</td>
+                  <td className="px-4 py-3 text-right font-numbers font-bold text-orange-600">{formatCurrency(consumption.reduce((sum: number, c: any) => sum + (c.estimatedCost || 0), 0))}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -401,7 +444,7 @@ export default function Sales() {
         footer={<><Button variant="ghost" onClick={() => setQuickModal(false)}>Cancel</Button><Button onClick={handleQuickSave} disabled={createMut.isPending || !quickForm.menuItemId}>{editId ? 'Update' : 'Save Entry'}</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Date</Label><Input type="date" value={quickForm.salesDate} onChange={(e:any) => setQuickForm({...quickForm, salesDate: e.target.value})} /></div>
+            <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={quickForm.salesDate} onChange={(e:any) => setQuickForm({...quickForm, salesDate: e.target.value})} /></div>
             <div><Label>Sales Channel</Label><Select value={quickForm.channel} onChange={(e:any) => setQuickForm({...quickForm, channel: e.target.value})}><option value="DINE_IN">Dine In</option><option value="TAKEAWAY">Takeaway</option><option value="DELIVERY">Delivery</option></Select></div>
           </div>
           <div><Label>Menu Item</Label><Select value={quickForm.menuItemId} onChange={(e:any) => setQuickForm({...quickForm, menuItemId: Number(e.target.value)})}><option value={0}>Select Item...</option>{menuItems?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></div>
@@ -421,7 +464,7 @@ export default function Sales() {
         footer={<><Button variant="ghost" onClick={() => setInvoiceModal(false)}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
         <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
           <div className="grid grid-cols-3 gap-4">
-            <div><Label>Date</Label><Input type="date" value={invoiceForm.salesDate} onChange={e => setInvoiceForm(f => ({ ...f, salesDate: e.target.value }))} /></div>
+            <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={invoiceForm.salesDate} onChange={e => setInvoiceForm(f => ({ ...f, salesDate: e.target.value }))} /></div>
             <div><Label>Invoice No (optional)</Label><Input value={invoiceForm.invoiceNo} onChange={e => setInvoiceForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Auto-generated" /></div>
             <div><Label>Time</Label><Input type="time" value={invoiceForm.invoiceTime} onChange={e => setInvoiceForm(f => ({ ...f, invoiceTime: e.target.value }))} /></div>
           </div>

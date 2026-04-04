@@ -4,6 +4,7 @@ import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRe
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { generateCode } from "../lib/codeGenerator";
 import { createAuditLog } from "../lib/audit";
+import { validateNotFutureDate } from "../lib/dateValidation";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -142,6 +143,8 @@ router.get("/attendance", authMiddleware, async (req, res): Promise<void> => {
 router.post("/attendance", authMiddleware, async (req, res): Promise<void> => {
   const { employeeId, attendanceDate, shiftId, status } = req.body;
   if (!employeeId || !attendanceDate || !status) { res.status(400).json({ error: "employeeId, attendanceDate, status required" }); return; }
+  const dateErr = validateNotFutureDate(attendanceDate, "Attendance date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
   const existing = await db.select().from(attendanceTable).where(
     and(eq(attendanceTable.employeeId, employeeId), eq(attendanceTable.attendanceDate, attendanceDate))
   );
@@ -161,6 +164,8 @@ router.post("/attendance", authMiddleware, async (req, res): Promise<void> => {
 router.post("/attendance/bulk", authMiddleware, async (req, res): Promise<void> => {
   const { date, entries } = req.body;
   if (!date || !entries || !Array.isArray(entries)) { res.status(400).json({ error: "date and entries array required" }); return; }
+  const bulkDateErr = validateNotFutureDate(date, "Attendance date");
+  if (bulkDateErr) { res.status(400).json({ error: bulkDateErr }); return; }
   const results = [];
   for (const entry of entries) {
     const { employeeId, shiftId, status } = entry;
@@ -209,6 +214,8 @@ router.get("/leaves", authMiddleware, async (req, res): Promise<void> => {
 router.post("/leaves", authMiddleware, async (req, res): Promise<void> => {
   const { employeeId, leaveDate, leaveType, reason } = req.body;
   if (!employeeId || !leaveDate || !leaveType) { res.status(400).json({ error: "employeeId, leaveDate, leaveType required" }); return; }
+  const leaveDateErr = validateNotFutureDate(leaveDate, "Leave date");
+  if (leaveDateErr) { res.status(400).json({ error: leaveDateErr }); return; }
   const existing = await db.select().from(leavesTable).where(
     and(eq(leavesTable.employeeId, employeeId), eq(leavesTable.leaveDate, leaveDate))
   );

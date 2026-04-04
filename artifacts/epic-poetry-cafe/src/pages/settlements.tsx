@@ -191,7 +191,7 @@ export default function Settlements() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Settlement Date</Label>
-              <Input type="date" value={settlementDate} onChange={(e: any) => setSettlementDate(e.target.value)} />
+              <Input type="date" max={new Date().toISOString().split('T')[0]} value={settlementDate} onChange={(e: any) => setSettlementDate(e.target.value)} />
             </div>
             <div>
               <Label>Remarks</Label>

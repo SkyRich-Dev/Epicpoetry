@@ -3,6 +3,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, salesEntriesTable, menuItemsTable } from "@workspace/db";
 import { ListSalesResponse, CreateSalesEntryBody, UpdateSalesEntryParams, UpdateSalesEntryBody, DeleteSalesEntryParams, GetDailySalesSummaryQueryParams } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
+import { validateNotFutureDate } from "../lib/dateValidation";
 import { createAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
@@ -42,6 +43,8 @@ router.get("/sales", async (req, res): Promise<void> => {
 router.post("/sales", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateSalesEntryBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const dateErr = validateNotFutureDate(parsed.data.salesDate, "Sales date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
   const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, parsed.data.menuItemId));
   if (!menuItem) { res.status(400).json({ error: "Invalid menu item" }); return; }
   const sellingPrice = menuItem.sellingPrice;
@@ -67,6 +70,7 @@ router.patch("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateSalesEntryBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (parsed.data.salesDate) { const dateErr = validateNotFutureDate(parsed.data.salesDate, "Sales date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const [existing] = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }

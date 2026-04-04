@@ -141,7 +141,7 @@ export default function AttendancePage() {
           <div className="flex flex-wrap gap-3 items-end mb-4">
             <div>
               <Label>Date</Label>
-              <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" />
+              <Input type="date" max={new Date().toISOString().split('T')[0]} value={date} onChange={e => setDate(e.target.value)} className="w-44" />
             </div>
             {!isViewer && <Button onClick={saveAttendance}><Check size={16} className="mr-2" /> Save Attendance</Button>}
           </div>
@@ -244,7 +244,7 @@ export default function AttendancePage() {
                   {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
               </div>
-              <div><Label>Leave Date *</Label><Input type="date" value={leaveForm.leaveDate} onChange={e => setLeaveForm({ ...leaveForm, leaveDate: e.target.value })} /></div>
+              <div><Label>Leave Date *</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={leaveForm.leaveDate} onChange={e => setLeaveForm({ ...leaveForm, leaveDate: e.target.value })} /></div>
               <div><Label>Leave Type *</Label>
                 <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={leaveForm.leaveType} onChange={e => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}>
                   <option value="paid">Paid Leave</option>

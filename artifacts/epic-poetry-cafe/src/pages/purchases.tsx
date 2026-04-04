@@ -131,7 +131,7 @@ export default function Purchases() {
             </div>
             <div>
               <Label>Purchase Date</Label>
-              <Input type="date" value={formData.purchaseDate} onChange={(e:any) => setFormData({...formData, purchaseDate: e.target.value})} />
+              <Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.purchaseDate} onChange={(e:any) => setFormData({...formData, purchaseDate: e.target.value})} />
             </div>
             <div>
               <Label>Invoice Number (Optional)</Label>

@@ -544,11 +544,11 @@ function AuditLogsTab() {
         </div>
         <div>
           <Label className="text-xs">From</Label>
-          <Input type="date" value={fromDate} onChange={(e: any) => setFromDate(e.target.value)} className="w-40" />
+          <Input type="date" max={new Date().toISOString().split('T')[0]} value={fromDate} onChange={(e: any) => setFromDate(e.target.value)} className="w-40" />
         </div>
         <div>
           <Label className="text-xs">To</Label>
-          <Input type="date" value={toDate} onChange={(e: any) => setToDate(e.target.value)} className="w-40" />
+          <Input type="date" max={new Date().toISOString().split('T')[0]} value={toDate} onChange={(e: any) => setToDate(e.target.value)} className="w-40" />
         </div>
         {(moduleFilter || actionFilter || fromDate || toDate) && (
           <Button variant="ghost" onClick={() => { setModuleFilter(''); setActionFilter(''); setFromDate(''); setToDate(''); }} className="text-xs">Clear Filters</Button>

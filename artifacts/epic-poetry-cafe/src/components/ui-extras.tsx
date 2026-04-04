@@ -138,9 +138,9 @@ export function DateFilter({ fromDate, toDate, onChange }: { fromDate: string; t
   return (
     <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/50 rounded-xl border border-border">
       <CalendarDays size={16} className="text-muted-foreground" />
-      <Input type="date" value={fromDate} onChange={(e: any) => onChange(e.target.value, toDate)} className="w-[150px] h-9 text-sm" />
+      <Input type="date" max={today} value={fromDate} onChange={(e: any) => onChange(e.target.value, toDate)} className="w-[150px] h-9 text-sm" />
       <span className="text-muted-foreground text-sm">to</span>
-      <Input type="date" value={toDate} onChange={(e: any) => onChange(fromDate, e.target.value)} className="w-[150px] h-9 text-sm" />
+      <Input type="date" max={today} value={toDate} onChange={(e: any) => onChange(fromDate, e.target.value)} className="w-[150px] h-9 text-sm" />
       <div className="flex gap-1 ml-2">
         <button onClick={() => onChange(today, today)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-background border border-border hover:bg-accent transition-colors">Today</button>
         <button onClick={() => setPreset(7)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-background border border-border hover:bg-accent transition-colors">7D</button>

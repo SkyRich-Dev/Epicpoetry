@@ -313,7 +313,7 @@ export default function VendorDetailPage() {
         footer={<><Button variant="ghost" onClick={() => setPaymentModal(false)}>Cancel</Button><Button onClick={handlePayment} disabled={paymentForm.totalAmount <= 0}>Save Payment</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Payment Date</Label><Input type="date" value={paymentForm.paymentDate} onChange={e => setPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} /></div>
+            <div><Label>Payment Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={paymentForm.paymentDate} onChange={e => setPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} /></div>
             <div><Label>Payment Method</Label><Select value={paymentForm.paymentMethod} onChange={(e: any) => setPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))}>
               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.replace('_', ' ').toUpperCase()}</option>)}
             </Select></div>

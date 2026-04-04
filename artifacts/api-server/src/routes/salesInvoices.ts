@@ -6,6 +6,7 @@ import {
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,8 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
     salesDate, invoiceNo, invoiceTime, sourceType, orderType, customerName,
     totalDiscount, paymentMode, paymentReference, lines, gstInclusive
   } = req.body;
+  const dateErr = validateNotFutureDate(salesDate, "Invoice date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   if (!salesDate || !lines || !Array.isArray(lines) || lines.length === 0) {
     res.status(400).json({ error: "salesDate and lines required" }); return;
@@ -180,6 +183,7 @@ router.patch("/sales-invoices/:id", authMiddleware, async (req, res): Promise<vo
     res.status(403).json({ error: "Verified. Admin only." }); return;
   }
 
+  if (req.body.salesDate) { const dateErr = validateNotFutureDate(req.body.salesDate, "Invoice date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const updates: any = {};
   const fields = ["salesDate", "invoiceNo", "invoiceTime", "orderType", "customerName", "paymentMode", "paymentReference"];
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
@@ -357,13 +361,14 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
     itemQty.set(l.menuItemId, (itemQty.get(l.menuItemId) || 0) + l.quantity);
   }
 
-  const consumption = new Map<number, { ingredientId: number; ingredientName: string; totalQty: number; uom: string }>();
+  const consumption = new Map<number, { ingredientId: number; ingredientName: string; totalQty: number; uom: string; lastPrice: number }>();
   for (const [menuItemId, soldQty] of itemQty) {
     const recipeLines = await db.select({
       ingredientId: recipeLinesTable.ingredientId,
       ingredientName: ingredientsTable.name,
       quantity: recipeLinesTable.quantity,
       uom: recipeLinesTable.uom,
+      lastPrice: ingredientsTable.latestCost,
     }).from(recipeLinesTable)
       .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
       .where(eq(recipeLinesTable.menuItemId, menuItemId));
@@ -380,6 +385,7 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
           ingredientName: rl.ingredientName || '',
           totalQty: needed,
           uom: rl.uom || '',
+          lastPrice: Number(rl.lastPrice) || 0,
         });
       }
     }
@@ -388,6 +394,7 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
   res.json(Array.from(consumption.values()).map(c => ({
     ...c,
     totalQty: Math.round(c.totalQty * 1000) / 1000,
+    estimatedCost: Math.round(c.totalQty * c.lastPrice * 100) / 100,
   })));
 });
 

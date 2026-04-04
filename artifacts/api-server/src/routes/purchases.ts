@@ -5,6 +5,7 @@ import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurcha
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -51,6 +52,8 @@ router.get("/purchases", async (req, res): Promise<void> => {
 router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreatePurchaseBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   const purchaseNumber = await generateCode("PUR", "purchases");
   let totalAmount = 0;

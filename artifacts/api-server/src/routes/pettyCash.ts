@@ -4,6 +4,7 @@ import { db, pettyCashLedgerTable, expensesTable, systemConfigTable } from "@wor
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -89,6 +90,8 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
     res.status(400).json({ error: "transactionDate, transactionType and amount are required" });
     return;
   }
+  const dateErr = validateNotFutureDate(transactionDate, "Transaction date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   const parsedAmount = Number(amount);
   if (parsedAmount <= 0) { res.status(400).json({ error: "Amount must be positive" }); return; }
@@ -159,6 +162,7 @@ router.patch("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> 
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
   const { transactionDate, amount, method, counterpartyName, category, description } = req.body;
+  if (transactionDate) { const dateErr = validateNotFutureDate(transactionDate, "Transaction date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const updates: any = {};
   if (transactionDate !== undefined) updates.transactionDate = transactionDate;
   if (amount !== undefined) {

@@ -47,11 +47,11 @@ export default function Reports() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>From Date</Label>
-              <Input type="date" value={fromDate} onChange={(e:any) => setFromDate(e.target.value)} />
+              <Input type="date" max={new Date().toISOString().split('T')[0]} value={fromDate} onChange={(e:any) => setFromDate(e.target.value)} />
             </div>
             <div>
               <Label>To Date</Label>
-              <Input type="date" value={toDate} onChange={(e:any) => setToDate(e.target.value)} />
+              <Input type="date" max={new Date().toISOString().split('T')[0]} value={toDate} onChange={(e:any) => setToDate(e.target.value)} />
             </div>
           </div>
           

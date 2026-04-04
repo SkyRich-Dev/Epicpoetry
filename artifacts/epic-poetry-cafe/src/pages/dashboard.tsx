@@ -72,16 +72,16 @@ function DateFilterBar({ fromDate, toDate, mode, onChange }: {
       </div>
 
       {mode === 'date' && (
-        <input type="date" value={fromDate} onChange={e => onChange(e.target.value, e.target.value, 'date')}
+        <input type="date" max={today} value={fromDate} onChange={e => onChange(e.target.value, e.target.value, 'date')}
           className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm" />
       )}
 
       {mode === 'range' && (
         <div className="flex items-center gap-2">
-          <input type="date" value={fromDate} onChange={e => onChange(e.target.value, toDate, 'range')}
+          <input type="date" max={today} value={fromDate} onChange={e => onChange(e.target.value, toDate, 'range')}
             className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm" />
           <span className="text-muted-foreground text-sm">to</span>
-          <input type="date" value={toDate} onChange={e => onChange(fromDate, e.target.value, 'range')}
+          <input type="date" max={today} value={toDate} onChange={e => onChange(fromDate, e.target.value, 'range')}
             className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm" />
         </div>
       )}

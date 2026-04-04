@@ -3,6 +3,7 @@ import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { db, dailySalesSettlementsTable, settlementLinesTable, salesEntriesTable } from "@workspace/db";
 import { authMiddleware } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -48,6 +49,8 @@ router.post("/settlements", authMiddleware, async (req, res): Promise<void> => {
     res.status(400).json({ error: "settlementDate and lines are required" });
     return;
   }
+  const dateErr = validateNotFutureDate(settlementDate, "Settlement date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   const [existing] = await db.select().from(dailySalesSettlementsTable).where(eq(dailySalesSettlementsTable.settlementDate, settlementDate));
   if (existing) { res.status(400).json({ error: "A settlement already exists for this date. Edit the existing one instead." }); return; }
@@ -127,6 +130,7 @@ router.patch("/settlements/:id", authMiddleware, async (req, res): Promise<void>
   if (old.status === "verified") { res.status(400).json({ error: "Cannot edit verified settlement" }); return; }
 
   const { settlementDate, remarks, lines } = req.body;
+  if (settlementDate) { const dateErr = validateNotFutureDate(settlementDate, "Settlement date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const date = settlementDate || old.settlementDate;
 
   const sales = await db.select({

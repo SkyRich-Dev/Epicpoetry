@@ -5,6 +5,7 @@ import { ListWasteEntriesResponse, CreateWasteEntryBody, UpdateWasteEntryParams,
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -55,6 +56,8 @@ router.get("/waste", async (req, res): Promise<void> => {
 router.post("/waste", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateWasteEntryBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const dateErr = validateNotFutureDate(parsed.data.wasteDate, "Waste date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   const wasteNumber = await generateCode("WST", "waste_entries");
   let costValue = 0;
@@ -108,6 +111,7 @@ router.patch("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateWasteEntryBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (parsed.data.wasteDate) { const dateErr = validateNotFutureDate(parsed.data.wasteDate, "Waste date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const [existing] = await db.select().from(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }

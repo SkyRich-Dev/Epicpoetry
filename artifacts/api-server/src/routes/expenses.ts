@@ -5,6 +5,7 @@ import { ListExpensesResponse, CreateExpenseBody, GetExpenseParams, GetExpenseRe
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 async function getPettyCashBalance(): Promise<number> {
   const result = await db.select({
@@ -62,6 +63,8 @@ router.get("/expenses", async (req, res): Promise<void> => {
 router.post("/expenses", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateExpenseBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const dateErr = validateNotFutureDate(parsed.data.expenseDate, "Expense date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
   const expenseNumber = await generateCode("EXP", "expenses");
   const totalAmount = parsed.data.amount + (parsed.data.taxAmount ?? 0);
   const isPettyCash = parsed.data.paymentMode?.toLowerCase() === "petty cash";
@@ -149,6 +152,7 @@ router.patch("/expenses/:id", authMiddleware, async (req, res): Promise<void> =>
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateExpenseBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (parsed.data.expenseDate) { const dateErr = validateNotFutureDate(parsed.data.expenseDate, "Expense date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const [old] = await db.select().from(expensesTable).where(eq(expensesTable.id, params.data.id));
   if (!old) { res.status(404).json({ error: "Not found" }); return; }
   if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
