@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { PageHeader, StatCard, formatCurrency, Badge, cn } from '../components/ui-extras';
-import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Minus, CalendarDays, Calendar } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Minus, CalendarDays, Calendar, FileText, CreditCard, AlertOctagon } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 
@@ -280,6 +280,13 @@ function AdminDashboard({ summary, mode }: { summary: any; mode: FilterMode }) {
         <StatCard title="Settlement Difference" value={formatCurrency(Math.abs(summary.todaySettlementDiff || 0))} icon={Banknote} colorClass={(summary.todaySettlementDiff || 0) === 0 ? "text-emerald-600 bg-emerald-100" : "text-amber-600 bg-amber-100"} />
         <StatCard title="Petty Cash Balance" value={formatCurrency(summary.pettyCashBalance || 0)} icon={Wallet} colorClass="text-violet-600 bg-violet-100" />
         <StatCard title={labels.pcSpent} value={formatCurrency(summary.pettyCashSpentToday || 0)} icon={Wallet} colorClass="text-rose-500 bg-rose-100" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Vendor Payable" value={formatCurrency(summary.vendorPayable || 0)} icon={CreditCard} colorClass="text-orange-600 bg-orange-100" />
+        <StatCard title="Vendor Overdue" value={formatCurrency(summary.vendorOverdue || 0)} icon={AlertOctagon} colorClass={(summary.vendorOverdue || 0) > 0 ? "text-red-600 bg-red-100" : "text-emerald-600 bg-emerald-100"} />
+        <StatCard title="Invoices" value={`${summary.invoiceStats?.count || 0}`} icon={FileText} colorClass="text-indigo-600 bg-indigo-100" />
+        <StatCard title="GST Collected" value={formatCurrency(summary.invoiceStats?.gstCollected || 0)} icon={FileText} colorClass="text-cyan-600 bg-cyan-100" />
       </div>
 
       <TrendCharts />

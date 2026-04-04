@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { PageHeader, Button, formatCurrency } from '../components/ui-extras';
 import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
 
-type UploadType = 'sales' | 'purchases' | 'expenses' | 'menu';
+type UploadType = 'sales' | 'purchases' | 'expenses' | 'menu' | 'sales-invoices' | 'petpooja';
 
 interface UploadResult {
   totalRows: number;
@@ -31,6 +31,16 @@ const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; c
     label: 'Menu & Recipes',
     description: 'Upload menu items with recipe lines. Rows with the same item name are grouped — first row sets item details, all rows add recipe lines.',
     columns: ['Menu_Item', 'Category', 'Description', 'Selling_Price', 'Dine_In_Price', 'Takeaway_Price', 'Delivery_Price', 'Ingredient', 'Quantity', 'UOM', 'Wastage_Percent', 'Stage', 'Notes'],
+  },
+  'sales-invoices': {
+    label: 'Sales Invoices',
+    description: 'Upload invoices with multiple line items and GST. Rows with the same Invoice_No are grouped into one invoice.',
+    columns: ['Date', 'Invoice_No', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode', 'GST_Inclusive'],
+  },
+  petpooja: {
+    label: 'Petpooja Import',
+    description: 'Import Petpooja sales data. Items are matched via the Petpooja Item Mapping table. Unmapped items are auto-registered for mapping.',
+    columns: ['Date', 'Order_ID', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode'],
   },
 };
 
@@ -64,7 +74,8 @@ export default function UploadPage() {
       const baseUrl = import.meta.env.BASE_URL || '/';
       const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
 
-      const resp = await fetch(`${apiBase}/upload/${activeType}`, {
+      const uploadPath = activeType === 'petpooja' ? 'upload/petpooja' : `upload/${activeType}`;
+      const resp = await fetch(`${apiBase}/${uploadPath}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -128,7 +139,7 @@ export default function UploadPage() {
         </Button>
       </PageHeader>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {(Object.entries(UPLOAD_CONFIGS) as [UploadType, typeof config][]).map(([type, cfg]) => (
           <button
             key={type}

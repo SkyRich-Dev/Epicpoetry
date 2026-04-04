@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
   FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
-  Banknote, Wallet, Store, UserCheck, CalendarDays, KeyRound, FileSpreadsheet
+  Banknote, Wallet, Store, UserCheck, CalendarDays, KeyRound, FileSpreadsheet, Link2
 } from 'lucide-react';
 import { cn, Modal, Button, Input, Label } from './ui-extras';
 
@@ -23,7 +23,6 @@ const navGroups: NavGroup[] = [
     title: 'Operations',
     items: [
       { name: 'Sales', path: '/sales', icon: Receipt },
-      { name: 'Sales Invoices', path: '/sales-invoices', icon: FileSpreadsheet },
       { name: 'Settlements', path: '/settlements', icon: Banknote },
       { name: 'Purchases', path: '/purchases', icon: ShoppingCart },
       { name: 'Expenses', path: '/expenses', icon: FileText },
@@ -53,6 +52,7 @@ const navGroups: NavGroup[] = [
     items: [
       { name: 'Analytics', path: '/analytics', icon: BarChart3, adminOnly: true },
       { name: 'Excel Upload', path: '/upload', icon: Upload },
+      { name: 'Petpooja Mapping', path: '/petpooja-mappings', icon: Link2, adminOnly: true },
       { name: 'Reports', path: '/reports', icon: ClipboardList, adminOnly: true },
       { name: 'Masters & Config', path: '/masters', icon: Settings, adminOnly: true },
     ]

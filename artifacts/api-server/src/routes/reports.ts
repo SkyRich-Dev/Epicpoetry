@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { db, purchasesTable, expensesTable, salesEntriesTable, wasteEntriesTable, ingredientsTable, vendorsTable, menuItemsTable, recipeLinesTable } from "@workspace/db";
+import { db, purchasesTable, expensesTable, salesEntriesTable, wasteEntriesTable, ingredientsTable, vendorsTable, menuItemsTable, recipeLinesTable, salesInvoicesTable } from "@workspace/db";
 import { authMiddleware } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -309,6 +309,11 @@ router.get("/reports/export", authMiddleware, async (req, res): Promise<void> =>
     case "ingredients": {
       const data = await db.select().from(ingredientsTable);
       csvContent = "Code,Name,Stock UOM,Current Stock,Cost,Active\n" + data.map(d => `${d.code},${d.name},${d.stockUom},${d.currentStock},${d.weightedAvgCost},${d.active}`).join("\n");
+      break;
+    }
+    case "sales-invoices": {
+      const data = await db.select().from(salesInvoicesTable);
+      csvContent = "Invoice No,Date,Customer,Gross Amount,Discount,GST,Final Amount,Payment Mode,Match Status,Verified\n" + data.map(d => `${d.invoiceNo},${d.salesDate},"${d.customerName || ''}",${d.grossAmount},${d.totalDiscount},${d.gstAmount},${d.finalAmount},${d.paymentMode},${d.matchStatus},${d.verified}`).join("\n");
       break;
     }
     default:

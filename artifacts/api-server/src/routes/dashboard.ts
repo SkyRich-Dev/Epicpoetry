@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { db, salesEntriesTable, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable, dailySalesSettlementsTable, pettyCashLedgerTable } from "@workspace/db";
+import { eq, and, gte, lte, sql, gt } from "drizzle-orm";
+import { db, salesEntriesTable, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable, dailySalesSettlementsTable, pettyCashLedgerTable, purchasesTable, vendorPaymentsTable, salesInvoicesTable } from "@workspace/db";
 import { authMiddleware } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -135,11 +135,48 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     count: sql<number>`COUNT(*)`,
   }).from(dailySalesSettlementsTable).where(sql`${dailySalesSettlementsTable.differenceType} != 'matched' AND ${dailySalesSettlementsTable.status} != 'verified'`);
 
+  const allPurchases = await db.select({
+    totalAmount: purchasesTable.totalAmount,
+    paidAmount: purchasesTable.paidAmount,
+    pendingAmount: purchasesTable.pendingAmount,
+    dueDate: purchasesTable.dueDate,
+  }).from(purchasesTable);
+
+  let vendorTotalPayable = 0;
+  let vendorTotalOverdue = 0;
+  let vendorOverdueBills = 0;
+  const todayStr = getToday();
+  for (const p of allPurchases) {
+    vendorTotalPayable += p.pendingAmount ?? 0;
+    if (p.dueDate && p.dueDate < todayStr && (p.pendingAmount ?? 0) > 0) {
+      vendorTotalOverdue += p.pendingAmount ?? 0;
+      vendorOverdueBills++;
+    }
+  }
+
+  const rangeInvoices = await db.select({
+    count: sql<number>`COUNT(*)`,
+    grossTotal: sql<number>`COALESCE(SUM(gross_amount), 0)`,
+    gstTotal: sql<number>`COALESCE(SUM(gst_amount), 0)`,
+    discountTotal: sql<number>`COALESCE(SUM(total_discount), 0)`,
+    netTotal: sql<number>`COALESCE(SUM(final_amount), 0)`,
+  }).from(salesInvoicesTable).where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
+
+  const invoiceStats = {
+    count: Number(rangeInvoices[0]?.count || 0),
+    grossTotal: Number(rangeInvoices[0]?.grossTotal || 0),
+    gstCollected: Number(rangeInvoices[0]?.gstTotal || 0),
+    discountTotal: Number(rangeInvoices[0]?.discountTotal || 0),
+    netSales: Number(rangeInvoices[0]?.netTotal || 0),
+  };
+
   const insights: string[] = [];
   if (todaySalesTotal > 0) insights.push(`Today's sales: ${todaySalesTotal.toFixed(0)}`);
+  if (invoiceStats.count > 0) insights.push(`${invoiceStats.count} invoices, net ${invoiceStats.netSales.toFixed(0)}`);
   if (todayWasteTotal > 0) insights.push(`Today's waste value: ${todayWasteTotal.toFixed(0)}`);
   if (lowStockCount > 0) insights.push(`${lowStockCount} ingredients are below reorder level`);
   if (Number(unsettledDays[0]?.count || 0) > 0) insights.push(`${unsettledDays[0]?.count} unsettled/mismatched days`);
+  if (vendorTotalOverdue > 0) insights.push(`${vendorOverdueBills} overdue vendor bills (${vendorTotalOverdue.toFixed(0)})`);
 
   res.json({
     fromDate,
@@ -167,6 +204,10 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     unsettledDaysCount: Number(unsettledDays[0]?.count || 0),
     yesterdaySales: yesterdaySalesTotal,
     lastWeekSameDaySales: lastWeekSameDaySalesTotal,
+    vendorPayable: Math.round(vendorTotalPayable * 100) / 100,
+    vendorOverdue: Math.round(vendorTotalOverdue * 100) / 100,
+    vendorOverdueBills: vendorOverdueBills,
+    invoiceStats,
   });
 });
 

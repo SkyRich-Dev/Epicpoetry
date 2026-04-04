@@ -67,7 +67,8 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
 - **Waste**: GET/POST /waste, PATCH/DELETE /waste/:id, GET /waste/summary
 - **Trials**: GET/POST /trials, GET/PATCH/DELETE /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
-- **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses, /upload/menu (multipart file), GET /upload/template/:type (xlsx template download, type=sales|purchases|expenses|menu)
+- **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses, /upload/menu, /upload/sales-invoices, /upload/petpooja (multipart file), GET /upload/template/:type (xlsx template download, type=sales|purchases|expenses|menu|sales-invoices|petpooja)
+- **Petpooja Mappings**: GET /petpooja-mappings, PATCH /petpooja-mappings/:id (admin), DELETE /petpooja-mappings/:id (admin)
 - **Reports (Analytics)**: GET /reports/item-profitability, /reports/item-wastage (params: period=daily|weekly|monthly|custom, fromDate, toDate)
 - **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend, /trend (authenticated)
 - **Reports**: GET /reports/export?reportType=...
@@ -105,10 +106,12 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Expense-Petty Cash Link**: Creating expense with "Petty Cash" payment mode auto-creates petty cash ledger entry; deleting expense auto-removes linked petty cash entry; linked entries cannot be deleted directly from petty cash
 - **Daily P&L**: Real-time profit/loss calculation from sales, material cost, waste, expenses
 - **Consumption Variance**: Compare actual vs theoretical ingredient consumption (converted to stock UOM)
-- **Excel Upload**: Bulk import sales, purchases, expenses from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results
+- **Excel Upload**: Bulk import sales, purchases, expenses, sales-invoices from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results
+- **Petpooja Import**: Import Petpooja POS data with automatic item mapping; unmapped items auto-registered; admin mapping UI at /petpooja-mappings
+- **Import Transactions**: Both sales-invoices and petpooja imports use DB transactions for atomicity
 - **Auth Token**: Frontend uses setAuthTokenGetter from custom-fetch for global API auth header injection
 - **PATCH operations**: All update schemas use .partial() for optional field updates
-- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, insights, top items, and recharts-powered trend charts (Sales vs Expenses bar chart + Profit Trend line chart with 7D/14D/30D period selector). Manager/viewer sees "Operations Dashboard" with only: sales (with comparison badges), expenses, waste, petty cash balance, petty cash spent
+- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, vendor payable/overdue, invoice stats (count, GST collected), insights, top items, and recharts-powered trend charts (Sales vs Expenses bar chart + Profit Trend line chart with 7D/14D/30D period selector). Manager/viewer sees "Operations Dashboard" with only: sales (with comparison badges), expenses, waste, petty cash balance, petty cash spent
 - **Password Change**: All users can change password from sidebar (key icon). Modal validates current password, min 6 chars, confirmation match
 - **Attendance Monthly Summary**: Monthly summary tab showing per-employee present/half-day/absent/week-off counts and attendance percentage
 - **Dashboard Date Filters**: Filter bar with Today/Date/Date Range/This Week/This Month modes. Week and month modes have prev/next navigation arrows. Labels dynamically adjust (e.g., "Today's Sales" → "Weekly Sales" → "Monthly Sales"). Backend accepts fromDate/toDate query params, falling back to single date for backward compat. Range mode compares vs previous equivalent period

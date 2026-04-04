@@ -27,7 +27,7 @@ import PettyCash from "./pages/petty-cash";
 import EmployeesPage from "./pages/employees";
 import AttendancePage from "./pages/attendance";
 import VendorDetailPage from "./pages/vendor-detail";
-import SalesInvoicesPage from "./pages/sales-invoices";
+import PetpoojaMappingsPage from "./pages/petpooja-mappings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -90,7 +90,7 @@ function Router() {
       <Route path="/employees" component={() => <ProtectedRoute component={EmployeesPage} />} />
       <Route path="/attendance" component={() => <ProtectedRoute component={AttendancePage} />} />
       <Route path="/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
-      <Route path="/sales-invoices" component={() => <ProtectedRoute component={SalesInvoicesPage} />} />
+      <Route path="/petpooja-mappings" component={() => <ProtectedRoute component={PetpoojaMappingsPage} adminOnly />} />
       <Route component={NotFound} />
     </Switch>
   );
