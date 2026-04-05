@@ -116,90 +116,6 @@ function safeParseFile(buffer: Buffer): { rows: Record<string, any>[]; error?: s
   }
 }
 
-router.post("/upload/sales", authMiddleware, handleUpload, async (req, res): Promise<void> => {
-  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
-
-  const { rows, error } = safeParseFile(req.file.buffer);
-  if (error) { res.status(400).json({ error }); return; }
-  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
-
-  const menuItems = await db.select().from(menuItemsTable);
-  const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
-  const menuById = new Map(menuItems.map(m => [m.id, m]));
-
-  const results: { row: number; status: string; error?: string; data?: any }[] = [];
-  let successCount = 0;
-
-  for (let i = 0; i < rows.length; i++) {
-    const raw = normalizeRow(rows[i]);
-    try {
-      const salesDate = toDateStr(raw.date || raw.sales_date);
-      if (isFutureDate(salesDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${salesDate}). Today is ${getTodayISO()}.` }); continue; }
-      const itemName = String(raw.item || raw.menu_item || raw.item_name || raw.menu_item_name || "").trim();
-      const itemId = toNum(raw.item_id || raw.menu_item_id);
-      const quantity = toNum(raw.quantity || raw.qty);
-      const sellingPrice = toNum(raw.price || raw.selling_price || raw.unit_price || raw.rate);
-      const discount = toNum(raw.discount || 0);
-      const orderType = String(raw.order_type || raw.channel || "dine-in").toLowerCase().replace(/_/g, "-");
-      const paymentMode = String(raw.payment_mode || raw.payment || "cash").toLowerCase();
-      const gstPercent = toNum(raw.gst_percent || raw.gst || 5);
-
-      let menuItem = itemId ? menuById.get(itemId) : undefined;
-      if (!menuItem && itemName) {
-        menuItem = menuByName.get(itemName.toLowerCase());
-      }
-      if (!menuItem) { results.push({ row: i + 2, status: "error", error: `Menu item not found: "${itemName || itemId}"` }); continue; }
-      if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
-
-      const price = sellingPrice > 0 ? sellingPrice : menuItem.sellingPrice;
-      const grossAmount = quantity * price;
-      const taxableAmount = grossAmount - discount;
-      const gstAmount = Math.round(taxableAmount * gstPercent / 100 * 100) / 100;
-      const finalAmount = taxableAmount + gstAmount;
-
-      const invoiceNo = `XL-${Date.now().toString(36).toUpperCase()}-${i}`;
-
-      const [invoice] = await db.insert(salesInvoicesTable).values({
-        invoiceNo,
-        salesDate,
-        orderType,
-        customerName: "",
-        grossAmount,
-        totalDiscount: discount,
-        taxableAmount,
-        gstAmount,
-        finalAmount,
-        paymentMode,
-        sourceType: "excel",
-        matchStatus: "matched",
-        matchDifference: 0,
-      }).returning();
-
-      await db.insert(salesInvoiceLinesTable).values({
-        invoiceId: invoice.id,
-        menuItemId: menuItem.id,
-        itemNameSnapshot: menuItem.name,
-        quantity,
-        fixedPrice: price,
-        grossLineAmount: grossAmount,
-        lineDiscountAmount: discount,
-        gstPercent,
-        gstAmount,
-        finalLineAmount: finalAmount,
-      });
-
-      await createAuditLog("sales_invoice", invoice.id, "create", null, invoice);
-      successCount++;
-      results.push({ row: i + 2, status: "success", data: { id: invoice.id, invoiceNo, item: menuItem.name, quantity, total: finalAmount } });
-    } catch (e: any) {
-      logger.error({ err: e, row: i + 2 }, "Sales upload row error");
-      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
-    }
-  }
-
-  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
-});
-
 router.post("/upload/purchases", authMiddleware, handleUpload, async (req, res): Promise<void> => {
   if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
 
@@ -859,11 +775,6 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
   let sheetName: string;
 
   switch (type) {
-    case "sales":
-      sheetName = "Sales";
-      headers = ["Date", "Item", "Quantity", "Price", "Discount", "Channel", "Notes"];
-      sampleRow = ["2026-03-30", "Cappuccino", 10, 180, 0, "DINE_IN", "Morning batch"];
-      break;
     case "purchases":
       sheetName = "Purchases";
       headers = ["Date", "Vendor", "Ingredient", "Quantity", "UOM", "Rate", "Tax_Percent", "Invoice", "Payment_Mode"];
@@ -896,11 +807,11 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
       break;
     case "petpooja":
       sheetName = "Petpooja_Sales";
-      headers = ["Date", "Order_ID", "Time", "Order_Type", "Customer", "Item", "Quantity", "GST_Percent", "Discount", "Payment_Mode"];
-      sampleRow = ["2026-03-30", "PP-1234", "10:30", "dine-in", "Walk-in", "Cappuccino", 2, 5, 0, "cash"];
+      headers = ["Date", "Order_ID", "Time", "Order_Type", "Customer", "Item", "Category", "Price", "Quantity", "GST_Percent", "Discount", "Payment_Mode"];
+      sampleRow = ["2026-03-30", "PP-1234", "10:30", "dine-in", "Walk-in", "Cappuccino", "Beverages", 180, 2, 5, 0, "cash"];
       break;
     default:
-      res.status(400).json({ error: "Invalid template type. Use: sales, purchases, expenses, menu, sales-invoices, or petpooja" });
+      res.status(400).json({ error: "Invalid template type. Use: purchases, expenses, menu, sales-invoices, or petpooja" });
       return;
   }
 

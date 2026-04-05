@@ -2,20 +2,21 @@ import React, { useState, useRef } from 'react';
 import { PageHeader, Button, formatCurrency } from '../components/ui-extras';
 import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
 
-type UploadType = 'sales' | 'purchases' | 'expenses' | 'menu' | 'sales-invoices' | 'petpooja';
+type UploadType = 'sales-invoices' | 'purchases' | 'expenses' | 'menu' | 'petpooja';
 
 interface UploadResult {
   totalRows: number;
   successCount: number;
   errorCount: number;
   results: { row: number; status: string; error?: string; data?: any }[];
+  autoCreated?: string[];
 }
 
 const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; columns: string[] }> = {
-  sales: {
-    label: 'Daily Sales',
-    description: 'Upload sales entries with menu item, quantity, and price',
-    columns: ['Date', 'Item (name)', 'Quantity', 'Price', 'Discount', 'Channel', 'Notes'],
+  'sales-invoices': {
+    label: 'Sales Invoices',
+    description: 'Upload invoices with multiple line items and GST. Rows with the same Invoice_No are grouped into one invoice.',
+    columns: ['Date', 'Invoice_No', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode', 'GST_Inclusive'],
   },
   purchases: {
     label: 'Purchases',
@@ -32,20 +33,15 @@ const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; c
     description: 'Upload menu items with recipe lines. Rows with the same item name are grouped — first row sets item details, all rows add recipe lines.',
     columns: ['Menu_Item', 'Category', 'Description', 'Selling_Price', 'Dine_In_Price', 'Takeaway_Price', 'Delivery_Price', 'Ingredient', 'Quantity', 'UOM', 'Wastage_Percent', 'Stage', 'Notes'],
   },
-  'sales-invoices': {
-    label: 'Sales Invoices',
-    description: 'Upload invoices with multiple line items and GST. Rows with the same Invoice_No are grouped into one invoice.',
-    columns: ['Date', 'Invoice_No', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode', 'GST_Inclusive'],
-  },
   petpooja: {
     label: 'Petpooja Import',
-    description: 'Import Petpooja sales data. Items are matched by name to existing menu items. New items and categories are auto-created if they don\'t exist.',
-    columns: ['Date', 'Order_ID', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode'],
+    description: 'Import Petpooja sales data. Items are matched by name — new items and categories are auto-created with price if they don\'t exist.',
+    columns: ['Date', 'Order_ID', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Category', 'Price', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode'],
   },
 };
 
 export default function UploadPage() {
-  const [activeType, setActiveType] = useState<UploadType>('sales');
+  const [activeType, setActiveType] = useState<UploadType>('sales-invoices');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
@@ -74,7 +70,7 @@ export default function UploadPage() {
       const baseUrl = import.meta.env.BASE_URL || '/';
       const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
 
-      const uploadPath = activeType === 'petpooja' ? 'upload/petpooja' : `upload/${activeType}`;
+      const uploadPath = `upload/${activeType}`;
       const resp = await fetch(`${apiBase}/${uploadPath}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -133,7 +129,7 @@ export default function UploadPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Excel Upload" description="Import daily sales, purchases, or expenses from Excel files">
+      <PageHeader title="Excel Upload" description="Import invoices, purchases, expenses, or menu items from Excel files">
         <Button onClick={handleDownloadTemplate} className="bg-secondary text-secondary-foreground hover:bg-secondary/80">
           <Download size={18} /> Download Template
         </Button>
@@ -218,6 +214,19 @@ export default function UploadPage() {
               </div>
             </div>
           </div>
+
+          {result.autoCreated && result.autoCreated.length > 0 && (
+            <div className="px-6 py-4 border-b border-border/50 bg-blue-50/50 dark:bg-blue-950/10">
+              <h4 className="text-sm font-medium text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-1.5">
+                <AlertCircle size={14} /> Auto-Created Items
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {result.autoCreated.map((item, idx) => (
+                  <span key={idx} className="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-xs text-blue-700 dark:text-blue-300">{item}</span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {result.results.length > 0 && (
             <div className="max-h-80 overflow-y-auto">
