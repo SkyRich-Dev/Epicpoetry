@@ -309,7 +309,7 @@ export default function VendorDetailPage() {
         </div>
       )}
 
-      <Modal isOpen={paymentModal} onClose={() => setPaymentModal(false)} title="Record Vendor Payment"
+      <Modal isOpen={paymentModal} onClose={() => setPaymentModal(false)} title="Record Vendor Payment" maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setPaymentModal(false)}>Cancel</Button><Button onClick={handlePayment} disabled={paymentForm.totalAmount <= 0}>Save Payment</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">

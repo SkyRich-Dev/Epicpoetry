@@ -129,7 +129,7 @@ export default function MenuItems() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Menu Item" : "Add Menu Item"}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Menu Item" : "Add Menu Item"} maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={createMut.isPending || updateMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-4 py-2">
           <div>

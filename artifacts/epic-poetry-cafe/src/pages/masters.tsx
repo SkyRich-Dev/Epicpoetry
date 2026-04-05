@@ -411,7 +411,7 @@ function UsersTab() {
         </table>
       </div>
 
-      <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Add New User"
+      <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Add New User" maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button onClick={handleCreate} disabled={createMut.isPending || !createForm.username || !createForm.password || !createForm.fullName}>Create User</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
@@ -451,7 +451,7 @@ function UsersTab() {
         </div>
       </Modal>
 
-      <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title={`Edit User — ${editUser?.username}`}
+      <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title={`Edit User — ${editUser?.username}`} maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setEditUser(null)}>Cancel</Button><Button onClick={handleUpdate} disabled={updateMut.isPending}>Save Changes</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
@@ -906,7 +906,7 @@ function POSIntegrationsTab() {
         </div>
       </div>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Edit Integration" : "Add POS Integration"}
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Edit Integration" : "Add POS Integration"} maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update' : 'Create'}</Button></>}>
         <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-4">

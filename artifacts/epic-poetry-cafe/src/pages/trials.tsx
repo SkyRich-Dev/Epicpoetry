@@ -59,7 +59,7 @@ export default function Trials() {
         ))}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Initiate Trial"
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Initiate Trial" maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>Create Trial</Button></>}>
         <div className="space-y-4 py-2">
           <div><Label>Proposed Item Name</Label><Input value={formData.proposedItemName} onChange={(e:any) => setFormData({...formData, proposedItemName: e.target.value})} /></div>

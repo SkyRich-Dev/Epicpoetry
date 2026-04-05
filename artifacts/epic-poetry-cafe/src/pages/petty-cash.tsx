@@ -227,7 +227,7 @@ export default function PettyCash() {
         </div>
       </Modal>
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }} title={editingId ? "Edit Petty Cash Entry" : "New Petty Cash Entry"}
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }} title={editingId ? "Edit Petty Cash Entry" : "New Petty Cash Entry"} maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editingId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-4 py-2">
           {summary && (

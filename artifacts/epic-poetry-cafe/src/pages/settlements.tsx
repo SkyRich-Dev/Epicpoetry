@@ -187,7 +187,7 @@ export default function Settlements() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); }} title={editingId ? "Edit Settlement" : "New Daily Settlement"}
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); }} title={editingId ? "Edit Settlement" : "New Daily Settlement"} maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); }}>Cancel</Button><Button onClick={handleSave} disabled={(createMut.isPending || updateMut.isPending) || difference > 0.01}>{editingId ? 'Update' : 'Save'} Settlement</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
@@ -254,7 +254,7 @@ export default function Settlements() {
         </div>
       </Modal>
 
-      <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title="Settlement Details">
+      <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title="Settlement Details" maxWidth="max-w-2xl">
         {detail && (
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4 bg-muted/50 rounded-xl p-4">

@@ -340,7 +340,7 @@ export default function Sales() {
         </div>
       )}
 
-      <Modal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} title="New Sales Invoice"
+      <Modal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} title="New Sales Invoice" maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => setInvoiceModal(false)}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
         <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
           <div className="grid grid-cols-3 gap-4">
@@ -405,7 +405,7 @@ export default function Sales() {
       </Modal>
 
       {detailModal && (
-        <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title={`Invoice ${detailModal.invoiceNo}`}>
+        <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title={`Invoice ${detailModal.invoiceNo}`} maxWidth="max-w-2xl">
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div><span className="text-muted-foreground">Date:</span> {formatDate(detailModal.salesDate)}</div>
