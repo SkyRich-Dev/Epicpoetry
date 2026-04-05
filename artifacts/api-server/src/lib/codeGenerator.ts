@@ -9,7 +9,7 @@ const CODE_COLUMN: Record<string, string> = {
   vendors: "code",
   ingredients: "code",
   petty_cash: "reference_number",
-  vendor_payments: "code",
+  vendor_payments: "payment_no",
   employees: "code",
   waste_entries: "waste_number",
 };
