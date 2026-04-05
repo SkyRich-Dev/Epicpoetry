@@ -186,6 +186,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
+          <footer className="text-center text-xs text-muted-foreground py-4 mt-8 border-t">
+            Powered by SkyRich
+          </footer>
         </div>
       </main>
 
