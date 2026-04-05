@@ -104,10 +104,21 @@ export function Button({ children, variant = 'primary', className, ...props }: a
   );
 }
 
-export function Input({ className, ...props }: any) {
+export function Input({ className, onInput, ...props }: any) {
+  const handleInput = (e: any) => {
+    if (props.type === "number" && e.target.value) {
+      const raw = e.target.value;
+      const cleaned = raw.replace(/^0+(?=\d)/, '');
+      if (raw !== cleaned) {
+        e.target.value = cleaned;
+      }
+    }
+    onInput?.(e);
+  };
   return (
     <input 
       className={cn("flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50", className)} 
+      onInput={handleInput}
       {...props} 
     />
   );
