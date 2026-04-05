@@ -125,12 +125,12 @@ export default function AttendancePage() {
 
   return (
     <div>
-      <PageHeader title="Attendance & Leave" subtitle="Mark daily attendance and manage employee leaves" />
+      <PageHeader title="Attendance & Leave" description="Mark daily attendance and manage employee leaves" />
 
-      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-muted/60 rounded-xl p-1 w-fit">
         {[{ key: 'attendance' as const, label: 'Attendance', icon: UserCheck }, { key: 'leaves' as const, label: 'Leave Management', icon: CalendarDays }, { key: 'monthly' as const, label: 'Monthly Summary', icon: CalendarDays }].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${tab === t.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <t.icon size={16} /> {t.label}
           </button>
         ))}
@@ -154,12 +154,12 @@ export default function AttendancePage() {
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-3 text-center"><div className="text-2xl font-bold text-blue-700 font-numbers">{weekOffCount}</div><div className="text-xs text-blue-600">Week Off</div></div>
           </div>
 
-          <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b bg-muted/50">
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Employee</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Shift</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Status</th>
+              <thead><tr className="border-b bg-transparent">
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Employee</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Shift</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
               </tr></thead>
               <tbody>
                 {loading ? (
@@ -169,13 +169,13 @@ export default function AttendancePage() {
                 ) : employees.map(emp => {
                   const entry = entries[emp.id] || { status: '', shiftId: null };
                   return (
-                    <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
+                    <tr key={emp.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
                       <td className="px-6 py-3">
                         <div className="font-medium">{emp.name}</div>
                         <div className="text-xs text-muted-foreground">{emp.position}</div>
                       </td>
                       <td className="px-6 py-3">
-                        <select className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm" value={entry.shiftId || ''} onChange={e => updateEntry(emp.id, 'shiftId', e.target.value ? Number(e.target.value) : null)}>
+                        <select className="rounded-xl border border-input bg-background px-3 py-1.5 text-sm" value={entry.shiftId || ''} onChange={e => updateEntry(emp.id, 'shiftId', e.target.value ? Number(e.target.value) : null)}>
                           <option value="">No Shift</option>
                           {shifts.map(s => <option key={s.id} value={s.id}>{s.name} ({s.startTime}-{s.endTime})</option>)}
                         </select>
@@ -205,24 +205,24 @@ export default function AttendancePage() {
             {!isViewer && <Button onClick={() => setLeaveModal(true)}><Plus size={16} className="mr-2" /> Record Leave</Button>}
           </div>
 
-          <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b bg-muted/50">
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Employee</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Type</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Reason</th>
-                <th className="px-6 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase">Actions</th>
+              <thead><tr className="border-b bg-transparent">
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Employee</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Type</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Reason</th>
+                <th className="px-6 py-3.5 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>
               </tr></thead>
               <tbody>
                 {leaves.length === 0 ? (
                   <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No leave records</td></tr>
                 ) : leaves.map(l => (
-                  <tr key={l.id} className="border-b hover:bg-muted/30 transition-colors">
+                  <tr key={l.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
                     <td className="px-6 py-4"><div className="font-medium">{l.employeeName}</div></td>
                     <td className="px-6 py-4">{l.leaveDate}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${l.leaveType === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${l.leaveType === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                         {l.leaveType === 'paid' ? 'Paid Leave' : 'Unpaid Leave'}
                       </span>
                     </td>
@@ -239,14 +239,14 @@ export default function AttendancePage() {
           <Modal isOpen={leaveModal} onClose={() => setLeaveModal(false)} title="Record Leave" footer={<><Button variant="ghost" onClick={() => setLeaveModal(false)}>Cancel</Button><Button onClick={saveLeave}>Save Leave</Button></>}>
             <div className="space-y-4">
               <div><Label>Employee *</Label>
-                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={leaveForm.employeeId} onChange={e => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}>
+                <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={leaveForm.employeeId} onChange={e => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}>
                   <option value="">Select Employee</option>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
               </div>
               <div><Label>Leave Date *</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={leaveForm.leaveDate} onChange={e => setLeaveForm({ ...leaveForm, leaveDate: e.target.value })} /></div>
               <div><Label>Leave Type *</Label>
-                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={leaveForm.leaveType} onChange={e => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}>
+                <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={leaveForm.leaveType} onChange={e => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}>
                   <option value="paid">Paid Leave</option>
                   <option value="unpaid">Unpaid Leave</option>
                 </select>
@@ -334,15 +334,15 @@ function MonthlySummaryTab({ employees }: { employees: Employee[] }) {
         <button onClick={nextMonth} className="px-3 py-1.5 rounded-lg border text-sm hover:bg-muted">&rarr;</button>
       </div>
 
-      <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
         <table className="w-full">
-          <thead><tr className="border-b bg-muted/50">
-            <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Employee</th>
+          <thead><tr className="border-b bg-transparent">
+            <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Employee</th>
             <th className="px-4 py-3.5 text-center text-xs font-semibold text-emerald-600 uppercase">Present</th>
             <th className="px-4 py-3.5 text-center text-xs font-semibold text-amber-600 uppercase">Half Day</th>
             <th className="px-4 py-3.5 text-center text-xs font-semibold text-red-600 uppercase">Absent</th>
             <th className="px-4 py-3.5 text-center text-xs font-semibold text-blue-600 uppercase">Week Off</th>
-            <th className="px-4 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase">Attendance %</th>
+            <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Attendance %</th>
           </tr></thead>
           <tbody>
             {loading ? (
@@ -353,7 +353,7 @@ function MonthlySummaryTab({ employees }: { employees: Employee[] }) {
               const workDays = emp.total - emp.weekOff;
               const pct = workDays > 0 ? ((emp.present + emp.halfDay * 0.5) / workDays * 100) : 0;
               return (
-                <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
+                <tr key={emp.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
                   <td className="px-6 py-3">
                     <div className="font-medium">{emp.name}</div>
                     <div className="text-xs text-muted-foreground">{emp.position}</div>
@@ -363,7 +363,7 @@ function MonthlySummaryTab({ employees }: { employees: Employee[] }) {
                   <td className="px-4 py-3 text-center font-bold text-red-700">{emp.absent}</td>
                   <td className="px-4 py-3 text-center font-bold text-blue-700">{emp.weekOff}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${pct >= 90 ? 'bg-emerald-100 text-emerald-700' : pct >= 75 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${pct >= 90 ? 'bg-emerald-100 text-emerald-700' : pct >= 75 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
                       {pct.toFixed(0)}%
                     </span>
                   </td>

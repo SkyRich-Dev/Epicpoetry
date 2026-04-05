@@ -105,17 +105,17 @@ export default function Vendors() {
         ))}
       </div>
 
-      <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="border-b bg-muted/50">
-            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Vendor</th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Contact</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Total Purchase</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Paid</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Pending</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Overdue</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Actions</th>
+          <thead><tr className="border-b bg-transparent">
+            <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Vendor</th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Contact</th>
+            <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Total Purchase</th>
+            <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Paid</th>
+            <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Pending</th>
+            <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Overdue</th>
+            <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
+            <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>
           </tr></thead>
           <tbody>
             {isLoading ? (
@@ -123,7 +123,7 @@ export default function Vendors() {
             ) : filteredVendors?.map(v => {
               const s = vendorSummaries.get(v.id);
               return (
-                <tr key={v.id} className="border-b hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setLocation(`/vendors/${v.id}`)}>
+                <tr key={v.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150 cursor-pointer" onClick={() => setLocation(`/vendors/${v.id}`)}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-foreground">{v.name}</div>
                     <div className="text-xs text-muted-foreground">{v.code}</div>

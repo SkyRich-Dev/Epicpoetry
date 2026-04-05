@@ -247,7 +247,7 @@ function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: (
 
             <div className="space-y-2">
               {lines.map((line, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 bg-muted/30 border border-border/50 rounded-xl group transition-colors hover:border-border">
+                <div key={idx} className="flex items-center gap-3 p-3 bg-transparent border border-border/50 rounded-xl group transition-colors hover:border-border">
                   <div className="flex-1">
                     <Select value={line.ingredientId} onChange={(e:any) => updateLine(idx, 'ingredientId', Number(e.target.value))} disabled={isViewer}>
                       <option value={0}>Select Ingredient...</option>

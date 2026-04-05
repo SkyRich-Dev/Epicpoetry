@@ -138,7 +138,7 @@ export default function VendorDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit">
+      <div className="flex gap-1 bg-muted/60 rounded-xl p-1 w-fit">
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.key ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
             <t.icon size={16} /> {t.label}
@@ -181,16 +181,16 @@ export default function VendorDetailPage() {
       )}
 
       {tab === 'bills' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">PO / Invoice</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Due Date</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Amount</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Paid</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Pending</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+            <thead><tr className="border-b bg-transparent">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">PO / Invoice</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Due Date</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Amount</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Paid</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Pending</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
             </tr></thead>
             <tbody>{recentBills.map((b: any) => {
               const today = new Date().toISOString().split('T')[0];
@@ -222,15 +222,15 @@ export default function VendorDetailPage() {
       )}
 
       {tab === 'payments' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Payment No</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Method</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Amount</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Reference</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Proof</th>
+            <thead><tr className="border-b bg-transparent">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Payment No</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Method</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Amount</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Reference</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Proof</th>
             </tr></thead>
             <tbody>{recentPayments.length === 0 ? (
               <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No payments recorded yet</td></tr>
@@ -249,15 +249,15 @@ export default function VendorDetailPage() {
       )}
 
       {tab === 'ledger' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Type</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Description</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Debit</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Credit</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Balance</th>
+            <thead><tr className="border-b bg-transparent">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Type</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Description</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Debit</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Credit</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Balance</th>
             </tr></thead>
             <tbody>{ledger.length === 0 ? (
               <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No ledger entries</td></tr>

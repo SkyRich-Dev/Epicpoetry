@@ -9,11 +9,11 @@ import { useToast } from '@/hooks/use-toast';
 const PAYMENT_MODES = ['Cash', 'Card', 'QR', 'UPI', 'Bank Transfer', 'Swiggy', 'Zomato', 'Other'];
 
 function StatusBadge({ type, status }: { type: string; status: string }) {
-  if (status === 'verified') return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Verified</span>;
-  if (type === 'matched') return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Matched</span>;
-  if (type === 'short') return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Short</span>;
-  if (type === 'excess') return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Excess</span>;
-  return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{status}</span>;
+  if (status === 'verified') return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700">Verified</span>;
+  if (type === 'matched') return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700">Matched</span>;
+  if (type === 'short') return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700">Short</span>;
+  if (type === 'excess') return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">Excess</span>;
+  return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700">{status}</span>;
 }
 
 export default function Settlements() {

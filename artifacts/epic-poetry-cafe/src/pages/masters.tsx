@@ -32,9 +32,9 @@ const ROLES = [
 ];
 
 function RoleBadge({ role }: { role: string }) {
-  if (role === 'admin') return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700"><ShieldCheck size={12} /> Admin</span>;
-  if (role === 'manager') return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><Shield size={12} /> Manager</span>;
-  return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"><Eye size={12} /> Viewer</span>;
+  if (role === 'admin') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700"><ShieldCheck size={12} /> Admin</span>;
+  if (role === 'manager') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700"><Shield size={12} /> Manager</span>;
+  return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700"><Eye size={12} /> Viewer</span>;
 }
 
 function CategoriesConfigTab() {
@@ -809,15 +809,15 @@ function POSIntegrationsTab() {
             )}
 
             {stats.recentBatches?.length > 0 && (
-              <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+              <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
                 <div className="p-4 border-b"><h5 className="font-semibold text-sm">Recent Import Batches</h5></div>
                 <table className="w-full text-sm">
-                  <thead><tr className="border-b bg-muted/50">
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">File</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Invoices</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Success</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Failed</th>
+                  <thead><tr className="border-b bg-transparent">
+                    <th className="px-4 py-2 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+                    <th className="px-4 py-2 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">File</th>
+                    <th className="px-4 py-2 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Invoices</th>
+                    <th className="px-4 py-2 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Success</th>
+                    <th className="px-4 py-2 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Failed</th>
                   </tr></thead>
                   <tbody>
                     {stats.recentBatches.map((b: any) => (

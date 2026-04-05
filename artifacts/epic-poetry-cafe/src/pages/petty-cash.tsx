@@ -10,9 +10,9 @@ const METHODS = ['Cash', 'Bank Withdrawal', 'UPI', 'Card Withdrawal', 'Owner Con
 const CATEGORIES = ['Local Purchase', 'Cleaning Materials', 'Delivery Charges', 'Petty Maintenance', 'Staff Emergency', 'Small Repairs', 'Local Transport', 'Market Purchase', 'Tea/Snacks', 'Other'];
 
 function TypeBadge({ type }: { type: string }) {
-  if (type === 'receipt') return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1"><ArrowDownCircle size={12} /> Receipt</span>;
-  if (type === 'expense') return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1"><ArrowUpCircle size={12} /> Expense</span>;
-  return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 flex items-center gap-1"><RefreshCw size={12} /> Adjustment</span>;
+  if (type === 'receipt') return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1"><ArrowDownCircle size={12} /> Receipt</span>;
+  if (type === 'expense') return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1"><ArrowUpCircle size={12} /> Expense</span>;
+  return <span className="px-2.5 py-0.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 flex items-center gap-1"><RefreshCw size={12} /> Adjustment</span>;
 }
 
 export default function PettyCash() {

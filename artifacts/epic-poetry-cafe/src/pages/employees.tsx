@@ -202,12 +202,12 @@ export default function EmployeesPage() {
 
   return (
     <div>
-      <PageHeader title="Employee Management" subtitle="Manage employees, shifts, and compensation" />
+      <PageHeader title="Employee Management" description="Manage employees, shifts, and compensation" />
 
-      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-muted/60 rounded-xl p-1 w-fit">
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${tab === t.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <t.icon size={16} /> {t.label}
           </button>
         ))}
@@ -222,17 +222,17 @@ export default function EmployeesPage() {
               </Button>
             </div>
           )}
-          <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b bg-muted/50">
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Code</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Name</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Position</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Type</th>
-                {isAdmin && <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Contact</th>}
-                {isAdmin && <th className="px-6 py-3.5 text-right text-xs font-semibold text-muted-foreground uppercase">Salary</th>}
-                <th className="px-6 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-                {isAdmin && <th className="px-6 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase">Actions</th>}
+              <thead><tr className="border-b bg-transparent">
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Code</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Name</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Position</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Type</th>
+                {isAdmin && <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Contact</th>}
+                {isAdmin && <th className="px-6 py-3.5 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Salary</th>}
+                <th className="px-6 py-3.5 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
+                {isAdmin && <th className="px-6 py-3.5 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>}
               </tr></thead>
               <tbody>
                 {loading ? (
@@ -240,19 +240,19 @@ export default function EmployeesPage() {
                 ) : employees.length === 0 ? (
                   <tr><td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">No employees yet</td></tr>
                 ) : employees.map(emp => (
-                  <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
-                    <td className="px-6 py-4 font-mono text-sm">{emp.code}</td>
+                  <tr key={emp.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
+                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{emp.code}</td>
                     <td className="px-6 py-4 font-medium">{emp.name}</td>
                     <td className="px-6 py-4">{emp.position}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${emp.employmentType === 'full-time' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${emp.employmentType === 'full-time' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
                         {emp.employmentType === 'full-time' ? 'Full Time' : 'Part Time'}
                       </span>
                     </td>
                     {isAdmin && <td className="px-6 py-4">{emp.contactNumber || '-'}</td>}
                     {isAdmin && <td className="px-6 py-4 text-right font-numbers">{formatCurrency(emp.salary)}</td>}
                     <td className="px-6 py-4 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${emp.active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${emp.active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                         {emp.active !== false ? 'Active' : 'Inactive'}
                       </span>
                     </td>
@@ -275,20 +275,20 @@ export default function EmployeesPage() {
               <div><Label>Name *</Label><Input value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} placeholder="Employee name" /></div>
               <div><Label>Contact Number</Label><Input value={empForm.contactNumber} onChange={e => setEmpForm({ ...empForm, contactNumber: e.target.value })} placeholder="Phone number" /></div>
               <div><Label>Position *</Label>
-                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={empForm.position} onChange={e => setEmpForm({ ...empForm, position: e.target.value })}>
+                <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={empForm.position} onChange={e => setEmpForm({ ...empForm, position: e.target.value })}>
                   {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div><Label>Monthly Salary</Label><Input type="number" value={empForm.salary} onChange={e => setEmpForm({ ...empForm, salary: e.target.value })} placeholder="0" /></div>
               <div><Label>Employment Type</Label>
-                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={empForm.employmentType} onChange={e => setEmpForm({ ...empForm, employmentType: e.target.value })}>
+                <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={empForm.employmentType} onChange={e => setEmpForm({ ...empForm, employmentType: e.target.value })}>
                   <option value="full-time">Full Time</option>
                   <option value="part-time">Part Time</option>
                 </select>
               </div>
               {editingEmp && (
                 <div><Label>Status</Label>
-                  <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={editingEmp.active !== false ? 'active' : 'inactive'} onChange={e => setEditingEmp({ ...editingEmp, active: e.target.value === 'active' })}>
+                  <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={editingEmp.active !== false ? 'active' : 'inactive'} onChange={e => setEditingEmp({ ...editingEmp, active: e.target.value === 'active' })}>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                   </select>
@@ -312,25 +312,25 @@ export default function EmployeesPage() {
               </Button>
             </div>
           )}
-          <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b bg-muted/50">
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Shift Name</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Start Time</th>
-                <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">End Time</th>
-                <th className="px-6 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-                {isAdmin && <th className="px-6 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase">Actions</th>}
+              <thead><tr className="border-b bg-transparent">
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Shift Name</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Start Time</th>
+                <th className="px-6 py-3.5 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">End Time</th>
+                <th className="px-6 py-3.5 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
+                {isAdmin && <th className="px-6 py-3.5 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>}
               </tr></thead>
               <tbody>
                 {shifts.length === 0 ? (
                   <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No shifts configured</td></tr>
                 ) : shifts.map(s => (
-                  <tr key={s.id} className="border-b hover:bg-muted/30 transition-colors">
+                  <tr key={s.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
                     <td className="px-6 py-4 font-medium">{s.name}</td>
                     <td className="px-6 py-4">{s.startTime}</td>
                     <td className="px-6 py-4">{s.endTime}</td>
                     <td className="px-6 py-4 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${s.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${s.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                         {s.active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
@@ -383,7 +383,7 @@ export default function EmployeesPage() {
           <div className="flex flex-wrap gap-3 items-end mb-4">
             <div>
               <Label>Month</Label>
-              <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={salaryMonth} onChange={e => setSalaryMonth(Number(e.target.value))}>
+              <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={salaryMonth} onChange={e => setSalaryMonth(Number(e.target.value))}>
                 {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
               </select>
             </div>
@@ -395,29 +395,29 @@ export default function EmployeesPage() {
             <Button variant="outline" onClick={() => setSalarySettingsModal(true)}><Settings2 size={16} className="mr-2" /> Salary Settings</Button>
           </div>
 
-          <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Employee</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Base Salary</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Days</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Present</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Half Days</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Paid Leave</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Unpaid</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Week Off</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Absent</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Deductions</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Net Salary</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Proof</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Actions</th>
+              <thead><tr className="border-b bg-transparent">
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Employee</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Base Salary</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Days</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Present</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Half Days</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Paid Leave</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Unpaid</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Week Off</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Absent</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Deductions</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Net Salary</th>
+                <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
+                <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Proof</th>
+                <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>
               </tr></thead>
               <tbody>
                 {filteredSalary.length === 0 ? (
                   <tr><td colSpan={14} className="px-6 py-12 text-center text-muted-foreground">No salary records for {MONTHS[salaryMonth - 1]} {salaryYear}. Click "Generate Salary" to compute.</td></tr>
                 ) : filteredSalary.map(s => (
-                  <tr key={s.id} className="border-b hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setDetailRecord(s)}>
+                  <tr key={s.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150 cursor-pointer" onClick={() => setDetailRecord(s)}>
                     <td className="px-4 py-3"><div className="font-medium">{s.employeeName}</div><div className="text-xs text-muted-foreground">{s.employeeCode}</div></td>
                     <td className="px-4 py-3 text-right font-numbers">{formatCurrency(s.baseSalary)}</td>
                     <td className="px-4 py-3 text-right">{s.totalDaysInMonth}</td>

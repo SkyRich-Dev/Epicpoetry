@@ -61,11 +61,11 @@ function DateFilterBar({ fromDate, toDate, mode, onChange }: {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="flex gap-1 bg-muted rounded-lg p-1">
+      <div className="flex gap-1 bg-muted/60 rounded-xl p-1">
         {modes.map(m => (
           <button key={m.key} onClick={() => setMode(m.key)}
-            className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-              mode === m.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+            className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+              mode === m.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
             {m.label}
           </button>
         ))}
@@ -73,16 +73,16 @@ function DateFilterBar({ fromDate, toDate, mode, onChange }: {
 
       {mode === 'date' && (
         <input type="date" max={today} value={fromDate} onChange={e => onChange(e.target.value, e.target.value, 'date')}
-          className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm" />
+          className="rounded-xl border border-input bg-background px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-ring/30 focus:border-ring" />
       )}
 
       {mode === 'range' && (
         <div className="flex items-center gap-2">
           <input type="date" max={today} value={fromDate} onChange={e => onChange(e.target.value, toDate, 'range')}
-            className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm" />
+            className="rounded-xl border border-input bg-background px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-ring/30 focus:border-ring" />
           <span className="text-muted-foreground text-sm">to</span>
           <input type="date" max={today} value={toDate} onChange={e => onChange(fromDate, e.target.value, 'range')}
-            className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm" />
+            className="rounded-xl border border-input bg-background px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-ring/30 focus:border-ring" />
         </div>
       )}
 
@@ -91,12 +91,12 @@ function DateFilterBar({ fromDate, toDate, mode, onChange }: {
           <button onClick={() => {
             const d = new Date(fromDate); d.setDate(d.getDate() - 7);
             onChange(d.toISOString().split('T')[0], new Date(new Date(d).setDate(d.getDate() + 6)).toISOString().split('T')[0], 'week');
-          }} className="px-2 py-1 rounded border text-sm hover:bg-muted">&larr;</button>
+          }} className="px-2 py-1 rounded-lg border text-sm hover:bg-muted transition-colors">&larr;</button>
           <span className="text-sm font-medium">{formatDateLabel(fromDate, toDate, mode)}</span>
           <button onClick={() => {
             const d = new Date(fromDate); d.setDate(d.getDate() + 7);
             onChange(d.toISOString().split('T')[0], new Date(new Date(d).setDate(d.getDate() + 6)).toISOString().split('T')[0], 'week');
-          }} className="px-2 py-1 rounded border text-sm hover:bg-muted">&rarr;</button>
+          }} className="px-2 py-1 rounded-lg border text-sm hover:bg-muted transition-colors">&rarr;</button>
         </div>
       )}
 
@@ -107,14 +107,14 @@ function DateFilterBar({ fromDate, toDate, mode, onChange }: {
             const ms = d.toISOString().split('T')[0].substring(0, 7) + '-01';
             const me = getMonthEnd(ms);
             onChange(ms, me, 'month');
-          }} className="px-2 py-1 rounded border text-sm hover:bg-muted">&larr;</button>
+          }} className="px-2 py-1 rounded-lg border text-sm hover:bg-muted transition-colors">&larr;</button>
           <span className="text-sm font-medium">{new Date(fromDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
           <button onClick={() => {
             const d = new Date(fromDate); d.setMonth(d.getMonth() + 1);
             const ms = d.toISOString().split('T')[0].substring(0, 7) + '-01';
             const me = getMonthEnd(ms);
             onChange(ms, me, 'month');
-          }} className="px-2 py-1 rounded border text-sm hover:bg-muted">&rarr;</button>
+          }} className="px-2 py-1 rounded-lg border text-sm hover:bg-muted transition-colors">&rarr;</button>
         </div>
       )}
     </div>
@@ -210,11 +210,11 @@ function TrendCharts() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-display font-semibold text-foreground">Revenue & Expense Trend</h3>
-        <div className="flex gap-1 bg-muted rounded-lg p-1">
+        <div className="flex gap-1 bg-muted/60 rounded-xl p-1">
           {[{ val: 7, label: '7D' }, { val: 14, label: '14D' }, { val: 30, label: '30D' }].map(opt => (
             <button key={opt.val} onClick={() => setDays(opt.val)}
-              className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
-                days === opt.val ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              className={cn("px-3 py-1 rounded-lg text-xs font-medium transition-all",
+                days === opt.val ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
               {opt.label}
             </button>
           ))}

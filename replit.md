@@ -17,7 +17,7 @@ The system is built as a monorepo utilizing `pnpm workspaces` for managing vario
 - Provides a comprehensive UI with pages for login, dashboard, various operational modules, reports, and administrative masters.
 - Implements an `AuthContext` for JWT token management in `localStorage`.
 - Features a role-based dashboard: "Owner's Dashboard" for admins with full P&L, settlements, vendor payables, and detailed trend charts (recharts); "Operations Dashboard" for managers/viewers focusing on daily operational metrics.
-- UI/UX includes a sidebar and topbar layout.
+- UI/UX uses a modern Material-You-inspired design with Inter font family, cool-navy sidebar palette, 260px slim sidebar, rounded-2xl containers, pill-style tab selectors (`bg-muted/60 rounded-xl`), softer focus rings, and consistent `hover:bg-muted/30` table row hover effects. Login page features a split layout with cafe image and clean form.
 - Access control is implemented at the route level, displaying "Access Restricted" for non-authorized users.
 - Date input fields enforce `max={today}` to prevent future date entries.
 

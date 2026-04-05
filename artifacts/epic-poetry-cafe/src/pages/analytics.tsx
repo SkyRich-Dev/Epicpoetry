@@ -308,7 +308,7 @@ export default function AnalyticsPage() {
 
           {wasteData.ingredientWaste.length > 0 && (
             <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
-              <div className="px-5 py-3 border-b border-border/50 bg-muted/30">
+              <div className="px-5 py-3 border-b border-border/50 bg-transparent">
                 <h3 className="font-semibold text-sm">Ingredient Wastage</h3>
               </div>
               <div className="overflow-x-auto">
@@ -346,7 +346,7 @@ export default function AnalyticsPage() {
 
           {wasteData.menuItemWaste.length > 0 && (
             <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
-              <div className="px-5 py-3 border-b border-border/50 bg-muted/30">
+              <div className="px-5 py-3 border-b border-border/50 bg-transparent">
                 <h3 className="font-semibold text-sm">Menu Item Wastage</h3>
               </div>
               <div className="overflow-x-auto">

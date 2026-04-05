@@ -81,7 +81,7 @@ export default function Inventory() {
       <Modal isOpen={isSnapshotOpen} onClose={() => setIsSnapshotOpen(false)} title="End of Day Physical Count" maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => setIsSnapshotOpen(false)}>Cancel</Button><Button onClick={handleSaveSnapshot} disabled={saveMut.isPending}><Save size={16}/> Save Count</Button></>}>
         <div className="space-y-6 py-2">
-          <div className="bg-muted/30 p-4 rounded-xl border border-border flex items-center justify-between">
+          <div className="bg-transparent p-4 rounded-xl border border-border flex items-center justify-between">
             <div>
               <h4 className="font-semibold text-foreground">Snapshot Date</h4>
               <p className="text-xs text-muted-foreground">Record the actual physical stock to adjust theoretical values.</p>

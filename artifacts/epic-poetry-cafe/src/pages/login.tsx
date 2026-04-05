@@ -26,35 +26,34 @@ export default function Login() {
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
       {/* Left side - Image */}
       <div className="md:w-1/2 lg:w-3/5 hidden md:block relative">
-        <div className="absolute inset-0 bg-black/20 mix-blend-multiply z-10" />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent to-background/90 z-10" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-background z-10" />
         <img 
           src={`${import.meta.env.BASE_URL}images/login-bg.png`} 
           alt="Epic Poetry Cafe" 
           className="w-full h-full object-cover"
         />
-        <div className="absolute bottom-12 left-12 z-20 text-white max-w-md">
-          <h2 className="text-4xl font-display font-bold mb-4 drop-shadow-lg">Where Love Meets Flavor & Vibe.</h2>
-          <p className="text-white/90 text-lg drop-shadow-md">Operational intelligence for the modern cafe.</p>
+        <div className="absolute bottom-16 left-16 z-20 text-white max-w-lg">
+          <h2 className="text-4xl font-display font-bold mb-3 drop-shadow-lg leading-tight">Where Love Meets Flavor & Vibe.</h2>
+          <p className="text-white/80 text-lg drop-shadow-md">Operational intelligence for the modern cafe.</p>
         </div>
       </div>
 
       {/* Right side - Form */}
-      <div className="flex-1 flex items-center justify-center p-8 lg:p-16 relative">
-        <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-16 relative">
+        <div className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
           
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-white shadow-xl mb-6 border border-border/50">
-              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Logo" className="w-20 h-20 object-contain" />
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-lg mb-6 border border-border/50">
+              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Logo" className="w-16 h-16 object-contain" />
             </div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Welcome Back</h1>
-            <p className="text-muted-foreground mt-2">Sign in to manage Epic Poetry Cafe</p>
+            <h1 className="text-2xl font-display font-bold text-foreground">Welcome Back</h1>
+            <p className="text-muted-foreground mt-1.5 text-sm">Sign in to manage Epic Poetry Cafe</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5 bg-card p-8 rounded-3xl shadow-xl shadow-black/5 border border-border/50">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="p-4 bg-destructive/10 text-destructive rounded-xl text-sm font-medium border border-destructive/20 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-destructive" />
+              <div className="p-3.5 bg-destructive/8 text-destructive rounded-xl text-sm font-medium border border-destructive/15 flex items-center gap-2.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
                 {error}
               </div>
             )}
@@ -62,7 +61,7 @@ export default function Login() {
             <div className="space-y-1.5">
               <Label htmlFor="username">Username</Label>
               <div className="relative">
-                <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" size={17} />
                 <Input 
                   id="username" 
                   className="pl-10"
@@ -77,7 +76,7 @@ export default function Login() {
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" size={17} />
                 <Input 
                   id="password" 
                   type="password"
@@ -90,17 +89,17 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="pt-4">
-              <Button type="submit" className="w-full h-12 text-base font-semibold rounded-xl" disabled={isPending}>
+            <div className="pt-3">
+              <Button type="submit" className="w-full h-11 text-sm font-semibold rounded-xl" disabled={isPending}>
                 {isPending ? 'Authenticating...' : 'Sign In'}
               </Button>
             </div>
           </form>
 
-          <p className="text-center text-sm text-muted-foreground mt-8">
+          <p className="text-center text-xs text-muted-foreground/60 mt-8">
             Secure access restricted to authorized personnel only.
           </p>
-          <p className="text-center text-xs text-muted-foreground mt-4">
+          <p className="text-center text-[11px] text-muted-foreground/40 mt-3">
             Powered by SkyRich
           </p>
         </div>
