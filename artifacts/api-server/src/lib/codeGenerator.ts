@@ -9,6 +9,9 @@ const CODE_COLUMN: Record<string, string> = {
   vendors: "code",
   ingredients: "code",
   petty_cash: "reference_number",
+  vendor_payments: "code",
+  employees: "code",
+  waste_entries: "waste_number",
 };
 
 export async function generateCode(prefix: string, table: string): Promise<string> {
