@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useGetMe, User } from '@workspace/api-client-react';
-import { setAuthTokenGetter } from '@workspace/api-client-react/custom-fetch';
+import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react/custom-fetch';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface AuthContextType {
@@ -18,6 +18,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || null);
     setAuthTokenGetter(() => localStorage.getItem('token'));
   }, []);
 

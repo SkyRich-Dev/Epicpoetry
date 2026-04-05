@@ -1,12 +1,12 @@
-import app from "./app";
-import { logger } from "./lib/logger";
-import { seed } from "./seed";
+import path from "path";
 
-const rawPort = process.env["PORT"];
+process.loadEnvFile(path.resolve(import.meta.dirname, "../../../.env"));
+
+const rawPort = process.env["API_PORT"] ?? process.env["PORT"];
 
 if (!rawPort) {
   throw new Error(
-    "PORT environment variable is required but was not provided.",
+    "API_PORT or PORT environment variable is required but was not provided.",
   );
 }
 
@@ -15,6 +15,12 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+const [{ default: app }, { logger }, { seed }] = await Promise.all([
+  import("./app"),
+  import("./lib/logger"),
+  import("./seed"),
+]);
 
 seed().then(() => {
   app.listen(port, (err) => {
