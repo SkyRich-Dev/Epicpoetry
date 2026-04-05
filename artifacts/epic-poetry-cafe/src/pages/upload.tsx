@@ -199,7 +199,7 @@ export default function UploadPage() {
         <div className="bg-card rounded-2xl border border-border/50 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="p-6 border-b border-border/50">
             <h3 className="font-semibold mb-4">Import Results</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5">
               <div className="bg-muted/50 rounded-xl p-4 text-center">
                 <p className="text-2xl font-bold">{result.totalRows}</p>
                 <p className="text-xs text-muted-foreground mt-1">Total Rows</p>

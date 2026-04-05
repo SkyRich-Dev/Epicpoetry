@@ -346,7 +346,7 @@ function AdminDashboard({ summary, mode }: { summary: any; mode: FilterMode }) {
             <h3 className="text-lg font-display font-semibold text-rose-950 dark:text-rose-400">Action Required</h3>
           </div>
           
-          <div className="space-y-4">
+          <div className="space-y-5">
             {summary.lowStockCount > 0 && (
               <div className="bg-white dark:bg-card p-4 rounded-xl border border-rose-100 dark:border-border shadow-sm">
                 <h4 className="font-semibold text-sm text-rose-700 dark:text-rose-400 mb-1">Low Stock Alert</h4>

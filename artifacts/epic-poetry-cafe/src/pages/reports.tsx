@@ -44,7 +44,7 @@ export default function Reports() {
             </Select>
           </div>
           
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>From Date</Label>
               <Input type="date" max={new Date().toISOString().split('T')[0]} value={fromDate} onChange={(e:any) => setFromDate(e.target.value)} />

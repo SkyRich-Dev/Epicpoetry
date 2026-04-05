@@ -342,18 +342,18 @@ export default function Sales() {
 
       <Modal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} title="New Sales Invoice" maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => setInvoiceModal(false)}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
-        <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
-          <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={invoiceForm.salesDate} onChange={e => setInvoiceForm(f => ({ ...f, salesDate: e.target.value }))} /></div>
             <div><Label>Invoice No (optional)</Label><Input value={invoiceForm.invoiceNo} onChange={e => setInvoiceForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Auto-generated" /></div>
             <div><Label>Time</Label><Input type="time" value={invoiceForm.invoiceTime} onChange={e => setInvoiceForm(f => ({ ...f, invoiceTime: e.target.value }))} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Order Type</Label><Select value={invoiceForm.orderType} onChange={(e: any) => setInvoiceForm(f => ({ ...f, orderType: e.target.value }))}>{ORDER_TYPES.map(t => <option key={t} value={t}>{t.replace('-', ' ').toUpperCase()}</option>)}</Select></div>
             <div><Label>Payment Mode</Label><Select value={invoiceForm.paymentMode} onChange={(e: any) => setInvoiceForm(f => ({ ...f, paymentMode: e.target.value }))}>{PAYMENT_MODES.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select></div>
             <div><Label>Customer Name</Label><Input value={invoiceForm.customerName} onChange={e => setInvoiceForm(f => ({ ...f, customerName: e.target.value }))} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Total Discount</Label><Input type="number" step="0.01" min="0" value={invoiceForm.totalDiscount} onChange={e => setInvoiceForm(f => ({ ...f, totalDiscount: Number(e.target.value) }))} /></div>
             <div className="flex items-end gap-2">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -406,8 +406,8 @@ export default function Sales() {
 
       {detailModal && (
         <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title={`Invoice ${detailModal.invoiceNo}`} maxWidth="max-w-2xl">
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="space-y-5 py-2">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5 text-sm">
               <div><span className="text-muted-foreground">Date:</span> {formatDate(detailModal.salesDate)}</div>
               <div><span className="text-muted-foreground">Type:</span> <span className="capitalize">{detailModal.orderType}</span></div>
               <div><span className="text-muted-foreground">Payment:</span> <span className="capitalize">{detailModal.paymentMode}</span></div>

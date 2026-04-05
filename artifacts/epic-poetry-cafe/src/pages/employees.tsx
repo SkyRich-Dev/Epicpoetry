@@ -271,7 +271,7 @@ export default function EmployeesPage() {
           </div>
 
           <Modal isOpen={empModal} onClose={() => setEmpModal(false)} title={editingEmp ? 'Edit Employee' : 'Add Employee'}>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div><Label>Name *</Label><Input value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} placeholder="Employee name" /></div>
               <div><Label>Contact Number</Label><Input value={empForm.contactNumber} onChange={e => setEmpForm({ ...empForm, contactNumber: e.target.value })} placeholder="Phone number" /></div>
               <div><Label>Position *</Label>
@@ -349,7 +349,7 @@ export default function EmployeesPage() {
           </div>
 
           <Modal isOpen={shiftModal} onClose={() => setShiftModal(false)} title={editingShift ? 'Edit Shift' : 'Add Shift'}>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div><Label>Shift Name *</Label><Input value={shiftForm.name} onChange={e => setShiftForm({ ...shiftForm, name: e.target.value })} placeholder="e.g. Morning Shift" /></div>
               <div><Label>Start Time *</Label><Input type="time" value={shiftForm.startTime} onChange={e => setShiftForm({ ...shiftForm, startTime: e.target.value })} /></div>
               <div><Label>End Time *</Label><Input type="time" value={shiftForm.endTime} onChange={e => setShiftForm({ ...shiftForm, endTime: e.target.value })} /></div>
@@ -506,7 +506,7 @@ export default function EmployeesPage() {
               const excessWO = detailRecord.excessWeekOffs || 0;
               const mult = detailRecord.absentPenaltyMultiplier || 1;
               return (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-muted/50 rounded-lg p-3">
                       <div className="text-xs text-muted-foreground">Base Salary</div>

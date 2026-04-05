@@ -218,7 +218,7 @@ export default function PettyCash() {
 
       <Modal isOpen={obModal} onClose={() => setObModal(false)} title="Set Opening Balance"
         footer={<><Button variant="ghost" onClick={() => setObModal(false)}>Cancel</Button><Button onClick={handleSetOpeningBalance} disabled={obSaving}>{obSaving ? 'Saving...' : 'Save'}</Button></>}>
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
           <p className="text-sm text-muted-foreground">Enter the cash amount that was already in the petty cash fund before you started tracking here. This will be added to all balance calculations.</p>
           <div>
             <Label>Opening Balance Amount (₹)</Label>
@@ -229,7 +229,7 @@ export default function PettyCash() {
 
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }} title={editingId ? "Edit Petty Cash Entry" : "New Petty Cash Entry"} maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editingId ? 'Update' : 'Save'}</Button></>}>
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
           {summary && (
             <div className="bg-muted/50 rounded-xl p-3 text-center">
               <p className="text-xs text-muted-foreground">Current Petty Cash Balance</p>
@@ -237,7 +237,7 @@ export default function PettyCash() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>Date</Label>
               <Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.transactionDate} onChange={(e: any) => setFormData({ ...formData, transactionDate: e.target.value })} />
@@ -252,7 +252,7 @@ export default function PettyCash() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>Amount</Label>
               <Input type="number" placeholder="0.00" value={formData.amount} onChange={(e: any) => setFormData({ ...formData, amount: e.target.value })} />
@@ -266,7 +266,7 @@ export default function PettyCash() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>{formData.transactionType === 'receipt' ? 'Received From' : 'Paid To'}</Label>
               <Input value={formData.counterpartyName} onChange={(e: any) => setFormData({ ...formData, counterpartyName: e.target.value })} placeholder="Name" />

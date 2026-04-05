@@ -237,7 +237,7 @@ export default function AttendancePage() {
           </div>
 
           <Modal isOpen={leaveModal} onClose={() => setLeaveModal(false)} title="Record Leave" footer={<><Button variant="ghost" onClick={() => setLeaveModal(false)}>Cancel</Button><Button onClick={saveLeave}>Save Leave</Button></>}>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div><Label>Employee *</Label>
                 <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={leaveForm.employeeId} onChange={e => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}>
                   <option value="">Select Employee</option>

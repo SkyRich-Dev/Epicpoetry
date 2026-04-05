@@ -189,8 +189,8 @@ export default function Settlements() {
 
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); }} title={editingId ? "Edit Settlement" : "New Daily Settlement"} maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); }}>Cancel</Button><Button onClick={handleSave} disabled={(createMut.isPending || updateMut.isPending) || difference > 0.01}>{editingId ? 'Update' : 'Save'} Settlement</Button></>}>
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-5 py-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>Settlement Date</Label>
               <Input type="date" max={new Date().toISOString().split('T')[0]} value={settlementDate} onChange={(e: any) => setSettlementDate(e.target.value)} />
@@ -230,7 +230,7 @@ export default function Settlements() {
           </div>
 
           <div className={`rounded-xl p-4 ${Math.abs(difference) < 0.01 ? 'bg-emerald-50 border border-emerald-200' : difference > 0.01 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
-            <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5 text-center">
               <div>
                 <p className="text-xs text-muted-foreground">Net Sales</p>
                 <p className="font-bold text-lg">{formatCurrency(netSales)}</p>
@@ -256,8 +256,8 @@ export default function Settlements() {
 
       <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title="Settlement Details" maxWidth="max-w-2xl">
         {detail && (
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4 bg-muted/50 rounded-xl p-4">
+          <div className="space-y-5 py-2">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-5 bg-muted/50 rounded-xl p-4">
               <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{formatDate(detail.settlement.settlementDate)}</p></div>
               <div><p className="text-xs text-muted-foreground">Status</p><StatusBadge type={detail.settlement.differenceType} status={detail.settlement.status} /></div>
               <div><p className="text-xs text-muted-foreground">Net Sales</p><p className="font-medium">{formatCurrency(detail.settlement.netSalesAmount)}</p></div>

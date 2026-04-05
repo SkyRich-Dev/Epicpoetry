@@ -185,7 +185,7 @@ export default function Trials() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           <h2 className="font-semibold text-lg">Versions ({versions.length})</h2>
           {versions.length === 0 ? (
             <div className="bg-card border border-dashed border-border rounded-2xl p-12 text-center">
@@ -210,12 +210,12 @@ export default function Trials() {
         <Modal isOpen={isVersionModalOpen} onClose={() => setIsVersionModalOpen(false)} title="New R&D Version" maxWidth="max-w-2xl"
           footer={<><Button variant="ghost" onClick={() => setIsVersionModalOpen(false)}>Cancel</Button><Button onClick={handleCreateVersion} disabled={createVersionMut.isPending}>{createVersionMut.isPending ? 'Creating...' : 'Create Version & Deduct Stock'}</Button></>}>
           <div className="space-y-5 py-2">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5">
               <div><Label>Trial Date</Label><Input type="date" value={versionForm.trialDate} onChange={e => setVersionForm({ ...versionForm, trialDate: e.target.value })} /></div>
               <div><Label>Batch Size</Label><Input type="number" step="0.1" value={versionForm.batchSize} onChange={e => setVersionForm({ ...versionForm, batchSize: Number(e.target.value) })} /></div>
               <div><Label>Prep Time (min)</Label><Input type="number" value={versionForm.prepTime} onChange={e => setVersionForm({ ...versionForm, prepTime: Number(e.target.value) })} /></div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5">
               <div><Label>Yield Qty</Label><Input type="number" step="0.1" value={versionForm.yieldQty} onChange={e => setVersionForm({ ...versionForm, yieldQty: Number(e.target.value) })} /></div>
               <div><Label>Yield UOM</Label>
                 <Select value={versionForm.yieldUom} onChange={e => setVersionForm({ ...versionForm, yieldUom: e.target.value })}>
@@ -276,7 +276,7 @@ export default function Trials() {
 
             <div>
               <Label className="text-sm font-semibold mb-2 block">Quality Scores (0-10)</Label>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-x-4 gap-y-5">
                 <div><Label className="text-xs">Taste</Label><Input type="number" min="0" max="10" step="0.5" value={versionForm.tasteScore} onChange={e => setVersionForm({ ...versionForm, tasteScore: Number(e.target.value) })} /></div>
                 <div><Label className="text-xs">Appearance</Label><Input type="number" min="0" max="10" step="0.5" value={versionForm.appearanceScore} onChange={e => setVersionForm({ ...versionForm, appearanceScore: Number(e.target.value) })} /></div>
                 <div><Label className="text-xs">Consistency</Label><Input type="number" min="0" max="10" step="0.5" value={versionForm.consistencyScore} onChange={e => setVersionForm({ ...versionForm, consistencyScore: Number(e.target.value) })} /></div>
@@ -346,9 +346,9 @@ export default function Trials() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Initiate New Trial" maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleCreateTrial} disabled={createMut.isPending}>Create Trial</Button></>}>
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
           <div><Label>Proposed Item Name</Label><Input value={formData.proposedItemName} onChange={(e: any) => setFormData({ ...formData, proposedItemName: e.target.value })} placeholder="e.g. Matcha Latte, Cold Brew Tonic" /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Target Cost</Label><Input type="number" step="0.01" value={formData.targetCost || ''} onChange={(e: any) => setFormData({ ...formData, targetCost: Number(e.target.value) })} /></div>
             <div><Label>Target Selling Price</Label><Input type="number" step="0.01" value={formData.targetSellingPrice || ''} onChange={(e: any) => setFormData({ ...formData, targetSellingPrice: Number(e.target.value) })} /></div>
           </div>

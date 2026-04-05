@@ -120,17 +120,17 @@ export default function Ingredients() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Ingredient" : "Add Ingredient"} maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-5 py-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Name</Label><Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Arabica Beans" /></div>
             <div><Label>Category</Label><Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}><option value={0}>Select Category</option>{categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Stock UOM</Label><Input value={formData.stockUom} onChange={(e:any) => setFormData({...formData, stockUom: e.target.value})} placeholder="e.g. g" /></div>
             <div><Label>Purchase UOM</Label><Input value={formData.purchaseUom} onChange={(e:any) => setFormData({...formData, purchaseUom: e.target.value})} placeholder="e.g. kg" /></div>
             <div><Label>Recipe UOM</Label><Input value={formData.recipeUom} onChange={(e:any) => setFormData({...formData, recipeUom: e.target.value})} placeholder="e.g. g" /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Conversion (Purch to Stock)</Label><Input type="number" value={formData.conversionFactor} onChange={(e:any) => setFormData({...formData, conversionFactor: Number(e.target.value)})} /><p className="text-[10px] text-muted-foreground mt-1">1 Purchase UOM = X Stock UOM</p></div>
             <div><Label>Est. Cost (Per Stock UOM)</Label><Input type="number" step="0.01" value={formData.currentCost} onChange={(e:any) => setFormData({...formData, currentCost: Number(e.target.value)})} /></div>
           </div>

@@ -159,18 +159,18 @@ export default function Vendors() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Vendor" : "Add Vendor"} maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
           <div><Label>Company Name</Label><Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Contact Person</Label><Input value={formData.contactPerson} onChange={(e:any) => setFormData({...formData, contactPerson: e.target.value})} /></div>
             <div><Label>GST Number</Label><Input value={formData.gstNumber} onChange={(e:any) => setFormData({...formData, gstNumber: e.target.value})} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Mobile</Label><Input value={formData.mobile} onChange={(e:any) => setFormData({...formData, mobile: e.target.value})} /></div>
             <div><Label>Email</Label><Input type="email" value={formData.email} onChange={(e:any) => setFormData({...formData, email: e.target.value})} /></div>
           </div>
           <div><Label>Address</Label><Input value={formData.address} onChange={(e:any) => setFormData({...formData, address: e.target.value})} /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Payment Terms</Label><Input value={formData.paymentTerms} onChange={(e:any) => setFormData({...formData, paymentTerms: e.target.value})} /></div>
             <div><Label>Credit Days</Label><Input type="number" value={formData.creditDays} onChange={(e:any) => setFormData({...formData, creditDays: Number(e.target.value)})} /></div>
           </div>

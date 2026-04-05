@@ -110,13 +110,13 @@ export default function Expenses() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Expense" : "Log Expense"} maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-5 py-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.expenseDate} onChange={(e:any) => setFormData({...formData, expenseDate: e.target.value})} /></div>
             <div><Label>Cost Type</Label><Select value={formData.costType} onChange={(e:any) => setFormData({...formData, costType: e.target.value})}><option value="FIXED">Fixed (Rent/Salary)</option><option value="VARIABLE">Variable (Supplies/Repairs)</option><option value="UTILITY">Utility (Water/Power)</option></Select></div>
           </div>
           <div><Label>Description</Label><Input value={formData.description} onChange={(e:any) => setFormData({...formData, description: e.target.value})} placeholder="e.g. Plumber repair" /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Amount</Label><Input type="number" step="0.01" value={formData.amount} onChange={(e:any) => setFormData({...formData, amount: Number(e.target.value)})} /></div>
             <div><Label>Payment Mode</Label><Select value={formData.paymentMode} onChange={(e:any) => setFormData({...formData, paymentMode: e.target.value})}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></Select></div>
           </div>

@@ -136,7 +136,7 @@ export function Select({ className, children, ...props }: any) {
 }
 
 export function Label({ className, children, ...props }: any) {
-  return <label className={cn("block text-sm font-medium text-foreground/80 mb-1.5", className)} {...props}>{children}</label>;
+  return <label className={cn("block text-sm font-medium text-foreground/80 mb-2", className)} {...props}>{children}</label>;
 }
 
 export function DateFilter({ fromDate, toDate, onChange }: { fromDate: string; toDate: string; onChange: (from: string, to: string) => void }) {
