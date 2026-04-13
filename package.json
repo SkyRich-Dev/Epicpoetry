@@ -1,13 +1,19 @@
 {
   "name": "workspace",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
+  "workspaces": [
+    "artifacts/*",
+    "lib/*",
+    "scripts"
+  ],
   "scripts": {
-    "db:push": "pnpm --filter @workspace/db run push",
-    "dev:api": "pnpm --filter @workspace/api-server run dev",
-    "dev:web": "pnpm --filter @workspace/epic-poetry-cafe run dev",
+    "db:prepare": "node ./scripts/configure-db-schema.mjs",
+    "db:push": "npm run --workspace=@workspace/db push",
+    "dev:api": "npm run --workspace=@workspace/api-server dev",
+    "dev:web": "npm run --workspace=@workspace/epic-poetry-cafe dev",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r run typecheck"
+    "typecheck": "npm run typecheck:libs && npm run --workspaces --if-present typecheck"
   },
   "private": true,
   "devDependencies": {

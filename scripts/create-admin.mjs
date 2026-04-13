@@ -16,7 +16,7 @@ const client = new Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
 
 const tableResult = await client.query(
-  "select table_schema from information_schema.tables where table_name = 'users' order by case when table_schema = 'epicpoetry' then 0 else 1 end, table_schema limit 1",
+  "select table_schema from information_schema.tables where table_name = 'users' order by case when table_schema = 'public' then 0 when table_schema = 'epicpoetry' then 1 else 2 end, table_schema limit 1",
 );
 
 if (tableResult.rows.length === 0) {
