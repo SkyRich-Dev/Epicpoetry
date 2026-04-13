@@ -24,6 +24,25 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
+async function deductStockForSalesLines(salesLines: { menuItemId: number; quantity: number }[]) {
+  const menuItemIds = [...new Set(salesLines.map(l => l.menuItemId))];
+  for (const menuItemId of menuItemIds) {
+    const totalQtySold = salesLines.filter(l => l.menuItemId === menuItemId).reduce((s, l) => s + l.quantity, 0);
+    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, menuItemId));
+    for (const rl of recipeLines) {
+      const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, rl.ingredientId));
+      if (ing) {
+        const netQtyPerUnit = rl.quantity * (1 + (rl.wastagePercent || 0) / 100);
+        const totalRecipeQty = netQtyPerUnit * totalQtySold;
+        const deductInStockUom = totalRecipeQty / (ing.conversionFactor || 1);
+        await db.update(ingredientsTable).set({
+          currentStock: Math.max(0, ing.currentStock - deductInStockUom),
+        }).where(eq(ingredientsTable.id, rl.ingredientId));
+      }
+    }
+  }
+}
+
 const ALLOWED_MIMES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.ms-excel",
@@ -595,6 +614,8 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
         }
       });
 
+      await deductStockForSalesLines(finalLines);
+
       for (const l of group.lines) {
         successCount++;
         results.push({ row: l.rowIndex, status: "success", data: { invoiceNo: invNo, item: l.menuItemName, qty: l.quantity } });
@@ -747,6 +768,8 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
           await tx.insert(salesInvoiceLinesTable).values({ invoiceId: invoice.id, ...fl });
         }
       });
+
+      await deductStockForSalesLines(finalLines);
 
       for (const l of group.lines) {
         successCount++;

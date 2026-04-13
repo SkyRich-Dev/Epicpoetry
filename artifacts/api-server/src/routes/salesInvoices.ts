@@ -171,6 +171,23 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
     });
   }
 
+  const menuItemIds = [...new Set(finalLines.map(l => l.menuItemId))];
+  for (const menuItemId of menuItemIds) {
+    const totalQtySold = finalLines.filter(l => l.menuItemId === menuItemId).reduce((s, l) => s + l.quantity, 0);
+    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, menuItemId));
+    for (const rl of recipeLines) {
+      const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, rl.ingredientId));
+      if (ing) {
+        const netQtyPerUnit = rl.quantity * (1 + (rl.wastagePercent || 0) / 100);
+        const totalRecipeQty = netQtyPerUnit * totalQtySold;
+        const deductInStockUom = totalRecipeQty / (ing.conversionFactor || 1);
+        await db.update(ingredientsTable).set({
+          currentStock: Math.max(0, ing.currentStock - deductInStockUom),
+        }).where(eq(ingredientsTable.id, rl.ingredientId));
+      }
+    }
+  }
+
   await createAuditLog("sales_invoices", invoice.id, "create", null, { invoiceNo: finalInvoiceNo, finalAmount: invoiceFinal });
   res.status(201).json({ ...invoice, lines: finalLines });
 });
@@ -198,6 +215,25 @@ router.delete("/sales-invoices/:id", authMiddleware, adminOnly, async (req, res)
   const id = Number(req.params.id);
   const [existing] = await db.select().from(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  const invoiceLines = await db.select().from(salesInvoiceLinesTable).where(eq(salesInvoiceLinesTable.invoiceId, id));
+  const menuItemIds = [...new Set(invoiceLines.map(l => l.menuItemId))];
+  for (const menuItemId of menuItemIds) {
+    const totalQtySold = invoiceLines.filter(l => l.menuItemId === menuItemId).reduce((s, l) => s + l.quantity, 0);
+    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, menuItemId));
+    for (const rl of recipeLines) {
+      const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, rl.ingredientId));
+      if (ing) {
+        const netQtyPerUnit = rl.quantity * (1 + (rl.wastagePercent || 0) / 100);
+        const totalRecipeQty = netQtyPerUnit * totalQtySold;
+        const restoreInStockUom = totalRecipeQty / (ing.conversionFactor || 1);
+        await db.update(ingredientsTable).set({
+          currentStock: ing.currentStock + restoreInStockUom,
+        }).where(eq(ingredientsTable.id, rl.ingredientId));
+      }
+    }
+  }
+
   await db.delete(salesInvoiceLinesTable).where(eq(salesInvoiceLinesTable.invoiceId, id));
   await db.delete(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
   await createAuditLog("sales_invoices", id, "delete", existing, null);

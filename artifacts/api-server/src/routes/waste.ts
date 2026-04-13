@@ -78,6 +78,10 @@ router.post("/waste", authMiddleware, async (req, res): Promise<void> => {
         const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
         const costPerRecipeUnit = ing.weightedAvgCost / (ing.conversionFactor || 1);
         costValue += costPerRecipeUnit * netQty * parsed.data.quantity;
+        const deductInStockUom = (netQty * parsed.data.quantity) / (ing.conversionFactor || 1);
+        await db.update(ingredientsTable).set({
+          currentStock: Math.max(0, ing.currentStock - deductInStockUom),
+        }).where(eq(ingredientsTable.id, line.ingredientId));
       }
     }
   }
@@ -130,6 +134,18 @@ router.delete("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
     const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, existing.ingredientId));
     if (ing) {
       await db.update(ingredientsTable).set({ currentStock: ing.currentStock + existing.quantity }).where(eq(ingredientsTable.id, existing.ingredientId));
+    }
+  } else if (existing.wasteType === "menu_item" && existing.menuItemId) {
+    const lines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, existing.menuItemId));
+    for (const line of lines) {
+      const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+      if (ing) {
+        const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
+        const restoreInStockUom = (netQty * existing.quantity) / (ing.conversionFactor || 1);
+        await db.update(ingredientsTable).set({
+          currentStock: ing.currentStock + restoreInStockUom,
+        }).where(eq(ingredientsTable.id, line.ingredientId));
+      }
     }
   }
 
