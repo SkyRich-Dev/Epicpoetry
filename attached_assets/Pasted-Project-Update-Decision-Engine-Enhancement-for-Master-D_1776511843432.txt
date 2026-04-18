@@ -1,0 +1,548 @@
+Project Update: Decision Engine Enhancement for Master Data Insight System
+Update the existing Epic Poetry Cafe system by adding a new upgrade layer to the already planned Master Data Insight System.
+This update is a Decision Engine.
+It must use:
+POS data
+sales data
+invoice data
+item sales data
+customer visit data
+inventory data
+vendor data
+expense data
+settlement data
+purchase data
+expiry data if available in purchase records
+This update must generate high-value decision-making insights for running the cafe/restaurant better.
+1. IMPORTANT IMPLEMENTATION RULE
+Do not change older version
+This is an add-on update only.
+do not rewrite older modules
+do not remove old analytics
+do not break current dashboards
+do not modify base sales logic
+do not modify existing customer insight logic
+do not modify vendor, inventory, waste, settlement, petty cash, or costing flows
+Only extend the Master Data Insight System by adding new decision intelligence services, APIs, dashboards, and alerts.
+2. CORE POSITIONING
+This module is the:
+Decision Engine
+It is not just a report layer.
+It is the intelligence layer that helps management take better business decisions.
+It should answer questions like:
+where money is leaking
+which items are profitable but under-promoted
+which items are high volume but low margin
+which customers are valuable or inactive
+what sales are expected tomorrow
+how much inventory may be required
+where operational issues are building up
+what needs attention right now
+3. MODULE NAME
+Create this as an extension under the insight system, for example:
+Decision Engine
+Insight Decision Engine
+Master Decision Layer
+Use a clean modular architecture and keep naming consistent with the current system.
+4. DECISION ENGINE SCOPE
+Add the following detailed intelligence areas.
+5. REVENUE INTELLIGENCE
+Build deep revenue-focused decision insights.
+5.1 Revenue Leakage Detection
+Detect where revenue may be leaking.
+Track:
+abnormal discount usage
+high discount invoices
+high discount by staff or time period if staff/time data is available
+low realized price items
+items sold below expected margin
+mismatch between theoretical revenue and realized invoice total where relevant
+Example outputs
+“High discount activity detected in evening invoices.”
+“Cold Coffee realized selling price is consistently below standard price.”
+“Revenue leakage detected from repeated low-margin discounting.”
+5.2 Real Profit vs Theoretical Profit
+Compare expected profitability with actual outcome.
+Use:
+sales revenue
+theoretical production cost
+actual stock-based consumption if available
+wastage
+variance
+expense allocation if available
+Output
+theoretical profit
+actual-like operating contribution
+variance in profit
+major drivers of difference
+Example output
+“Actual operating contribution is lower than expected due to wastage and ingredient variance.”
+5.3 High Margin vs High Volume Items
+Classify items into decision groups.
+Categories:
+high volume + high margin
+high volume + low margin
+low volume + high margin
+low volume + low margin
+This is a decision-support matrix.
+Output
+top items in each quadrant
+action suggestion tags such as:
+push more
+review costing
+review pricing
+review retention
+reduce waste
+6. CUSTOMER DEEP INTELLIGENCE
+Extend customer analytics with decision-useful intelligence.
+6.1 Customer Lifetime Value
+Calculate:
+total spend
+average spend
+visit frequency
+customer lifetime value score
+ranking of high-value customers
+Output
+top high-value customers
+top repeat customers
+value concentration analysis
+6.2 Visit Frequency Prediction
+Predict likely next-visit behavior using historical visit patterns.
+Use:
+visit intervals
+preferred day
+preferred time
+recent activity
+repeat pattern
+Output
+likely next visit window
+frequent customer watchlist
+at-risk repeat customers
+6.3 Churn Detection
+Identify customers who appear to have stopped visiting.
+Rules should be configurable, for example:
+no visit for 7 days
+no visit for 14 days
+no visit for 30 days
+Segment by customer type:
+high-value inactive
+regular inactive
+occasional inactive
+Output
+churn risk list
+inactivity trend
+lapsed customer count
+6.4 Customer Time Preference
+Analyze when each customer usually visits.
+Track:
+preferred hour
+preferred day of week
+weekday vs weekend behavior
+morning / afternoon / evening / night patterns
+7. OPERATIONAL INTELLIGENCE
+Build operational decision insights.
+7.1 Staff Efficiency Insight
+If staff/user/cashier/order handling data is available, calculate:
+billing count by staff
+billing value by staff
+average bill value by staff
+order handling speed if timestamps are available
+discount usage by staff if applicable
+Output
+best performing staff by billing
+unusually high discount by staff
+staffing comparison trends
+7.2 Table Turnover Insight
+If dine-in and table/session data is available, calculate:
+average table occupancy duration
+peak congestion period
+low utilization periods
+table turnover count
+If no table data exists, keep this module future-ready and hide until data is available.
+7.3 Order Handling Delay
+Detect service delay patterns from order timestamps if available.
+Track:
+order created time
+bill close time
+order-to-bill duration
+peak-hour order delay
+Output
+delayed time windows
+average handling time trend
+peak-time service slowdown
+7.4 Kitchen Load Analysis
+Kitchen Load Analysis must be based on orders.
+Do not base this on generic assumptions.
+Use:
+order count
+item count per order
+order line complexity
+timestamp clustering
+item preparation mix
+peak order windows
+Output
+busiest kitchen time slots based on order volume
+high-load order windows
+order complexity trend
+top kitchen-load-contributing items
+average items per order by hour
+operational pressure windows
+This should help management understand when kitchen stress is highest.
+8. INVENTORY & COST INTELLIGENCE
+Add deeper inventory and cost decisions.
+8.1 Real vs Expected Consumption
+Compare:
+theoretical consumption from sales/recipes
+actual usage from stock movement / stock closing / variance model
+Output
+ingredient variance
+repeated overuse pattern
+potential leakage/pilferage indicators
+cost impact of variance
+8.2 Expiry Risk Prediction
+This must work only if expiry date is available in purchase or stock batch data.
+Do not simulate expiry without actual expiry fields.
+If expiry data exists, track:
+purchase batch
+expiry date
+remaining stock
+usage speed
+expected depletion vs expiry
+Output
+items likely to expire soon
+high expiry-value risk
+slow-moving expiring items
+expiry risk amount
+If expiry date is not present, keep this feature inactive and show no false prediction.
+8.3 Dead Stock Detection
+Detect:
+ingredients purchased but not consumed
+stock not moving for long periods
+excess idle stock
+low-turnover inventory
+Output
+dead stock list
+slow-moving items
+blocked stock value
+8.4 Cost Increase Impact
+Track vendor purchase rate changes and their effect on menu item profitability.
+Output
+ingredient cost changes
+affected menu items
+margin drop percentage
+cost pressure alerts
+9. FINANCIAL INTELLIGENCE
+Add finance-related decision insights.
+9.1 Cash vs Digital Trend
+Track payment behavior trends across:
+cash
+card
+QR
+UPI
+other digital modes
+Output
+payment mode share trend
+digital adoption trend
+cash dependency trend
+9.2 Settlement Mismatch Intelligence
+Use sales settlement data.
+Track:
+repeated mismatch days
+cash shortage frequency
+excess settlement patterns
+location/user/date-based mismatch trend if available
+Output
+mismatch heatmap
+repeated cash discrepancy alerts
+payment mode mismatch insights
+9.3 Vendor Risk Insight
+Based on:
+overdue payables
+vendor dependency
+price instability
+delayed supply history if available
+Output
+high-risk vendors
+single-source dependency risk
+overdue pressure view
+9.4 Expense Efficiency
+Analyze:
+expense category trends
+cost growth without sales growth
+unusual spikes
+inefficient spending categories
+Output
+high-growth expense categories
+cost-to-sales ratio trend
+inefficiency alerts
+10. TREND & COMPARISON INTELLIGENCE
+Build stronger comparative decision views.
+10.1 Same-Day Pattern Intelligence
+Compare:
+current Monday vs last Monday
+current Friday evening vs previous Friday evening
+same weekday trend
+same hour trend
+This helps management make day-specific decisions.
+10.2 Standard Time Comparisons
+Keep and expand:
+yesterday vs today
+last week same day vs current day
+last week vs current week
+last month vs current month
+For each comparison, provide:
+sales
+customer count
+avg bill
+repeat customer %
+top items
+growth/decline %
+11. AI-LEVEL INSIGHTS
+Include only the following AI-level capabilities.
+Do not add any offer recommendation engine.
+Do not add any marketing intelligence engine.
+Do not add seasonal trend detection.
+Do not add event impact analysis.
+11.1 Predictive Sales
+Predict likely sales for:
+next day
+next week summary
+near-term short horizon
+Use:
+historical daily sales
+weekday patterns
+recent trend
+repeat behavior
+peak patterns
+Keep this practical, not overly complex.
+Output
+predicted tomorrow sales
+confidence indicator
+trend direction
+11.2 Demand Forecasting
+Forecast likely ingredient demand based on:
+predicted sales
+item trend
+recipe/BOM usage
+recent consumption
+repeat purchase patterns
+Output
+estimated ingredient requirement
+top ingredients needed tomorrow
+stock shortfall warning if forecast > available usable stock
+This must support operational planning.
+11.3 Auto Alert Engine
+Build rule-based and insight-based auto alerts.
+Alert categories
+high wastage
+low stock
+expiry risk
+high variance
+negative margin items
+repeated settlement mismatch
+cost spike
+lapsed high-value customers
+abnormal drop in sales
+unusually high discount
+vendor overdue risk
+Alert priorities
+critical
+warning
+info
+Output
+dashboard alert center
+alert history
+optional daily summary payload generator for future WhatsApp/email integration
+12. EXCLUDED FEATURES
+Do not add the following in this update:
+Offer Recommendation Engine
+Seasonal Trend Detection
+Event Impact Analysis
+Marketing Intelligence
+campaign ROI
+retargeting engine
+influencer customer marketing layer
+This update is for decision intelligence, not marketing automation.
+13. DECISION DASHBOARD UPDATE
+Create a dedicated Decision Engine Dashboard or extend the insight dashboard with a separate decision tab.
+Required dashboard sections
+A. Revenue intelligence
+revenue leakage alerts
+high margin vs high volume matrix
+real profit vs theoretical profit
+B. Customer intelligence
+CLV summary
+churn watchlist
+repeat customer trend
+time preference insight
+C. Operational intelligence
+staff efficiency
+order handling delay
+kitchen load by order window
+table turnover if available
+D. Inventory & cost intelligence
+real vs expected consumption
+expiry risk
+dead stock
+cost increase impact
+E. Financial intelligence
+cash vs digital trend
+settlement mismatch
+vendor risk
+expense efficiency
+F. Predictive intelligence
+predicted sales
+demand forecast
+active alerts
+14. DATA MODEL / STORAGE EXTENSION
+Add new models or materialized insight tables as needed, but do not disturb old tables.
+Suggested structures may include:
+RevenueLeakageInsight
+ProfitComparisonInsight
+ItemPerformanceMatrix
+CustomerValueSnapshot
+CustomerChurnSnapshot
+StaffEfficiencySnapshot
+KitchenLoadSnapshot
+ConsumptionVarianceInsight
+ExpiryRiskInsight
+DeadStockInsight
+CostImpactInsight
+PaymentTrendInsight
+SettlementMismatchInsight
+VendorRiskInsight
+ExpenseEfficiencyInsight
+PredictiveSalesSnapshot
+DemandForecastSnapshot
+AlertEvent
+Use either:
+precomputed daily/weekly snapshots
+or efficient computed services with caching
+Prefer snapshot + service hybrid design for performance.
+15. API REQUIREMENTS
+Create APIs for decision intelligence.
+Revenue APIs
+revenue leakage summary
+profit comparison
+item performance matrix
+Customer APIs
+CLV summary
+churn list
+visit prediction
+customer time preference
+Operational APIs
+staff efficiency
+order delay analysis
+kitchen load analysis
+table turnover if available
+Inventory/Cost APIs
+consumption variance
+expiry risk
+dead stock
+cost impact report
+Financial APIs
+payment mode trend
+settlement mismatch insights
+vendor risk summary
+expense efficiency summary
+Predictive APIs
+predictive sales
+demand forecast
+active alert list
+alert history
+All APIs must support:
+date filters
+outlet filter if supported
+item/vendor/customer filter where relevant
+16. UI REQUIREMENTS
+Keep the UI simple, readable, and decision-oriented.
+Requirements
+clear cards
+trend indicators
+comparison chips
+alert color coding
+filter bar by date
+lightweight tables
+charts only where useful
+summary first, drilldown second
+Suggested pages
+Decision Dashboard
+Revenue Intelligence
+Customer Intelligence
+Operational Intelligence
+Inventory & Cost Intelligence
+Financial Intelligence
+Predictive Insights
+Alert Center
+17. DATE-DRIVEN MASTER LOGIC
+Date must remain the master axis for all decision insights.
+Every decision service must support:
+daily
+weekly
+monthly
+custom date-to-date
+same-day comparison
+rolling comparison
+If source timestamps exist, also support:
+hour-based analysis
+peak time windows
+order clusters
+18. POS / DATA SYNC REQUIREMENT
+This decision engine depends on strong sync with POS and existing sales system.
+Ensure:
+daily sync works
+historical sync works
+invoice and item mappings remain clean
+customer linkage works using phone number where available
+source data quality checks are added
+missing fields are handled gracefully
+The decision engine must consume:
+sales
+customers
+billing
+items
+payment modes
+discounts
+GST
+purchase rates
+stock values
+expiry dates if present
+settlement records
+19. VALIDATION RULES
+Implement strong safeguards.
+no false expiry prediction without expiry date
+no kitchen load analysis without order timestamps/order data
+no table turnover analysis unless table/session data exists
+no fake predictions from empty data
+alerts must have traceable source logic
+every metric should be explainable from source data
+This module must be trustworthy.
+20. PERFORMANCE REQUIREMENTS
+Because this is an insight-heavy module:
+precompute daily/weekly/monthly metrics where useful
+cache expensive insights
+avoid full-table recalculation on every dashboard load
+use incremental update jobs
+keep APIs fast
+support future scale
+21. FINAL REQUIREMENT STATEMENT
+The existing Master Data Insight System shall be extended with a new Decision Engine layer that generates advanced business intelligence for the cafe using sales, customer, billing, inventory, expense, purchase, settlement, and POS data. This decision engine shall provide revenue intelligence, customer deep intelligence, operational intelligence, inventory and cost intelligence, financial intelligence, time-based comparisons, predictive sales, demand forecasting, and an auto alert engine. The engine shall remain date-driven, trustworthy, non-disruptive to the older version, and focused on decision support rather than marketing automation.
+22. FINAL INSTRUCTION
+Now implement this as a new update layer on top of the existing Master Data Insight System.
+Do not change old working modules.
+Add:
+new backend insight services
+new snapshot models where needed
+new APIs
+new decision dashboards
+new alerts
+predictive sales
+demand forecasting
+decision reports
+Keep the system:
+accurate
+explainable
+fast
+modular
+scalable
+safe for future expansion

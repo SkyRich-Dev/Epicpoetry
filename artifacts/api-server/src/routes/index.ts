@@ -27,6 +27,7 @@ import salesInvoicesRouter from "./salesInvoices";
 import posIntegrationsRouter from "./posIntegrations";
 import customersRouter from "./customers";
 import insightsRouter from "./insights";
+import decisionRouter from "./decision";
 
 const router: IRouter = Router();
 
@@ -58,5 +59,6 @@ router.use(salesInvoicesRouter);
 router.use(posIntegrationsRouter);
 router.use(customersRouter);
 router.use(insightsRouter);
+router.use(decisionRouter);
 
 export default router;
