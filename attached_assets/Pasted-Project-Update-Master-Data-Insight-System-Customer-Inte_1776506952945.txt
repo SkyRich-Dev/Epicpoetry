@@ -1,0 +1,323 @@
+Project Update: Master Data Insight System (Customer Intelligence + Business Analytics Layer)
+Update the existing Epic Poetry Cafe system by adding a new module called:
+Master Data Insight System (MDIS)
+This module acts as the central intelligence layer for the entire cafe.
+1. CORE OBJECTIVE
+Build a future-ready insight engine that:
+retrieves data from POS (Petpooja / sales imports)
+processes customer, billing, and sales data
+generates actionable insights
+provides real-time and historical analytics
+helps management make decisions
+This is NOT a transactional module
+This is a pure insight + analytics + intelligence system
+2. ARCHITECTURE PRINCIPLE
+🔴 DO NOT CHANGE EXISTING SYSTEM
+do not modify existing sales logic
+do not modify vendor logic
+do not modify inventory logic
+🟢 ONLY EXTEND
+read data from existing tables
+create new insight tables/services
+create analytics APIs
+create dashboards
+3. MASTER RULE
+🔥 DATE IS THE MASTER
+All insights must be based on:
+sales_date
+invoice_date
+visit_date
+All analytics must support:
+day
+week
+month
+custom range
+4. DATA SOURCES
+This module must retrieve data from:
+A. POS (Petpooja / import)
+invoice data
+item sales
+billing details
+payment modes
+B. Sales Module (existing system)
+invoice-based sales
+item-based sales
+C. Customer data (new or POS-based)
+customer name
+phone number (primary key)
+visit history
+5. CUSTOMER MASTER (NEW)
+Create a Customer Master System
+Customer fields
+id
+name
+phone number (UNIQUE)
+email optional
+birthday optional
+anniversary optional
+first visit date
+last visit date
+total visits
+total spent
+average order value
+preferred visit time
+preferred order type
+top 3 items
+last order date
+created_at
+updated_at
+Customer identification rule
+Primary key:
+👉 phone number
+If phone not available:
+fallback: invoice-based anonymous customer
+tag as “walk-in”
+6. CUSTOMER VISIT TRACKING
+Each invoice = 1 visit
+Create logic:
+map invoice to customer
+update visit count
+update last visit date
+update total spend
+7. BILLING DATA CAPTURE
+From POS / sales module capture:
+invoice number
+invoice date
+invoice time
+items purchased
+quantity
+total bill value
+discount
+GST
+payment mode
+order type
+Store in analytics layer for fast processing.
+8. CUSTOMER INSIGHTS REQUIRED
+8.1 Customer Profile Insights
+For each customer show:
+total visits
+total spend
+average spend per visit
+last visit
+visit frequency
+preferred visit time
+preferred payment mode
+preferred order type
+top 3 most purchased items
+8.2 Customer Purchase Behaviour
+For each customer calculate:
+Top 3 items
+item
+purchase count
+total spend on item
+Time pattern
+morning / afternoon / evening / night
+peak visit hour
+Frequency pattern
+daily visitor
+weekly visitor
+occasional visitor
+9. CUSTOMER REMINDERS
+Build reminder system:
+Birthday reminders
+show upcoming birthdays
+daily notification list
+Anniversary reminders
+show upcoming anniversaries
+daily notification list
+10. TIME-BASED ANALYTICS
+10.1 Peak hour analysis
+Calculate:
+visits per hour
+sales per hour
+Show:
+most visited hour
+least visited hour
+10.2 Day comparison
+Required comparisons:
+A. Yesterday vs Today
+sales
+customers
+avg bill
+B. Same day last week vs today
+comparison metrics
+C. Last week vs current week
+weekly trend
+D. Last month vs current month
+monthly trend
+11. BUSINESS INSIGHTS REQUIRED
+Daily insights
+total sales
+total customers
+avg bill value
+top items
+peak time
+Weekly insights
+total sales
+growth %
+top items
+repeat customers %
+Monthly insights
+total sales
+profit trend (if available)
+best day of month
+worst day of month
+12. ADVANCED ANALYTICS
+12.1 Customer segmentation
+Segment customers into:
+high value customers
+frequent customers
+new customers
+inactive customers
+12.2 Repeat vs new customers
+repeat customer %
+new customer %
+retention trend
+12.3 Item popularity
+top selling items
+least selling items
+repeat item preference
+13. INSIGHT ENGINE (CORE LOGIC)
+Create a backend service:
+InsightEngine
+Responsibilities:
+process sales data
+process customer data
+calculate metrics
+generate comparisons
+generate trends
+14. DATABASE / MODELS
+Customer model
+(as defined above)
+CustomerVisit model
+id
+customer_id
+invoice_id
+visit_date
+visit_time
+bill_amount
+CustomerItemPreference model
+customer_id
+item_id
+total_qty
+total_value
+last_purchased
+DailyInsight model
+date
+total_sales
+total_customers
+avg_bill
+total_invoices
+peak_hour
+created_at
+WeeklyInsight model
+week_start
+week_end
+total_sales
+total_customers
+growth_percent
+MonthlyInsight model
+month
+total_sales
+total_customers
+growth_percent
+ComparisonInsight model
+type
+day_vs_day
+week_vs_week
+month_vs_month
+current_value
+previous_value
+difference
+growth_percent
+15. API REQUIREMENTS
+Customer APIs
+get customer list
+get customer detail
+get customer insights
+get customer top items
+get customer visit history
+Insight APIs
+daily insights
+weekly insights
+monthly insights
+comparison insights
+peak hour analysis
+repeat vs new customer
+Dashboard APIs
+summary cards
+charts data
+trends data
+16. FRONTEND UI
+Dashboard (Master Insight Dashboard)
+Show:
+Top cards
+today sales
+today customers
+avg bill
+repeat %
+Charts
+hourly visits
+daily sales trend
+weekly trend
+monthly trend
+Comparisons
+today vs yesterday
+this week vs last week
+this month vs last month
+Customer Insights Page
+Show:
+customer list
+filters
+search by phone/name
+customer detail popup
+Customer Detail Page
+Show:
+profile
+visit history
+purchase behaviour
+top 3 items
+visit pattern
+total spend graph
+Reminder Panel
+Show:
+today birthdays
+upcoming birthdays
+anniversaries
+17. POS INTEGRATION REQUIREMENT
+MUST HAVE
+System must strongly connect with POS.
+pull invoice data
+pull item data
+pull customer data if available
+Sync behavior
+daily sync
+manual sync option
+incremental sync
+Data mapping
+POS item → system item
+POS invoice → sales invoice
+POS customer → system customer
+18. VALIDATION RULES
+phone number uniqueness for customer
+duplicate visit prevention
+invoice mapping must be correct
+date consistency must be maintained
+no negative values
+missing data handled gracefully
+19. PERFORMANCE
+cache insights where needed
+avoid recalculating heavy analytics every time
+precompute daily/weekly/monthly insights
+20. FINAL REQUIREMENT STATEMENT
+The system shall be enhanced with a Master Data Insight System that retrieves customer, billing, and sales data from POS and internal modules, processes it using date-driven analytics, and generates insights such as customer visit patterns, purchase behaviour, peak hours, comparative trends, and business intelligence metrics. The system shall maintain customer profiles, track visits, calculate top purchased items, and provide daily, weekly, and monthly insights, including comparisons like last day vs current day, last week vs current week, and last month vs current month. This module shall act as the central intelligence layer of the cafe system and enable data-driven decision-making.
+21. FINAL INSTRUCTION
+Now implement this as a new analytics layer:
+no breaking existing system
+integrate with POS and sales
+build backend insight engine
+build APIs
+build dashboard UI
+build customer intelligence module
+ensure high accuracy
+ensure scalability

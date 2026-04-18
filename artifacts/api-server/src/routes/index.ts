@@ -25,6 +25,8 @@ import backupRouter from "./backup";
 import vendorPaymentsRouter from "./vendorPayments";
 import salesInvoicesRouter from "./salesInvoices";
 import posIntegrationsRouter from "./posIntegrations";
+import customersRouter from "./customers";
+import insightsRouter from "./insights";
 
 const router: IRouter = Router();
 
@@ -54,5 +56,7 @@ router.use(backupRouter);
 router.use(vendorPaymentsRouter);
 router.use(salesInvoicesRouter);
 router.use(posIntegrationsRouter);
+router.use(customersRouter);
+router.use(insightsRouter);
 
 export default router;

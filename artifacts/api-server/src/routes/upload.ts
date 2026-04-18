@@ -21,6 +21,7 @@ import { createAuditLog } from "../lib/audit";
 import { isFutureDate, getTodayISO } from "../lib/dateValidation";
 import { generateCode } from "../lib/codeGenerator";
 import { logger } from "../lib/logger";
+import { upsertCustomerFromInvoice, recomputeCustomerStats } from "../lib/customers";
 
 const router: IRouter = Router();
 
@@ -509,7 +510,7 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
 
   const grouped = new Map<string, {
     salesDate: string; invoiceNo: string; invoiceTime: string; orderType: string;
-    customerName: string; paymentMode: string; gstInclusive: boolean; totalDiscount: number;
+    customerName: string; customerPhone: string; paymentMode: string; gstInclusive: boolean; totalDiscount: number;
     lines: { menuItemId: number; menuItemName: string; menuItemCode: string; fixedPrice: number; quantity: number; gstPercent: number; rowIndex: number }[];
   }>();
   const results: { row: number; status: string; error?: string; data?: any }[] = [];
@@ -523,6 +524,7 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
       const invoiceTime = String(raw.time || raw.invoice_time || "").trim();
       const orderType = String(raw.order_type || raw.type || "dine-in").toLowerCase().replace(/\s+/g, "-");
       const customerName = String(raw.customer || raw.customer_name || "").trim();
+      const customerPhone = String(raw.phone || raw.customer_phone || raw.mobile || raw.contact || "").trim();
       const paymentMode = String(raw.payment_mode || raw.payment || "cash").toLowerCase().trim();
       const gstInclusive = String(raw.gst_inclusive || raw.gst_incl || "true").toLowerCase() !== "false";
       const totalDiscount = toNum(raw.discount || raw.total_discount || 0);
@@ -539,7 +541,7 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
 
       const groupKey = `${salesDate}_${invoiceNo || `row${i}`}`;
       if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, { salesDate, invoiceNo, invoiceTime, orderType, customerName, paymentMode, gstInclusive, totalDiscount, lines: [] });
+        grouped.set(groupKey, { salesDate, invoiceNo, invoiceTime, orderType, customerName, customerPhone, paymentMode, gstInclusive, totalDiscount, lines: [] });
       }
       grouped.get(groupKey)!.lines.push({
         menuItemId: menuItem.id, menuItemName: menuItem.name, menuItemCode: menuItem.code || '',
@@ -598,10 +600,18 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
       const taxableTotal = finalLines.reduce((s, l) => s + l.taxableLineAmount, 0);
       const invNo = group.invoiceNo || `XL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
 
+      const __cust_excel = await upsertCustomerFromInvoice({
+        customerName: group.customerName || null,
+        customerPhone: group.customerPhone || null,
+        salesDate: group.salesDate,
+        finalAmount: lineFinalTotal,
+      });
+
       await db.transaction(async (tx) => {
         const [invoice] = await tx.insert(salesInvoicesTable).values({
           salesDate: group.salesDate, invoiceNo: invNo, invoiceTime: group.invoiceTime || null,
           sourceType: "excel", orderType: group.orderType, customerName: group.customerName || null,
+          customerPhone: __cust_excel.customerPhone, customerId: __cust_excel.customerId,
           grossAmount: Math.round(grossAmount * 100) / 100, totalDiscount: Math.round(invoiceDiscount * 100) / 100,
           taxableAmount: Math.round(taxableTotal * 100) / 100, gstAmount: Math.round(totalGst * 100) / 100,
           finalAmount: Math.round(lineFinalTotal * 100) / 100, paymentMode: group.paymentMode,
@@ -615,6 +625,7 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
       });
 
       await deductStockForSalesLines(finalLines);
+      if (__cust_excel.customerId) await recomputeCustomerStats(__cust_excel.customerId);
 
       for (const l of group.lines) {
         successCount++;
@@ -651,7 +662,7 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
 
   const grouped = new Map<string, {
     salesDate: string; invoiceNo: string; invoiceTime: string; orderType: string;
-    customerName: string; paymentMode: string; totalDiscount: number;
+    customerName: string; customerPhone: string; paymentMode: string; totalDiscount: number;
     lines: { menuItemId: number; menuItemName: string; menuItemCode: string; fixedPrice: number; quantity: number; gstPercent: number; rowIndex: number }[];
   }>();
   const results: { row: number; status: string; error?: string; data?: any }[] = [];
@@ -665,6 +676,7 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
       const invoiceTime = String(raw.time || raw.order_time || "").trim();
       const orderType = String(raw.order_type || raw.type || "dine-in").toLowerCase().replace(/\s+/g, "-");
       const customerName = String(raw.customer || raw.customer_name || "").trim();
+      const customerPhone = String(raw.phone || raw.customer_phone || raw.mobile || raw.contact || "").trim();
       const paymentMode = String(raw.payment_mode || raw.payment || "cash").toLowerCase().trim();
       const totalDiscount = toNum(raw.discount || raw.total_discount || 0);
 
@@ -702,7 +714,7 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
 
       const groupKey = `${salesDate}_${invoiceNo || `row${i}`}`;
       if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, { salesDate, invoiceNo, invoiceTime, orderType, customerName, paymentMode, totalDiscount, lines: [] });
+        grouped.set(groupKey, { salesDate, invoiceNo, invoiceTime, orderType, customerName, customerPhone, paymentMode, totalDiscount, lines: [] });
       }
       grouped.get(groupKey)!.lines.push({
         menuItemId: menuItem.id, menuItemName: menuItem.name, menuItemCode: menuItem.code || '',
@@ -753,10 +765,18 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
       const taxableTotal = finalLines.reduce((s, l) => s + l.taxableLineAmount, 0);
       const invNo = group.invoiceNo ? `PP-${group.invoiceNo}` : `PP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
 
+      const __cust_pp = await upsertCustomerFromInvoice({
+        customerName: group.customerName || null,
+        customerPhone: group.customerPhone || null,
+        salesDate: group.salesDate,
+        finalAmount: lineFinalTotal,
+      });
+
       await db.transaction(async (tx) => {
         const [invoice] = await tx.insert(salesInvoicesTable).values({
           salesDate: group.salesDate, invoiceNo: invNo, invoiceTime: group.invoiceTime || null,
           sourceType: "petpooja", orderType: group.orderType, customerName: group.customerName || null,
+          customerPhone: __cust_pp.customerPhone, customerId: __cust_pp.customerId,
           grossAmount: Math.round(grossAmount * 100) / 100, totalDiscount: Math.round(invoiceDiscount * 100) / 100,
           taxableAmount: Math.round(taxableTotal * 100) / 100, gstAmount: Math.round(totalGst * 100) / 100,
           finalAmount: Math.round(lineFinalTotal * 100) / 100, paymentMode: group.paymentMode,
@@ -770,6 +790,7 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
       });
 
       await deductStockForSalesLines(finalLines);
+      if (__cust_pp.customerId) await recomputeCustomerStats(__cust_pp.customerId);
 
       for (const l of group.lines) {
         successCount++;

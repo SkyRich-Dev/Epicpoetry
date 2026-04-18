@@ -7,6 +7,7 @@ import {
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateNotFutureDate } from "../lib/dateValidation";
+import { upsertCustomerFromInvoice, recomputeCustomerStats } from "../lib/customers";
 
 const router: IRouter = Router();
 
@@ -63,7 +64,7 @@ router.get("/sales-invoices/:id", authMiddleware, async (req, res): Promise<void
 
 router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> => {
   const {
-    salesDate, invoiceNo, invoiceTime, sourceType, orderType, customerName,
+    salesDate, invoiceNo, invoiceTime, sourceType, orderType, customerName, customerPhone,
     totalDiscount, paymentMode, paymentReference, lines, gstInclusive
   } = req.body;
   const dateErr = validateNotFutureDate(salesDate, "Invoice date");
@@ -145,6 +146,13 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
   const matchDiff = Math.abs(invoiceFinal - lineFinalTotal);
   const matchStatus = matchDiff <= (req.body.tolerance ?? 1) ? "matched" : "mismatched";
 
+  const cust = await upsertCustomerFromInvoice({
+    customerName: customerName || null,
+    customerPhone: customerPhone || null,
+    salesDate,
+    finalAmount: 0,
+  });
+
   const [invoice] = await db.insert(salesInvoicesTable).values({
     salesDate,
     invoiceNo: finalInvoiceNo,
@@ -152,6 +160,8 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
     sourceType: sourceType || "manual",
     orderType: orderType || "dine-in",
     customerName: customerName || null,
+    customerPhone: cust.customerPhone,
+    customerId: cust.customerId,
     grossAmount: Math.round(grossAmount * 100) / 100,
     totalDiscount: Math.round(invoiceDiscount * 100) / 100,
     taxableAmount: Math.round(taxableTotal * 100) / 100,
@@ -188,6 +198,7 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
     }
   }
 
+  if (cust.customerId) await recomputeCustomerStats(cust.customerId);
   await createAuditLog("sales_invoices", invoice.id, "create", null, { invoiceNo: finalInvoiceNo, finalAmount: invoiceFinal });
   res.status(201).json({ ...invoice, lines: finalLines });
 });
@@ -204,9 +215,22 @@ router.patch("/sales-invoices/:id", authMiddleware, async (req, res): Promise<vo
   const updates: any = {};
   const fields = ["salesDate", "invoiceNo", "invoiceTime", "orderType", "customerName", "paymentMode", "paymentReference"];
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
+
+  if (req.body.customerPhone !== undefined) {
+    const cust = await upsertCustomerFromInvoice({
+      customerName: (req.body.customerName ?? existing.customerName) || null,
+      customerPhone: req.body.customerPhone || null,
+      salesDate: existing.salesDate,
+      finalAmount: 0,
+    });
+    updates.customerPhone = cust.customerPhone;
+    updates.customerId = cust.customerId;
+  }
   updates.updatedBy = (req as any).userId;
 
   const [updated] = await db.update(salesInvoicesTable).set(updates).where(eq(salesInvoicesTable.id, id)).returning();
+  if (existing.customerId && existing.customerId !== updated.customerId) await recomputeCustomerStats(existing.customerId);
+  if (updated.customerId) await recomputeCustomerStats(updated.customerId);
   await createAuditLog("sales_invoices", id, "update", existing, updated);
   res.json(updated);
 });
@@ -236,6 +260,7 @@ router.delete("/sales-invoices/:id", authMiddleware, adminOnly, async (req, res)
 
   await db.delete(salesInvoiceLinesTable).where(eq(salesInvoiceLinesTable.invoiceId, id));
   await db.delete(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
+  if (existing.customerId) await recomputeCustomerStats(existing.customerId);
   await createAuditLog("sales_invoices", id, "delete", existing, null);
   res.json({ success: true });
 });

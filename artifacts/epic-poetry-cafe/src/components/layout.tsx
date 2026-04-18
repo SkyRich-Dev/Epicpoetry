@@ -5,7 +5,8 @@ import {
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
   FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
-  Banknote, Wallet, Store, UserCheck, CalendarDays, KeyRound, FileSpreadsheet
+  Banknote, Wallet, Store, UserCheck, CalendarDays, KeyRound, FileSpreadsheet,
+  Sparkles, UserCircle2
 } from 'lucide-react';
 import { cn, Modal, Button, Input, Label } from './ui-extras';
 
@@ -50,6 +51,8 @@ const navGroups: NavGroup[] = [
   {
     title: 'Admin',
     items: [
+      { name: 'Insights', path: '/insights', icon: Sparkles },
+      { name: 'Customers', path: '/customers', icon: UserCircle2 },
       { name: 'Analytics', path: '/analytics', icon: BarChart3, adminOnly: true },
       { name: 'Excel Upload', path: '/upload', icon: Upload },
       { name: 'Reports', path: '/reports', icon: ClipboardList, adminOnly: true },

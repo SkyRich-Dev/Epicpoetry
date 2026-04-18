@@ -9,6 +9,8 @@ export const salesInvoicesTable = pgTable("sales_invoices", {
   sourceType: text("source_type").notNull().default("manual"),
   orderType: text("order_type").notNull().default("dine-in"),
   customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  customerId: integer("customer_id"),
   grossAmount: doublePrecision("gross_amount").notNull().default(0),
   totalDiscount: doublePrecision("total_discount").notNull().default(0),
   taxableAmount: doublePrecision("taxable_amount").notNull().default(0),

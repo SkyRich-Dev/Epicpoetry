@@ -40,7 +40,7 @@ export default function Sales() {
   const [deleteConfirmInv, setDeleteConfirmInv] = useState<any>(null);
   const [invoiceForm, setInvoiceForm] = useState({
     salesDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTime: '',
-    orderType: 'dine-in', customerName: '', totalDiscount: 0, paymentMode: 'cash',
+    orderType: 'dine-in', customerName: '', customerPhone: '', totalDiscount: 0, paymentMode: 'cash',
     paymentReference: '', gstInclusive: true,
     lines: [{ menuItemId: 0, quantity: 1, gstPercent: 5 }] as { menuItemId: number; quantity: number; gstPercent: number }[],
   });
@@ -85,7 +85,7 @@ export default function Sales() {
   const openInvoiceCreate = () => {
     setInvoiceForm({
       salesDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTime: '',
-      orderType: 'dine-in', customerName: '', totalDiscount: 0, paymentMode: 'cash',
+      orderType: 'dine-in', customerName: '', customerPhone: '', totalDiscount: 0, paymentMode: 'cash',
       paymentReference: '', gstInclusive: true,
       lines: [{ menuItemId: 0, quantity: 1, gstPercent: 5 }],
     });
@@ -352,6 +352,10 @@ export default function Sales() {
             <div><Label>Order Type</Label><Select value={invoiceForm.orderType} onChange={(e: any) => setInvoiceForm(f => ({ ...f, orderType: e.target.value }))}>{ORDER_TYPES.map(t => <option key={t} value={t}>{t.replace('-', ' ').toUpperCase()}</option>)}</Select></div>
             <div><Label>Payment Mode</Label><Select value={invoiceForm.paymentMode} onChange={(e: any) => setInvoiceForm(f => ({ ...f, paymentMode: e.target.value }))}>{PAYMENT_MODES.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select></div>
             <div><Label>Customer Name</Label><Input value={invoiceForm.customerName} onChange={e => setInvoiceForm(f => ({ ...f, customerName: e.target.value }))} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+            <div><Label>Customer Phone (10 digits)</Label><Input type="tel" placeholder="9876543210" value={invoiceForm.customerPhone} onChange={e => setInvoiceForm(f => ({ ...f, customerPhone: e.target.value.replace(/\D/g, '').slice(0, 10) }))} /></div>
+            <div><Label>Payment Reference</Label><Input value={invoiceForm.paymentReference} onChange={e => setInvoiceForm(f => ({ ...f, paymentReference: e.target.value }))} placeholder="Txn / UTR / Card last 4" /></div>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Total Discount</Label><Input type="number" step="0.01" min="0" value={invoiceForm.totalDiscount} onChange={e => setInvoiceForm(f => ({ ...f, totalDiscount: Number(e.target.value) }))} /></div>
