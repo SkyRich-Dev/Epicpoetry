@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql, isNotNull, desc } from "drizzle-orm";
 import {
-  db, salesInvoicesTable, salesInvoiceLinesTable, menuItemsTable, customersTable,
+  db, salesInvoicesTable, salesInvoiceLinesTable, menuItemsTable, customersTable, categoriesTable,
 } from "@workspace/db";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, managerOrAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -217,6 +217,83 @@ router.get("/insights/segmentation", authMiddleware, async (_req, res): Promise<
     else counts.regular++;
   }
   res.json({ total: all.length, ...counts });
+});
+
+router.get("/insights/category-mix", authMiddleware, managerOrAdmin, async (req, res): Promise<void> => {
+  const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -30));
+  const toDate = (req.query.toDate as string) || fmtDate(new Date());
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+
+  const invoices = await db.select({ id: salesInvoicesTable.id }).from(salesInvoicesTable)
+    .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
+  if (invoices.length === 0) { res.json([]); return; }
+  const ids = invoices.map(i => i.id);
+
+  const lines = await db.select({
+    categoryId: menuItemsTable.categoryId,
+    categoryName: categoriesTable.name,
+    quantity: salesInvoiceLinesTable.quantity,
+    finalLineAmount: salesInvoiceLinesTable.finalLineAmount,
+  }).from(salesInvoiceLinesTable)
+    .leftJoin(menuItemsTable, eq(salesInvoiceLinesTable.menuItemId, menuItemsTable.id))
+    .leftJoin(categoriesTable, eq(menuItemsTable.categoryId, categoriesTable.id))
+    .where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.join(ids.map(i => sql`${i}`), sql`, `)})`);
+
+  const map = new Map<string, { categoryId: number | null; name: string; revenue: number; units: number; count: number }>();
+  for (const l of lines) {
+    const key = l.categoryId == null ? "uncat" : String(l.categoryId);
+    const e = map.get(key);
+    if (e) { e.revenue += l.finalLineAmount; e.units += l.quantity; e.count += l.quantity; }
+    else map.set(key, {
+      categoryId: l.categoryId ?? null,
+      name: l.categoryName ?? "Uncategorized",
+      revenue: l.finalLineAmount,
+      units: l.quantity,
+      count: l.quantity,
+    });
+  }
+  const totalRev = [...map.values()].reduce((s, x) => s + x.revenue, 0);
+  const result = [...map.values()]
+    .map(x => ({
+      categoryId: x.categoryId,
+      name: x.name,
+      category: x.name,
+      revenue: Math.round(x.revenue * 100) / 100,
+      value: Math.round(x.revenue * 100) / 100,
+      units: Math.round(x.units * 100) / 100,
+      count: Math.round(x.units * 100) / 100,
+      sharePct: totalRev > 0 ? Math.round((x.revenue / totalRev) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, limit);
+  res.json(result);
+});
+
+router.get("/insights/day-of-week", authMiddleware, managerOrAdmin, async (req, res): Promise<void> => {
+  const days = Math.min(Math.max(Number(req.query.days) || 90, 7), 365);
+  const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -(days - 1)));
+  const toDate = (req.query.toDate as string) || fmtDate(new Date());
+
+  const invoices = await db.select().from(salesInvoicesTable)
+    .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
+
+  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const buckets = names.map((n, idx) => ({ dayOfWeek: idx, name: n, label: n, revenue: 0, count: 0, invoices: 0 }));
+  for (const inv of invoices) {
+    const dow = new Date(`${inv.salesDate}T00:00:00`).getDay();
+    if (isNaN(dow)) continue;
+    const b = buckets[dow];
+    b.revenue += Number(inv.finalAmount) || 0;
+    b.count += 1;
+    b.invoices += 1;
+  }
+  const result = buckets.map(b => ({
+    ...b,
+    revenue: Math.round(b.revenue * 100) / 100,
+  }));
+  // Reorder Mon..Sun for nicer display
+  const ordered = [1, 2, 3, 4, 5, 6, 0].map(i => result[i]);
+  res.json(ordered);
 });
 
 export default router;

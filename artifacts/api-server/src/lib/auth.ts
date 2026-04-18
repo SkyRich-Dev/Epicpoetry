@@ -61,3 +61,12 @@ export function adminOnly(req: Request, res: Response, next: NextFunction): void
   }
   next();
 }
+
+export function managerOrAdmin(req: Request, res: Response, next: NextFunction): void {
+  const role = (req as any).userRole;
+  if (role !== "admin" && role !== "manager") {
+    res.status(403).json({ error: "Manager or admin access required" });
+    return;
+  }
+  next();
+}

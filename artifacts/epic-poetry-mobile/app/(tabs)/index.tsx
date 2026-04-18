@@ -171,7 +171,7 @@ export default function HomeScreen() {
             />
             <MetricCard
               label="Low stock"
-              value={formatNumber(summary.lowStockCount ?? lowStockQ.data?.length ?? 0)}
+              value={formatNumber(lowStockQ.data?.length ?? summary.lowStockCount ?? 0)}
               hint="items to reorder"
               icon="alert-triangle"
               tone="warning"

@@ -2,11 +2,32 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, ingredientsTable, stockSnapshotsTable, stockAdjustmentsTable, purchaseLinesTable, purchasesTable, wasteEntriesTable } from "@workspace/db";
 import { SaveStockSnapshotBody, CreateStockAdjustmentBody, ListStockSnapshotsQueryParams } from "@workspace/api-zod";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, managerOrAdmin } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
+
+router.get("/inventory/low-stock", authMiddleware, managerOrAdmin, async (req, res): Promise<void> => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+  const ingredients = await db.select().from(ingredientsTable).where(eq(ingredientsTable.active, true));
+  const low = ingredients
+    .filter(i => i.currentStock <= i.reorderLevel)
+    .map(i => ({
+      ingredientId: i.id,
+      ingredientName: i.name,
+      name: i.name,
+      currentStock: Math.round(i.currentStock * 1000) / 1000,
+      minStock: i.reorderLevel,
+      reorderLevel: i.reorderLevel,
+      uom: i.stockUom,
+      stockUom: i.stockUom,
+      shortage: Math.round((i.reorderLevel - i.currentStock) * 1000) / 1000,
+    }))
+    .sort((a, b) => b.shortage - a.shortage)
+    .slice(0, limit);
+  res.json(low);
+});
 
 router.get("/inventory/stock-overview", async (_req, res): Promise<void> => {
   const ingredients = await db.select().from(ingredientsTable).where(eq(ingredientsTable.active, true));
