@@ -18,6 +18,8 @@ const navGroups: NavGroup[] = [
     title: 'Overview',
     items: [
       { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+      { name: 'Insights', path: '/insights', icon: Sparkles },
+      { name: 'Decision Engine', path: '/decision', icon: Brain },
     ]
   },
   {
@@ -51,8 +53,6 @@ const navGroups: NavGroup[] = [
   {
     title: 'Admin',
     items: [
-      { name: 'Insights', path: '/insights', icon: Sparkles },
-      { name: 'Decision Engine', path: '/decision', icon: Brain },
       { name: 'Customers', path: '/customers', icon: UserCircle2 },
       { name: 'Analytics', path: '/analytics', icon: BarChart3, adminOnly: true },
       { name: 'Excel Upload', path: '/upload', icon: Upload },
