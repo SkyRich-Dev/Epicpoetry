@@ -164,9 +164,11 @@ export default function AttendancePage() {
               <tbody>
                 {loading ? (
                   <tr><td colSpan={3} className="px-6 py-12 text-center text-muted-foreground">Loading...</td></tr>
-                ) : employees.length === 0 ? (
-                  <tr><td colSpan={3} className="px-6 py-12 text-center text-muted-foreground">No active employees</td></tr>
-                ) : employees.map(emp => {
+                ) : (() => {
+                  const onLeaveIds = new Set(leaves.filter(l => l.leaveDate === date).map(l => l.employeeId));
+                  const visible = employees.filter(e => !onLeaveIds.has(e.id));
+                  if (visible.length === 0) return <tr><td colSpan={3} className="px-6 py-12 text-center text-muted-foreground">All employees are on leave today</td></tr>;
+                  return visible.map(emp => {
                   const entry = entries[emp.id] || { status: '', shiftId: null };
                   return (
                     <tr key={emp.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
@@ -192,7 +194,8 @@ export default function AttendancePage() {
                       </td>
                     </tr>
                   );
-                })}
+                });
+                })()}
               </tbody>
             </table>
           </div>

@@ -396,6 +396,8 @@ router.get("/salary-advances", authMiddleware, adminOnly, async (req, res): Prom
 router.post("/salary-advances", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { employeeId, advanceDate, amount, reason } = req.body;
   if (!employeeId || !advanceDate || !amount) { res.status(400).json({ error: "employeeId, advanceDate, amount required" }); return; }
+  const advDateErr = validateNotFutureDate(advanceDate, "Advance date");
+  if (advDateErr) { res.status(400).json({ error: advDateErr }); return; }
   const amt = Number(amount);
   if (!isFinite(amt) || amt <= 0) { res.status(400).json({ error: "amount must be positive" }); return; }
   const [advance] = await db.insert(salaryAdvancesTable).values({
