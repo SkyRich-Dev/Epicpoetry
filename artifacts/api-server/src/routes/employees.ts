@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, like } from "drizzle-orm";
-import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable, systemConfigTable } from "@workspace/db";
+import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable, salaryAdvancesTable, salaryAdjustmentsTable, systemConfigTable } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { generateCode } from "../lib/codeGenerator";
 import { createAuditLog } from "../lib/audit";
@@ -211,11 +211,9 @@ router.get("/leaves", authMiddleware, async (req, res): Promise<void> => {
   res.json(records);
 });
 
-router.post("/leaves", authMiddleware, async (req, res): Promise<void> => {
+router.post("/leaves", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { employeeId, leaveDate, leaveType, reason } = req.body;
   if (!employeeId || !leaveDate || !leaveType) { res.status(400).json({ error: "employeeId, leaveDate, leaveType required" }); return; }
-  const leaveDateErr = validateNotFutureDate(leaveDate, "Leave date");
-  if (leaveDateErr) { res.status(400).json({ error: leaveDateErr }); return; }
   const existing = await db.select().from(leavesTable).where(
     and(eq(leavesTable.employeeId, employeeId), eq(leavesTable.leaveDate, leaveDate))
   );
@@ -255,6 +253,11 @@ router.get("/salary", authMiddleware, adminOnly, async (req, res): Promise<void>
     excessWeekOffs: salaryRecordsTable.excessWeekOffs,
     absentDays: salaryRecordsTable.absentDays,
     absentPenaltyMultiplier: salaryRecordsTable.absentPenaltyMultiplier,
+    bonusAmount: salaryRecordsTable.bonusAmount,
+    incentiveAmount: salaryRecordsTable.incentiveAmount,
+    penaltyAmount: salaryRecordsTable.penaltyAmount,
+    advanceDeducted: salaryRecordsTable.advanceDeducted,
+    grossEarnings: salaryRecordsTable.grossEarnings,
     deductions: salaryRecordsTable.deductions,
     netSalary: salaryRecordsTable.netSalary,
     paymentStatus: salaryRecordsTable.paymentStatus,
@@ -282,59 +285,203 @@ router.post("/salary/generate", authMiddleware, adminOnly, async (req, res): Pro
 
   const results = [];
   for (const emp of employees) {
-    const existing = await db.select().from(salaryRecordsTable).where(
-      and(eq(salaryRecordsTable.employeeId, emp.id), eq(salaryRecordsTable.month, month), eq(salaryRecordsTable.year, year))
-    );
-    if (existing.length > 0) continue;
+    try {
+      const record = await db.transaction(async (tx) => {
+        const existing = await tx.select().from(salaryRecordsTable).where(
+          and(eq(salaryRecordsTable.employeeId, emp.id), eq(salaryRecordsTable.month, month), eq(salaryRecordsTable.year, year))
+        );
+        if (existing.length > 0) return null;
 
-    const monthStr = String(month).padStart(2, "0");
-    const datePrefix = `${year}-${monthStr}`;
-    const monthAttendance = await db.select().from(attendanceTable).where(
-      and(eq(attendanceTable.employeeId, emp.id), like(attendanceTable.attendanceDate, `${datePrefix}%`))
-    );
-    const monthLeaves = await db.select().from(leavesTable).where(
-      and(eq(leavesTable.employeeId, emp.id), like(leavesTable.leaveDate, `${datePrefix}%`))
-    );
+        const monthStr = String(month).padStart(2, "0");
+        const datePrefix = `${year}-${monthStr}`;
+        const monthAttendance = await tx.select().from(attendanceTable).where(
+          and(eq(attendanceTable.employeeId, emp.id), like(attendanceTable.attendanceDate, `${datePrefix}%`))
+        );
+        const monthLeaves = await tx.select().from(leavesTable).where(
+          and(eq(leavesTable.employeeId, emp.id), like(leavesTable.leaveDate, `${datePrefix}%`))
+        );
 
-    let presentDays = 0;
-    let halfDays = 0;
-    let weekOffs = 0;
-    let absentDays = 0;
+        let presentDays = 0;
+        let halfDays = 0;
+        let weekOffs = 0;
+        let absentDays = 0;
+        for (const a of monthAttendance) {
+          if (a.status === "present") presentDays++;
+          else if (a.status === "half-day") { halfDays++; presentDays += 0.5; }
+          else if (a.status === "week-off") weekOffs++;
+          else if (a.status === "absent") absentDays++;
+        }
+        const paidLeaves = monthLeaves.filter(l => l.leaveType === "paid").length;
+        const unpaidLeaves = monthLeaves.filter(l => l.leaveType === "unpaid").length;
+        const perDay = emp.salary / daysInMonth;
+        const paidWeekOffs = Math.min(weekOffs, allowedWeekOffs);
+        const excessWeekOffs = Math.max(0, weekOffs - allowedWeekOffs);
+        const halfDayDeduction = halfDays * 0.5 * perDay;
+        const absentDeduction = absentDays * absentMultiplier * perDay;
+        const excessWeekOffDeduction = excessWeekOffs * perDay;
+        const unpaidLeaveDeduction = unpaidLeaves * perDay;
 
-    for (const a of monthAttendance) {
-      if (a.status === "present") presentDays++;
-      else if (a.status === "half-day") { halfDays++; presentDays += 0.5; }
-      else if (a.status === "week-off") weekOffs++;
-      else if (a.status === "absent") absentDays++;
+        const monthAdjustments = await tx.select().from(salaryAdjustmentsTable).where(
+          and(eq(salaryAdjustmentsTable.employeeId, emp.id), eq(salaryAdjustmentsTable.month, month), eq(salaryAdjustmentsTable.year, year))
+        );
+        const bonusAmount = monthAdjustments.filter(a => a.type === "bonus").reduce((s, a) => s + Number(a.amount), 0);
+        const incentiveAmount = monthAdjustments.filter(a => a.type === "incentive").reduce((s, a) => s + Number(a.amount), 0);
+        const penaltyAmount = monthAdjustments.filter(a => a.type === "penalty").reduce((s, a) => s + Number(a.amount), 0);
+
+        const pendingAdvances = await tx.select().from(salaryAdvancesTable).where(
+          and(eq(salaryAdvancesTable.employeeId, emp.id), eq(salaryAdvancesTable.status, "pending"))
+        );
+        const advanceDeducted = pendingAdvances.reduce((s, a) => s + Number(a.amount), 0);
+
+        const grossEarnings = emp.salary + bonusAmount + incentiveAmount;
+        const deductions = halfDayDeduction + absentDeduction + excessWeekOffDeduction + unpaidLeaveDeduction + penaltyAmount + advanceDeducted;
+        const netSalary = Math.max(0, grossEarnings - deductions);
+
+        const [inserted] = await tx.insert(salaryRecordsTable).values({
+          employeeId: emp.id, month, year, baseSalary: emp.salary,
+          totalDaysInMonth: daysInMonth, presentDays, halfDays, paidLeaves, unpaidLeaves,
+          weekOffs, paidWeekOffs, excessWeekOffs, absentDays,
+          absentPenaltyMultiplier: absentMultiplier,
+          bonusAmount: Math.round(bonusAmount * 100) / 100,
+          incentiveAmount: Math.round(incentiveAmount * 100) / 100,
+          penaltyAmount: Math.round(penaltyAmount * 100) / 100,
+          advanceDeducted: Math.round(advanceDeducted * 100) / 100,
+          grossEarnings: Math.round(grossEarnings * 100) / 100,
+          deductions: Math.round(deductions * 100) / 100,
+          netSalary: Math.round(netSalary * 100) / 100,
+        }).returning();
+
+        for (const adv of pendingAdvances) {
+          await tx.update(salaryAdvancesTable).set({ status: "recovered", recoveredInSalaryId: inserted.id }).where(eq(salaryAdvancesTable.id, adv.id));
+        }
+        for (const adj of monthAdjustments) {
+          await tx.update(salaryAdjustmentsTable).set({ appliedToSalaryId: inserted.id }).where(eq(salaryAdjustmentsTable.id, adj.id));
+        }
+        return inserted;
+      });
+      if (record) results.push(record);
+    } catch (err: any) {
+      if (!String(err?.code || err?.message || "").includes("23505")) {
+        throw err;
+      }
     }
-
-    const paidLeaves = monthLeaves.filter(l => l.leaveType === "paid").length;
-    const unpaidLeaves = monthLeaves.filter(l => l.leaveType === "unpaid").length;
-
-    const perDay = emp.salary / daysInMonth;
-
-    const paidWeekOffs = Math.min(weekOffs, allowedWeekOffs);
-    const excessWeekOffs = Math.max(0, weekOffs - allowedWeekOffs);
-
-    const halfDayDeduction = halfDays * 0.5 * perDay;
-    const absentDeduction = absentDays * absentMultiplier * perDay;
-    const excessWeekOffDeduction = excessWeekOffs * perDay;
-    const unpaidLeaveDeduction = unpaidLeaves * perDay;
-
-    const deductions = halfDayDeduction + absentDeduction + excessWeekOffDeduction + unpaidLeaveDeduction;
-    const netSalary = Math.max(0, emp.salary - deductions);
-
-    const [record] = await db.insert(salaryRecordsTable).values({
-      employeeId: emp.id, month, year, baseSalary: emp.salary,
-      totalDaysInMonth: daysInMonth, presentDays, halfDays, paidLeaves, unpaidLeaves,
-      weekOffs, paidWeekOffs, excessWeekOffs, absentDays,
-      absentPenaltyMultiplier: absentMultiplier,
-      deductions: Math.round(deductions * 100) / 100,
-      netSalary: Math.round(netSalary * 100) / 100,
-    }).returning();
-    results.push(record);
   }
   res.json(results);
+});
+
+router.get("/salary-advances", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { employeeId, status } = req.query;
+  let query = db.select({
+    id: salaryAdvancesTable.id,
+    employeeId: salaryAdvancesTable.employeeId,
+    employeeName: employeesTable.name,
+    employeeCode: employeesTable.code,
+    advanceDate: salaryAdvancesTable.advanceDate,
+    amount: salaryAdvancesTable.amount,
+    reason: salaryAdvancesTable.reason,
+    status: salaryAdvancesTable.status,
+    recoveredInSalaryId: salaryAdvancesTable.recoveredInSalaryId,
+    createdAt: salaryAdvancesTable.createdAt,
+  }).from(salaryAdvancesTable)
+    .leftJoin(employeesTable, eq(salaryAdvancesTable.employeeId, employeesTable.id))
+    .orderBy(salaryAdvancesTable.advanceDate).$dynamic();
+  const conditions = [];
+  if (employeeId) conditions.push(eq(salaryAdvancesTable.employeeId, Number(employeeId)));
+  if (status) conditions.push(eq(salaryAdvancesTable.status, status as string));
+  if (conditions.length > 0) query = query.where(and(...conditions));
+  const records = await query;
+  res.json(records);
+});
+
+router.post("/salary-advances", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { employeeId, advanceDate, amount, reason } = req.body;
+  if (!employeeId || !advanceDate || !amount) { res.status(400).json({ error: "employeeId, advanceDate, amount required" }); return; }
+  const amt = Number(amount);
+  if (!isFinite(amt) || amt <= 0) { res.status(400).json({ error: "amount must be positive" }); return; }
+  const [advance] = await db.insert(salaryAdvancesTable).values({
+    employeeId, advanceDate, amount: amt, reason: reason || null, status: "pending", createdBy: (req as any).userId,
+  }).returning();
+  await createAuditLog("salary_advances", advance.id, "create", null, advance);
+  res.json(advance);
+});
+
+router.patch("/salary-advances/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [existing] = await db.select().from(salaryAdvancesTable).where(eq(salaryAdvancesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.status === "recovered") { res.status(400).json({ error: "Recovered advances cannot be edited" }); return; }
+  const updates: any = {};
+  if (req.body.amount !== undefined) {
+    const amt = Number(req.body.amount);
+    if (!isFinite(amt) || amt <= 0) { res.status(400).json({ error: "amount must be positive" }); return; }
+    updates.amount = amt;
+  }
+  if (req.body.advanceDate !== undefined) updates.advanceDate = req.body.advanceDate;
+  if (req.body.reason !== undefined) updates.reason = req.body.reason;
+  if (req.body.status !== undefined) {
+    if (!["pending", "cancelled"].includes(req.body.status)) { res.status(400).json({ error: "Status can only be set to pending or cancelled here; recovered is set automatically by salary generation" }); return; }
+    updates.status = req.body.status;
+  }
+  const [updated] = await db.update(salaryAdvancesTable).set(updates).where(eq(salaryAdvancesTable.id, id)).returning();
+  res.json(updated);
+});
+
+router.delete("/salary-advances/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [existing] = await db.select().from(salaryAdvancesTable).where(eq(salaryAdvancesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.status === "recovered") { res.status(400).json({ error: "Cannot delete a recovered advance" }); return; }
+  await db.delete(salaryAdvancesTable).where(eq(salaryAdvancesTable.id, id));
+  res.json({ success: true });
+});
+
+router.get("/salary-adjustments", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { employeeId, month, year, type } = req.query;
+  let query = db.select({
+    id: salaryAdjustmentsTable.id,
+    employeeId: salaryAdjustmentsTable.employeeId,
+    employeeName: employeesTable.name,
+    employeeCode: employeesTable.code,
+    month: salaryAdjustmentsTable.month,
+    year: salaryAdjustmentsTable.year,
+    type: salaryAdjustmentsTable.type,
+    amount: salaryAdjustmentsTable.amount,
+    reason: salaryAdjustmentsTable.reason,
+    appliedToSalaryId: salaryAdjustmentsTable.appliedToSalaryId,
+    createdAt: salaryAdjustmentsTable.createdAt,
+  }).from(salaryAdjustmentsTable)
+    .leftJoin(employeesTable, eq(salaryAdjustmentsTable.employeeId, employeesTable.id))
+    .orderBy(salaryAdjustmentsTable.year, salaryAdjustmentsTable.month).$dynamic();
+  const conditions = [];
+  if (employeeId) conditions.push(eq(salaryAdjustmentsTable.employeeId, Number(employeeId)));
+  if (month) conditions.push(eq(salaryAdjustmentsTable.month, Number(month)));
+  if (year) conditions.push(eq(salaryAdjustmentsTable.year, Number(year)));
+  if (type) conditions.push(eq(salaryAdjustmentsTable.type, type as string));
+  if (conditions.length > 0) query = query.where(and(...conditions));
+  const records = await query;
+  res.json(records);
+});
+
+router.post("/salary-adjustments", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { employeeId, month, year, type, amount, reason } = req.body;
+  if (!employeeId || !month || !year || !type || amount === undefined) { res.status(400).json({ error: "employeeId, month, year, type, amount required" }); return; }
+  if (!["bonus", "incentive", "penalty"].includes(type)) { res.status(400).json({ error: "type must be bonus, incentive, or penalty" }); return; }
+  const amt = Number(amount);
+  if (!isFinite(amt) || amt <= 0) { res.status(400).json({ error: "amount must be positive" }); return; }
+  const [adjustment] = await db.insert(salaryAdjustmentsTable).values({
+    employeeId, month, year, type, amount: amt, reason: reason || null, createdBy: (req as any).userId,
+  }).returning();
+  await createAuditLog("salary_adjustments", adjustment.id, "create", null, adjustment);
+  res.json(adjustment);
+});
+
+router.delete("/salary-adjustments/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [existing] = await db.select().from(salaryAdjustmentsTable).where(eq(salaryAdjustmentsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.appliedToSalaryId) { res.status(400).json({ error: "Cannot delete an adjustment already applied to a salary record" }); return; }
+  await db.delete(salaryAdjustmentsTable).where(eq(salaryAdjustmentsTable.id, id));
+  res.json({ success: true });
 });
 
 router.patch("/salary/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
@@ -382,9 +529,21 @@ router.post("/salary/:id/upload-proof", authMiddleware, adminOnly, proofUpload.s
 
 router.delete("/salary/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  const [record] = await db.delete(salaryRecordsTable).where(eq(salaryRecordsTable.id, id)).returning();
-  if (!record) { res.status(404).json({ error: "Not found" }); return; }
-  res.json({ success: true });
+  await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(salaryRecordsTable).where(eq(salaryRecordsTable.id, id));
+    if (!existing) throw new Error("NOT_FOUND");
+    await tx.update(salaryAdvancesTable)
+      .set({ status: "pending", recoveredInSalaryId: null })
+      .where(eq(salaryAdvancesTable.recoveredInSalaryId, id));
+    await tx.update(salaryAdjustmentsTable)
+      .set({ appliedToSalaryId: null })
+      .where(eq(salaryAdjustmentsTable.appliedToSalaryId, id));
+    await tx.delete(salaryRecordsTable).where(eq(salaryRecordsTable.id, id));
+  }).then(() => res.json({ success: true }))
+    .catch((err) => {
+      if (err?.message === "NOT_FOUND") res.status(404).json({ error: "Not found" });
+      else res.status(500).json({ error: err?.message || "Delete failed" });
+    });
 });
 
 export default router;

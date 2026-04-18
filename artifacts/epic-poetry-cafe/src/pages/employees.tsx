@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { PageHeader, Button, Input, Label, Modal, formatCurrency } from '../components/ui-extras';
-import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee, CheckCircle2, Circle, Upload, ExternalLink, Settings2, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee, CheckCircle2, Circle, Upload, ExternalLink, Settings2, Info, Wallet, Gift, AlertOctagon, TrendingUp } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -23,8 +23,20 @@ type SalaryRecord = {
   presentDays: number; halfDays: number; paidLeaves: number; unpaidLeaves: number;
   weekOffs: number; paidWeekOffs: number; excessWeekOffs: number;
   absentDays: number; absentPenaltyMultiplier: number;
+  bonusAmount?: number; incentiveAmount?: number; penaltyAmount?: number;
+  advanceDeducted?: number; grossEarnings?: number;
   deductions: number; netSalary: number;
   paymentStatus: string; paymentProofUrl?: string | null; paidAt?: string | null; paidBy?: number | null;
+};
+type SalaryAdvance = {
+  id: number; employeeId: number; employeeName: string; employeeCode: string;
+  advanceDate: string; amount: number; reason: string | null;
+  status: string; recoveredInSalaryId: number | null;
+};
+type SalaryAdjustment = {
+  id: number; employeeId: number; employeeName: string; employeeCode: string;
+  month: number; year: number; type: string; amount: number; reason: string | null;
+  appliedToSalaryId: number | null;
 };
 
 const POSITIONS = ['Barista', 'Chef', 'Cashier', 'Waiter', 'Manager', 'Helper', 'Cleaner', 'Delivery Boy', 'Other'];
@@ -56,6 +68,14 @@ export default function EmployeesPage() {
   const [salarySettings, setSalarySettings] = useState({ allowedWeekOffsPerMonth: 4, absentPenaltyMultiplier: 1 });
   const [detailRecord, setDetailRecord] = useState<SalaryRecord | null>(null);
 
+  const [salarySubTab, setSalarySubTab] = useState<'records' | 'advances' | 'adjustments'>('records');
+  const [advances, setAdvances] = useState<SalaryAdvance[]>([]);
+  const [adjustments, setAdjustments] = useState<SalaryAdjustment[]>([]);
+  const [advanceModal, setAdvanceModal] = useState(false);
+  const [advanceForm, setAdvanceForm] = useState({ employeeId: '', advanceDate: new Date().toISOString().split('T')[0], amount: '', reason: '' });
+  const [adjustmentModal, setAdjustmentModal] = useState(false);
+  const [adjustmentForm, setAdjustmentForm] = useState({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), type: 'bonus' as 'bonus' | 'incentive' | 'penalty', amount: '', reason: '' });
+
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try { const data = await apiFetch('employees'); setEmployees(data); } catch { }
@@ -70,6 +90,76 @@ export default function EmployeesPage() {
     try { const data = await apiFetch('salary'); setSalaryRecords(data); } catch { }
   }, []);
 
+  const loadAdvances = useCallback(async () => {
+    try { const data = await apiFetch('salary-advances'); setAdvances(data); } catch { }
+  }, []);
+
+  const loadAdjustments = useCallback(async () => {
+    try { const data = await apiFetch('salary-adjustments'); setAdjustments(data); } catch { }
+  }, []);
+
+  const saveAdvance = async () => {
+    if (!advanceForm.employeeId || !advanceForm.advanceDate || !advanceForm.amount) {
+      toast({ title: 'Error', description: 'Employee, date and amount required', variant: 'destructive' }); return;
+    }
+    const amt = Number(advanceForm.amount);
+    if (!isFinite(amt) || amt <= 0) { toast({ title: 'Error', description: 'Amount must be positive', variant: 'destructive' }); return; }
+    try {
+      await apiFetch('salary-advances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: Number(advanceForm.employeeId), advanceDate: advanceForm.advanceDate, amount: amt, reason: advanceForm.reason || null }),
+      });
+      toast({ title: 'Advance recorded' });
+      setAdvanceModal(false);
+      setAdvanceForm({ employeeId: '', advanceDate: new Date().toISOString().split('T')[0], amount: '', reason: '' });
+      loadAdvances();
+    } catch (err: any) { toast({ title: 'Error', description: err?.message || 'Could not save advance', variant: 'destructive' }); }
+  };
+
+  const deleteAdvance = async (id: number) => {
+    if (!confirm('Delete this advance?')) return;
+    try {
+      await apiFetch(`salary-advances/${id}`, { method: 'DELETE' });
+      toast({ title: 'Advance deleted' }); loadAdvances();
+    } catch (err: any) { toast({ title: 'Error', description: err?.message || 'Cannot delete', variant: 'destructive' }); }
+  };
+
+  const cancelAdvance = async (id: number) => {
+    if (!confirm('Cancel this advance? It will not be deducted from any future salary.')) return;
+    try {
+      await apiFetch(`salary-advances/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'cancelled' }) });
+      toast({ title: 'Advance cancelled' }); loadAdvances();
+    } catch (err: any) { toast({ title: 'Error', description: err?.message || 'Cannot cancel', variant: 'destructive' }); }
+  };
+
+  const saveAdjustment = async () => {
+    if (!adjustmentForm.employeeId || !adjustmentForm.amount) {
+      toast({ title: 'Error', description: 'Employee and amount required', variant: 'destructive' }); return;
+    }
+    const amt = Number(adjustmentForm.amount);
+    if (!isFinite(amt) || amt <= 0) { toast({ title: 'Error', description: 'Amount must be positive', variant: 'destructive' }); return; }
+    try {
+      await apiFetch('salary-adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: Number(adjustmentForm.employeeId), month: adjustmentForm.month, year: adjustmentForm.year, type: adjustmentForm.type, amount: amt, reason: adjustmentForm.reason || null }),
+      });
+      toast({ title: `${adjustmentForm.type.charAt(0).toUpperCase() + adjustmentForm.type.slice(1)} recorded` });
+      setAdjustmentModal(false);
+      setAdjustmentForm({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), type: 'bonus', amount: '', reason: '' });
+      loadAdjustments();
+    } catch (err: any) { toast({ title: 'Error', description: err?.message || 'Could not save', variant: 'destructive' }); }
+  };
+
+  const deleteAdjustment = async (id: number) => {
+    if (!confirm('Delete this adjustment?')) return;
+    try {
+      await apiFetch(`salary-adjustments/${id}`, { method: 'DELETE' });
+      toast({ title: 'Adjustment deleted' }); loadAdjustments();
+    } catch (err: any) { toast({ title: 'Error', description: err?.message || 'Cannot delete', variant: 'destructive' }); }
+  };
+
   const loadConfig = useCallback(async () => {
     try {
       const data = await apiFetch('config');
@@ -83,8 +173,8 @@ export default function EmployeesPage() {
   useEffect(() => {
     loadEmployees();
     loadShifts();
-    if (isAdmin) { loadSalary(); loadConfig(); }
-  }, [loadEmployees, loadShifts, loadSalary, loadConfig, isAdmin]);
+    if (isAdmin) { loadSalary(); loadConfig(); loadAdvances(); loadAdjustments(); }
+  }, [loadEmployees, loadShifts, loadSalary, loadConfig, loadAdvances, loadAdjustments, isAdmin]);
 
   const saveEmployee = async () => {
     if (!empForm.name || !empForm.position) { toast({ title: 'Error', description: 'Name and position required', variant: 'destructive' }); return; }
@@ -370,16 +460,36 @@ export default function EmployeesPage() {
               <div className="text-sm text-blue-800">
                 <p className="font-semibold mb-1">Salary Calculation Rules</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  <div><span className="font-medium">Present:</span> Full day salary</div>
+                  <div><span className="font-medium">Present (P):</span> Full day salary</div>
                   <div><span className="font-medium">Half Day:</span> Half day salary</div>
                   <div><span className="font-medium">Week Off:</span> Full day salary (up to limit)</div>
-                  <div><span className="font-medium">Absent:</span> No salary ({salarySettings.absentPenaltyMultiplier}x penalty)</div>
+                  <div><span className="font-medium">Absent (A):</span> No salary ({salarySettings.absentPenaltyMultiplier}x penalty)</div>
+                  <div><span className="font-medium">Paid Leave:</span> Full day salary</div>
+                  <div><span className="font-medium">Unpaid Leave:</span> No salary</div>
+                  <div><span className="font-medium">Bonus / Incentive:</span> Added to gross</div>
+                  <div><span className="font-medium">Penalty / Advance:</span> Deducted from net</div>
                 </div>
-                <p className="mt-1 text-xs">Allowed week-offs: <span className="font-semibold">{salarySettings.allowedWeekOffsPerMonth}/month</span>. Excess week-offs are deducted like absent days.</p>
+                <p className="mt-1 text-xs">Allowed week-offs: <span className="font-semibold">{salarySettings.allowedWeekOffsPerMonth}/month</span>. Pending advances are recovered when salary is generated. Leaves can be marked in advance.</p>
               </div>
             </div>
           </div>
 
+          <div className="flex gap-1 mb-4 bg-muted/60 rounded-xl p-1 w-fit">
+            <button onClick={() => setSalarySubTab('records')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${salarySubTab === 'records' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              <IndianRupee size={15} /> Salary Records
+            </button>
+            <button onClick={() => setSalarySubTab('advances')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${salarySubTab === 'advances' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              <Wallet size={15} /> Advances
+              {advances.filter(a => a.status === 'pending').length > 0 && (
+                <span className="bg-amber-100 text-amber-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">{advances.filter(a => a.status === 'pending').length}</span>
+              )}
+            </button>
+            <button onClick={() => setSalarySubTab('adjustments')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${salarySubTab === 'adjustments' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              <Gift size={15} /> Bonuses / Penalties
+            </button>
+          </div>
+
+        {salarySubTab === 'records' && (<div>
           <div className="flex flex-wrap gap-3 items-end mb-4">
             <div>
               <Label>Month</Label>
@@ -479,6 +589,162 @@ export default function EmployeesPage() {
               </tbody>
             </table>
           </div>
+        </div>)}
+
+        {salarySubTab === 'advances' && (<div>
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">Pending advances are automatically deducted when salary is generated.</p>
+            <Button onClick={() => setAdvanceModal(true)}><Wallet size={16} className="mr-2" /> Record Advance</Button>
+          </div>
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
+            <table className="w-full">
+              <thead><tr className="border-b">
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Employee</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Amount</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Reason</th>
+                <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
+                <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>
+              </tr></thead>
+              <tbody>
+                {advances.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No advances recorded</td></tr>
+                ) : advances.map(a => (
+                  <tr key={a.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
+                    <td className="px-4 py-3 font-mono text-sm">{a.advanceDate}</td>
+                    <td className="px-4 py-3"><div className="font-medium">{a.employeeName}</div><div className="text-xs text-muted-foreground">{a.employeeCode}</div></td>
+                    <td className="px-4 py-3 text-right font-numbers font-semibold">{formatCurrency(a.amount)}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{a.reason || '-'}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${
+                        a.status === 'pending' ? 'bg-amber-100 text-amber-700'
+                        : a.status === 'recovered' ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-gray-100 text-gray-500'
+                      }`}>{a.status}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {a.status === 'pending' && (
+                          <button onClick={() => cancelAdvance(a.id)} title="Cancel advance" className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors text-muted-foreground hover:text-amber-600 text-xs">Cancel</button>
+                        )}
+                        {a.status !== 'recovered' && (
+                          <button onClick={() => deleteAdvance(a.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>)}
+
+        {salarySubTab === 'adjustments' && (<div>
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">Bonuses and incentives are added to gross. Penalties are deducted. Applied during salary generation for the chosen month.</p>
+            <Button onClick={() => setAdjustmentModal(true)}><Gift size={16} className="mr-2" /> Add Adjustment</Button>
+          </div>
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
+            <table className="w-full">
+              <thead><tr className="border-b">
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Period</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Employee</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Type</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Amount</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Reason</th>
+                <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
+                <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>
+              </tr></thead>
+              <tbody>
+                {adjustments.length === 0 ? (
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">No bonuses, incentives or penalties recorded</td></tr>
+                ) : adjustments.map(adj => (
+                  <tr key={adj.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
+                    <td className="px-4 py-3 text-sm">{MONTHS[adj.month - 1]} {adj.year}</td>
+                    <td className="px-4 py-3"><div className="font-medium">{adj.employeeName}</div><div className="text-xs text-muted-foreground">{adj.employeeCode}</div></td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium ${
+                        adj.type === 'bonus' ? 'bg-emerald-100 text-emerald-700'
+                        : adj.type === 'incentive' ? 'bg-blue-100 text-blue-700'
+                        : 'bg-red-100 text-red-700'
+                      }`}>
+                        {adj.type === 'bonus' ? <Gift size={11} /> : adj.type === 'incentive' ? <TrendingUp size={11} /> : <AlertOctagon size={11} />}
+                        {adj.type}
+                      </span>
+                    </td>
+                    <td className={`px-4 py-3 text-right font-numbers font-semibold ${adj.type === 'penalty' ? 'text-red-600' : 'text-emerald-700'}`}>
+                      {adj.type === 'penalty' ? '-' : '+'}{formatCurrency(adj.amount)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{adj.reason || '-'}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${adj.appliedToSalaryId ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {adj.appliedToSalaryId ? 'applied' : 'pending'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {!adj.appliedToSalaryId && (
+                        <button onClick={() => deleteAdjustment(adj.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>)}
+
+          <Modal isOpen={advanceModal} onClose={() => setAdvanceModal(false)} title="Record Salary Advance">
+            <div className="space-y-5">
+              <div><Label>Employee *</Label>
+                <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={advanceForm.employeeId} onChange={e => setAdvanceForm({ ...advanceForm, employeeId: e.target.value })}>
+                  <option value="">Select employee</option>
+                  {employees.filter(e => e.active !== false).map(e => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}
+                </select>
+              </div>
+              <div><Label>Date *</Label><Input type="date" value={advanceForm.advanceDate} onChange={e => setAdvanceForm({ ...advanceForm, advanceDate: e.target.value })} /></div>
+              <div><Label>Amount *</Label><Input type="number" min="0" step="0.01" value={advanceForm.amount} onChange={e => setAdvanceForm({ ...advanceForm, amount: e.target.value })} placeholder="0.00" /></div>
+              <div><Label>Reason</Label><Input value={advanceForm.reason} onChange={e => setAdvanceForm({ ...advanceForm, reason: e.target.value })} placeholder="e.g. Medical, festival" /></div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                This amount will be deducted from the employee's next generated salary.
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button onClick={saveAdvance} className="flex-1">Save Advance</Button>
+                <Button variant="outline" onClick={() => setAdvanceModal(false)} className="flex-1">Cancel</Button>
+              </div>
+            </div>
+          </Modal>
+
+          <Modal isOpen={adjustmentModal} onClose={() => setAdjustmentModal(false)} title="Add Bonus / Incentive / Penalty">
+            <div className="space-y-5">
+              <div><Label>Employee *</Label>
+                <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={adjustmentForm.employeeId} onChange={e => setAdjustmentForm({ ...adjustmentForm, employeeId: e.target.value })}>
+                  <option value="">Select employee</option>
+                  {employees.filter(e => e.active !== false).map(e => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Month</Label>
+                  <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={adjustmentForm.month} onChange={e => setAdjustmentForm({ ...adjustmentForm, month: Number(e.target.value) })}>
+                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+                <div><Label>Year</Label><Input type="number" value={adjustmentForm.year} onChange={e => setAdjustmentForm({ ...adjustmentForm, year: Number(e.target.value) })} /></div>
+              </div>
+              <div><Label>Type *</Label>
+                <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={adjustmentForm.type} onChange={e => setAdjustmentForm({ ...adjustmentForm, type: e.target.value as any })}>
+                  <option value="bonus">Bonus (added to salary)</option>
+                  <option value="incentive">Incentive (added to salary)</option>
+                  <option value="penalty">Penalty (deducted from salary)</option>
+                </select>
+              </div>
+              <div><Label>Amount *</Label><Input type="number" min="0" step="0.01" value={adjustmentForm.amount} onChange={e => setAdjustmentForm({ ...adjustmentForm, amount: e.target.value })} placeholder="0.00" /></div>
+              <div><Label>Reason</Label><Input value={adjustmentForm.reason} onChange={e => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} placeholder="e.g. Diwali bonus, late penalty" /></div>
+              <div className="flex gap-3 pt-2">
+                <Button onClick={saveAdjustment} className="flex-1">Save</Button>
+                <Button variant="outline" onClick={() => setAdjustmentModal(false)} className="flex-1">Cancel</Button>
+              </div>
+            </div>
+          </Modal>
 
           <Modal isOpen={salarySettingsModal} onClose={() => setSalarySettingsModal(false)} title="Salary Calculation Settings">
             <div className="space-y-5">
@@ -505,6 +771,11 @@ export default function EmployeesPage() {
               const paidWO = detailRecord.paidWeekOffs || detailRecord.weekOffs;
               const excessWO = detailRecord.excessWeekOffs || 0;
               const mult = detailRecord.absentPenaltyMultiplier || 1;
+              const bonus = detailRecord.bonusAmount || 0;
+              const incentive = detailRecord.incentiveAmount || 0;
+              const penalty = detailRecord.penaltyAmount || 0;
+              const advance = detailRecord.advanceDeducted || 0;
+              const gross = detailRecord.grossEarnings || (detailRecord.baseSalary + bonus + incentive);
               return (
                 <div className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
@@ -518,46 +789,85 @@ export default function EmployeesPage() {
                     </div>
                   </div>
 
-                  <div className="border rounded-lg divide-y">
-                    <div className="px-4 py-2.5 flex justify-between text-sm">
-                      <span>Present Days ({detailRecord.presentDays} days x full rate)</span>
-                      <span className="font-numbers text-emerald-700">+{formatCurrency(detailRecord.presentDays * perDay)}</span>
-                    </div>
-                    <div className="px-4 py-2.5 flex justify-between text-sm">
-                      <span>Half Days ({detailRecord.halfDays} days x half rate)</span>
-                      <span className="font-numbers text-amber-600">-{formatCurrency(detailRecord.halfDays * 0.5 * perDay)}</span>
-                    </div>
-                    <div className="px-4 py-2.5 flex justify-between text-sm">
-                      <span>Paid Week-Offs ({paidWO} days x full rate)</span>
-                      <span className="font-numbers text-emerald-700">+{formatCurrency(paidWO * perDay)}</span>
-                    </div>
-                    {excessWO > 0 && (
-                      <div className="px-4 py-2.5 flex justify-between text-sm bg-red-50">
-                        <span className="text-red-700">Excess Week-Offs ({excessWO} days x 1 day rate)</span>
-                        <span className="font-numbers text-red-600">-{formatCurrency(excessWO * perDay)}</span>
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Attendance breakdown</div>
+                    <div className="border rounded-lg divide-y">
+                      <div className="px-4 py-2.5 flex justify-between text-sm">
+                        <span>Present Days ({detailRecord.presentDays} days × full rate)</span>
+                        <span className="font-numbers text-emerald-700">+{formatCurrency(detailRecord.presentDays * perDay)}</span>
                       </div>
-                    )}
-                    <div className="px-4 py-2.5 flex justify-between text-sm">
-                      <span>Paid Leaves ({detailRecord.paidLeaves} days)</span>
-                      <span className="font-numbers text-emerald-700">No deduction</span>
-                    </div>
-                    <div className="px-4 py-2.5 flex justify-between text-sm">
-                      <span>Unpaid Leaves ({detailRecord.unpaidLeaves} days x 1 day rate)</span>
-                      <span className="font-numbers text-red-600">-{formatCurrency(detailRecord.unpaidLeaves * perDay)}</span>
-                    </div>
-                    <div className="px-4 py-2.5 flex justify-between text-sm">
-                      <span>Absent ({detailRecord.absentDays} days x {mult}x penalty)</span>
-                      <span className="font-numbers text-red-600">-{formatCurrency(detailRecord.absentDays * mult * perDay)}</span>
+                      <div className="px-4 py-2.5 flex justify-between text-sm">
+                        <span>Half Days ({detailRecord.halfDays} days × half rate)</span>
+                        <span className="font-numbers text-amber-600">-{formatCurrency(detailRecord.halfDays * 0.5 * perDay)}</span>
+                      </div>
+                      <div className="px-4 py-2.5 flex justify-between text-sm">
+                        <span>Paid Week-Offs ({paidWO} days × full rate)</span>
+                        <span className="font-numbers text-emerald-700">+{formatCurrency(paidWO * perDay)}</span>
+                      </div>
+                      {excessWO > 0 && (
+                        <div className="px-4 py-2.5 flex justify-between text-sm bg-red-50">
+                          <span className="text-red-700">Excess Week-Offs ({excessWO} days × 1 day rate)</span>
+                          <span className="font-numbers text-red-600">-{formatCurrency(excessWO * perDay)}</span>
+                        </div>
+                      )}
+                      <div className="px-4 py-2.5 flex justify-between text-sm">
+                        <span>Paid Leaves ({detailRecord.paidLeaves} days)</span>
+                        <span className="font-numbers text-emerald-700">No deduction</span>
+                      </div>
+                      <div className="px-4 py-2.5 flex justify-between text-sm">
+                        <span>Unpaid Leaves ({detailRecord.unpaidLeaves} days × 1 day rate)</span>
+                        <span className="font-numbers text-red-600">-{formatCurrency(detailRecord.unpaidLeaves * perDay)}</span>
+                      </div>
+                      <div className="px-4 py-2.5 flex justify-between text-sm">
+                        <span>Absent ({detailRecord.absentDays} days × {mult}× penalty)</span>
+                        <span className="font-numbers text-red-600">-{formatCurrency(detailRecord.absentDays * mult * perDay)}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="border-t-2 border-foreground/20 pt-3 flex justify-between items-center">
+                  {(bonus > 0 || incentive > 0 || penalty > 0 || advance > 0) && (
                     <div>
-                      <div className="text-sm text-muted-foreground">Total Deductions</div>
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Adjustments &amp; advances</div>
+                      <div className="border rounded-lg divide-y">
+                        {bonus > 0 && (
+                          <div className="px-4 py-2.5 flex justify-between text-sm bg-emerald-50">
+                            <span className="text-emerald-800">Bonus</span>
+                            <span className="font-numbers text-emerald-700">+{formatCurrency(bonus)}</span>
+                          </div>
+                        )}
+                        {incentive > 0 && (
+                          <div className="px-4 py-2.5 flex justify-between text-sm bg-blue-50">
+                            <span className="text-blue-800">Incentive</span>
+                            <span className="font-numbers text-blue-700">+{formatCurrency(incentive)}</span>
+                          </div>
+                        )}
+                        {penalty > 0 && (
+                          <div className="px-4 py-2.5 flex justify-between text-sm bg-red-50">
+                            <span className="text-red-800">Penalty</span>
+                            <span className="font-numbers text-red-600">-{formatCurrency(penalty)}</span>
+                          </div>
+                        )}
+                        {advance > 0 && (
+                          <div className="px-4 py-2.5 flex justify-between text-sm bg-amber-50">
+                            <span className="text-amber-800">Advance recovered</span>
+                            <span className="font-numbers text-amber-700">-{formatCurrency(advance)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="border-t-2 border-foreground/20 pt-3 grid grid-cols-3 gap-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Gross Earnings</div>
+                      <div className="font-semibold font-numbers">{formatCurrency(gross)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Total Deductions</div>
                       <div className="font-semibold font-numbers text-red-600">{formatCurrency(detailRecord.deductions)}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm text-muted-foreground">Net Salary</div>
+                      <div className="text-xs text-muted-foreground">Net Salary</div>
                       <div className="text-xl font-bold font-numbers text-emerald-700">{formatCurrency(detailRecord.netSalary)}</div>
                     </div>
                   </div>
