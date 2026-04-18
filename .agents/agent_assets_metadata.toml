@@ -24,3 +24,9 @@ id = "FPMma-y7M-Ak0YLcOC27h"
 uri = "file://docs/DEVELOPER_GUIDE.docx"
 type = "word_document"
 title = "Developer Guide - Epic Poetry Cafe (Word)"
+
+[[outputs]]
+id = "uILC1LAwrCvMMCm8YfnPO"
+uri = "file://exports/Epic-Poetry-Cafe-User-Guide.docx"
+type = "word_document"
+title = "Epic Poetry Cafe — User Guide & Feature Reference"
