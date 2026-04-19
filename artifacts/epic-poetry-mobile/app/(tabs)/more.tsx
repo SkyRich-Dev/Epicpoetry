@@ -193,7 +193,7 @@ export default function MoreScreen() {
           marginTop: 8,
         }}
       >
-        Epic Poetry Cafe · Mobile · v1.0
+        Platr · Mobile · v1.0
       </Text>
     </ScrollView>
   );

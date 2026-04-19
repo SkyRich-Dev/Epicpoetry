@@ -133,7 +133,7 @@ export default function HomeScreen() {
       <HeroBanner
         greeting={greeting}
         name={user?.fullName || user?.username || "there"}
-        subtitle={`Here is how the cafe is doing today, ${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}.`}
+        subtitle={`Here is how Platr looks today, ${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}.`}
       />
 
       {summaryQ.isLoading ? (

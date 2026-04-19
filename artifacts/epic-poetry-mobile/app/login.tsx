@@ -3,6 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -71,16 +72,19 @@ export default function LoginScreen() {
       >
         <View
           style={{
-            width: 56,
-            height: 56,
-            borderRadius: 18,
-            backgroundColor: "rgba(255,255,255,0.12)",
-            alignItems: "center",
-            justifyContent: "center",
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 16,
+            backgroundColor: "rgba(255,255,255,0.95)",
+            alignSelf: "flex-start",
             marginBottom: 18,
           }}
         >
-          <Feather name="coffee" size={26} color="#FBE9D6" />
+          <Image
+            source={require("@/assets/images/platr-logo.png")}
+            resizeMode="contain"
+            style={{ width: 110, height: 32 }}
+          />
         </View>
         <Text
           style={{
@@ -91,7 +95,7 @@ export default function LoginScreen() {
             textTransform: "uppercase",
           }}
         >
-          Epic Poetry Cafe
+          Platr · Cafe operations
         </Text>
         <Text
           style={{
@@ -113,7 +117,7 @@ export default function LoginScreen() {
             fontFamily: "Inter_400Regular",
           }}
         >
-          Run the cafe from your pocket — sales, stock, and decisions in one place.
+          Run your cafe from your pocket — sales, stock, and decisions in one place.
         </Text>
       </LinearGradient>
 
