@@ -25,10 +25,11 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const [{ default: app }, { logger }, { seed }] = await Promise.all([
+const [{ default: app }, { logger }, { seed }, { startNotificationScheduler }] = await Promise.all([
   import("./app"),
   import("./lib/logger"),
   import("./seed"),
+  import("./lib/notificationScheduler"),
 ]);
 
 seed().then(() => {
@@ -39,6 +40,7 @@ seed().then(() => {
     }
 
     logger.info({ port }, "Server listening");
+    startNotificationScheduler();
   });
 }).catch((err) => {
   logger.error({ err }, "Seed failed");

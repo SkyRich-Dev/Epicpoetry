@@ -29,6 +29,7 @@ import customersRouter from "./customers";
 import insightsRouter from "./insights";
 import decisionRouter from "./decision";
 import rolesRouter from "./roles";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -62,5 +63,6 @@ router.use(customersRouter);
 router.use(insightsRouter);
 router.use(decisionRouter);
 router.use(rolesRouter);
+router.use(notificationsRouter);
 
 export default router;

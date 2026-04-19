@@ -20,3 +20,4 @@ export * from "./salesInvoices";
 export * from "./posIntegrations";
 export * from "./customers";
 export * from "./roles";
+export * from "./notifications";

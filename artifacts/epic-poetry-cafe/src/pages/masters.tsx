@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, formatDate } from '../components/ui-extras';
-import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, AlertTriangle, CheckCircle2, Trash } from 'lucide-react';
+import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, AlertTriangle, CheckCircle2, Trash, Bell, Mail, Send, Play, Power } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
@@ -10,6 +10,7 @@ const TABS = [
   { id: 'config', label: 'Categories & Config', icon: FolderCog },
   { id: 'users', label: 'User Management', icon: UserCog },
   { id: 'roles', label: 'Roles & Permissions', icon: Shield },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'pos', label: 'POS & Integrations', icon: Plug },
   { id: 'audit', label: 'Audit Logs', icon: ScrollText },
 ] as const;
@@ -1388,8 +1389,452 @@ export default function Masters() {
       {activeTab === 'config' && <CategoriesConfigTab />}
       {activeTab === 'users' && <UsersTab />}
       {activeTab === 'roles' && <RolesTab />}
+      {activeTab === 'notifications' && <NotificationsTab />}
       {activeTab === 'pos' && <POSIntegrationsTab />}
       {activeTab === 'audit' && <AuditLogsTab />}
+    </div>
+  );
+}
+
+// ============================================================
+// Notifications & Mail Setup
+// ============================================================
+type MailConfig = {
+  id: number | null;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  hasPassword: boolean;
+  fromEmail: string;
+  fromName: string;
+  secure: boolean;
+  enabled: boolean;
+};
+type AlertTypeDef = { type: string; label: string; description: string; defaultThreshold?: Record<string, number | string> };
+type ScheduleDef = { id: string; label: string };
+type NotificationRule = {
+  id: number;
+  name: string;
+  type: string;
+  schedule: string;
+  recipients: string[];
+  threshold: Record<string, number | string> | null;
+  enabled: boolean;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+type NotificationLog = {
+  id: number;
+  ruleId: number | null;
+  ruleName: string;
+  type: string;
+  status: string;
+  subject: string | null;
+  recipientsCount: number;
+  recipients: string[] | null;
+  error: string | null;
+  trigger: string;
+  sentAt: string;
+};
+
+function NotificationsTab() {
+  const { toast } = useToast();
+  const [section, setSection] = useState<'mail' | 'rules' | 'logs'>('mail');
+  const [mail, setMail] = useState<MailConfig | null>(null);
+  const [mailSaving, setMailSaving] = useState(false);
+  const [testTo, setTestTo] = useState('');
+  const [testSending, setTestSending] = useState(false);
+  const [types, setTypes] = useState<AlertTypeDef[]>([]);
+  const [schedules, setSchedules] = useState<ScheduleDef[]>([]);
+  const [rules, setRules] = useState<NotificationRule[]>([]);
+  const [logs, setLogs] = useState<NotificationLog[]>([]);
+  const [editing, setEditing] = useState<NotificationRule | null>(null);
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [deleteRule, setDeleteRule] = useState<NotificationRule | null>(null);
+
+  const loadAll = useCallback(async () => {
+    try {
+      const [m, t, r, l] = await Promise.all([
+        customFetch<MailConfig>('/api/mail-config'),
+        customFetch<{ types: AlertTypeDef[]; schedules: ScheduleDef[] }>('/api/notification-types'),
+        customFetch<NotificationRule[]>('/api/notification-rules'),
+        customFetch<NotificationLog[]>('/api/notification-logs'),
+      ]);
+      setMail(m);
+      setTypes(t.types);
+      setSchedules(t.schedules);
+      setRules(r);
+      setLogs(l);
+    } catch (e: any) {
+      toast({ title: 'Failed to load notifications', description: e?.message || String(e), variant: 'destructive' as any });
+    }
+  }, [toast]);
+
+  useEffect(() => { void loadAll(); }, [loadAll]);
+
+  const saveMail = async () => {
+    if (!mail) return;
+    setMailSaving(true);
+    try {
+      const updated = await customFetch<MailConfig>('/api/mail-config', { method: 'PUT', body: JSON.stringify(mail) });
+      setMail(updated);
+      toast({ title: 'Mail settings saved' });
+    } catch (e: any) {
+      toast({ title: 'Save failed', description: e?.message || String(e), variant: 'destructive' as any });
+    } finally {
+      setMailSaving(false);
+    }
+  };
+
+  const sendTest = async () => {
+    if (!testTo) { toast({ title: 'Enter a recipient email' }); return; }
+    setTestSending(true);
+    try {
+      await customFetch('/api/mail-config/test', { method: 'POST', body: JSON.stringify({ to: testTo }) });
+      toast({ title: 'Test email sent', description: `Sent to ${testTo}` });
+      void loadAll();
+    } catch (e: any) {
+      toast({ title: 'Test failed', description: e?.message || String(e), variant: 'destructive' as any });
+    } finally {
+      setTestSending(false);
+    }
+  };
+
+  const openNewRule = () => {
+    const defaultType = types[0];
+    setEditing({
+      id: 0,
+      name: '',
+      type: defaultType?.type ?? 'low_stock',
+      schedule: 'daily_morning',
+      recipients: [],
+      threshold: defaultType?.defaultThreshold ?? null,
+      enabled: true,
+      lastRunAt: null, lastStatus: null, lastError: null,
+      createdAt: '', updatedAt: '',
+    });
+    setShowRuleModal(true);
+  };
+  const openEdit = (r: NotificationRule) => { setEditing({ ...r }); setShowRuleModal(true); };
+
+  const saveRule = async () => {
+    if (!editing) return;
+    if (!editing.name.trim()) { toast({ title: 'Name required' }); return; }
+    if (editing.recipients.length === 0) { toast({ title: 'Add at least one recipient' }); return; }
+    try {
+      const body = JSON.stringify({
+        name: editing.name, type: editing.type, schedule: editing.schedule,
+        recipients: editing.recipients, threshold: editing.threshold, enabled: editing.enabled,
+      });
+      if (editing.id === 0) {
+        await customFetch('/api/notification-rules', { method: 'POST', body });
+        toast({ title: 'Rule created' });
+      } else {
+        await customFetch(`/api/notification-rules/${editing.id}`, { method: 'PATCH', body });
+        toast({ title: 'Rule saved' });
+      }
+      setShowRuleModal(false);
+      setEditing(null);
+      void loadAll();
+    } catch (e: any) {
+      toast({ title: 'Save failed', description: e?.message || String(e), variant: 'destructive' as any });
+    }
+  };
+
+  const toggleRule = async (r: NotificationRule) => {
+    try {
+      await customFetch(`/api/notification-rules/${r.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !r.enabled }) });
+      void loadAll();
+    } catch (e: any) {
+      toast({ title: 'Toggle failed', description: e?.message || String(e), variant: 'destructive' as any });
+    }
+  };
+  const runNow = async (r: NotificationRule) => {
+    try {
+      const res = await customFetch<{ ok?: boolean; error?: string }>(`/api/notification-rules/${r.id}/run-now`, { method: 'POST' });
+      if (res.ok) toast({ title: 'Sent', description: `Alert "${r.name}" delivered` });
+      else toast({ title: 'Send failed', description: res.error || 'Unknown error', variant: 'destructive' as any });
+      void loadAll();
+    } catch (e: any) {
+      toast({ title: 'Run failed', description: e?.message || String(e), variant: 'destructive' as any });
+    }
+  };
+  const doDelete = async () => {
+    if (!deleteRule) return;
+    try {
+      await customFetch(`/api/notification-rules/${deleteRule.id}`, { method: 'DELETE' });
+      toast({ title: 'Rule deleted' });
+      setDeleteRule(null);
+      void loadAll();
+    } catch (e: any) {
+      toast({ title: 'Delete failed', description: e?.message || String(e), variant: 'destructive' as any });
+    }
+  };
+
+  if (!mail) return <div className="text-sm text-gray-500">Loading…</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 border-b border-gray-200">
+        {([
+          { id: 'mail', label: 'Mail Setup', icon: Mail },
+          { id: 'rules', label: 'Alert Rules', icon: Bell },
+          { id: 'logs', label: 'Recent Activity', icon: ScrollText },
+        ] as const).map(s => {
+          const Icon = s.icon;
+          const active = section === s.id;
+          return (
+            <button key={s.id} onClick={() => setSection(s.id)}
+              className={`px-3 py-2 text-sm flex items-center gap-2 -mb-px border-b-2 ${active ? 'border-orange-500 text-orange-600 font-semibold' : 'border-transparent text-gray-600 hover:text-gray-900'}`}>
+              <Icon size={14} />{s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {section === 'mail' && (
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900 flex gap-2">
+            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+            <div>
+              SMTP credentials are stored in the database. For Gmail, use an <b>App Password</b> (not your account password).
+              Common ports: <code>587</code> (STARTTLS, leave SSL off) or <code>465</code> (SSL on).
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Mail size={16} />SMTP Configuration</h3>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={mail.enabled} onChange={e => setMail({ ...mail, enabled: e.target.checked })} />
+                <span className={mail.enabled ? 'text-emerald-700 font-semibold' : 'text-gray-500'}>{mail.enabled ? 'Sending enabled' : 'Sending disabled'}</span>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>SMTP Host</Label><Input value={mail.smtpHost} onChange={e => setMail({ ...mail, smtpHost: e.target.value })} placeholder="smtp.gmail.com" /></div>
+              <div><Label>Port</Label><Input type="number" value={mail.smtpPort} onChange={e => setMail({ ...mail, smtpPort: Number(e.target.value) })} /></div>
+              <div><Label>Username</Label><Input value={mail.smtpUser} onChange={e => setMail({ ...mail, smtpUser: e.target.value })} placeholder="you@example.com" /></div>
+              <div><Label>Password / App Password</Label><Input type="password" value={mail.smtpPass} onChange={e => setMail({ ...mail, smtpPass: e.target.value })} placeholder={mail.hasPassword ? '•••••••• (set, leave blank to keep)' : ''} /></div>
+              <div><Label>From Email</Label><Input value={mail.fromEmail} onChange={e => setMail({ ...mail, fromEmail: e.target.value })} placeholder="alerts@yourcafe.com" /></div>
+              <div><Label>From Name</Label><Input value={mail.fromName} onChange={e => setMail({ ...mail, fromName: e.target.value })} /></div>
+              <div className="col-span-2 flex items-center gap-2">
+                <input id="ssl" type="checkbox" checked={mail.secure} onChange={e => setMail({ ...mail, secure: e.target.checked })} />
+                <label htmlFor="ssl" className="text-sm text-gray-700">Use SSL/TLS (port 465)</label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <Button onClick={saveMail} disabled={mailSaving}>{mailSaving ? 'Saving…' : 'Save settings'}</Button>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Send size={16} />Send a test email</h3>
+            <p className="text-sm text-gray-600">Verify your SMTP setup by sending a test message.</p>
+            <div className="flex gap-2">
+              <Input value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="recipient@example.com" />
+              <Button onClick={sendTest} disabled={testSending || !mail.enabled}>{testSending ? 'Sending…' : 'Send test'}</Button>
+            </div>
+            {!mail.enabled && <p className="text-xs text-amber-700">Enable sending and save settings first.</p>}
+          </div>
+        </div>
+      )}
+
+      {section === 'rules' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600">Schedule automated alerts to be emailed when business events happen.</p>
+            <Button onClick={openNewRule} className="flex items-center gap-1"><Plus size={14} />New rule</Button>
+          </div>
+          {rules.length === 0 ? (
+            <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-500">
+              <Bell size={32} className="mx-auto mb-2 text-gray-400" />
+              <p className="text-sm">No alert rules yet. Create one to start receiving automated emails.</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-700">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 font-medium">Name</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Type</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Schedule</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Recipients</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Last run</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {rules.map(r => {
+                    const t = types.find(t => t.type === r.type);
+                    const s = schedules.find(s => s.id === r.schedule);
+                    return (
+                      <tr key={r.id} className={r.enabled ? '' : 'opacity-50'}>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{r.name}</div>
+                          {r.lastError && <div className="text-xs text-red-600 mt-0.5">{r.lastError}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">{t?.label ?? r.type}</td>
+                        <td className="px-4 py-3 text-gray-700">{s?.label ?? r.schedule}</td>
+                        <td className="px-4 py-3 text-gray-700">{r.recipients.length} recipient{r.recipients.length === 1 ? '' : 's'}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {r.lastRunAt ? (
+                            <div>
+                              <div>{new Date(r.lastRunAt).toLocaleString()}</div>
+                              <div className={`text-xs ${r.lastStatus === 'sent' ? 'text-emerald-600' : 'text-red-600'}`}>{r.lastStatus}</div>
+                            </div>
+                          ) : <span className="text-gray-400">Never</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex gap-1">
+                            <button onClick={() => runNow(r)} title="Send now" className="p-1.5 hover:bg-gray-100 rounded text-gray-600"><Play size={14} /></button>
+                            <button onClick={() => toggleRule(r)} title={r.enabled ? 'Disable' : 'Enable'} className={`p-1.5 hover:bg-gray-100 rounded ${r.enabled ? 'text-emerald-600' : 'text-gray-400'}`}><Power size={14} /></button>
+                            <button onClick={() => openEdit(r)} title="Edit" className="p-1.5 hover:bg-gray-100 rounded text-gray-600"><Pencil size={14} /></button>
+                            <button onClick={() => setDeleteRule(r)} title="Delete" className="p-1.5 hover:bg-red-50 rounded text-red-600"><Trash2 size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {section === 'logs' && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {logs.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-sm">No notifications sent yet.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-700">
+                <tr>
+                  <th className="text-left px-4 py-2.5 font-medium">When</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Rule</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Subject</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Recipients</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {logs.map(l => (
+                  <tr key={l.id}>
+                    <td className="px-4 py-2.5 text-gray-700">{new Date(l.sentAt).toLocaleString()}</td>
+                    <td className="px-4 py-2.5">{l.ruleName}<div className="text-xs text-gray-500">{l.trigger}</div></td>
+                    <td className="px-4 py-2.5 text-gray-700">{l.subject ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{l.recipientsCount}</td>
+                    <td className="px-4 py-2.5">
+                      {l.status === 'sent' && <span className="inline-flex items-center gap-1 text-emerald-700 text-xs font-medium"><CheckCircle2 size={12} />Sent</span>}
+                      {l.status === 'failed' && <span className="inline-flex items-center gap-1 text-red-700 text-xs font-medium" title={l.error ?? ''}><AlertTriangle size={12} />Failed</span>}
+                      {l.status === 'skipped' && <span className="text-gray-500 text-xs">Skipped</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {showRuleModal && editing && (
+        <Modal isOpen={showRuleModal} onClose={() => { setShowRuleModal(false); setEditing(null); }} title={editing.id === 0 ? 'New alert rule' : 'Edit alert rule'}>
+          <RuleEditor editing={editing} setEditing={setEditing} types={types} schedules={schedules} />
+          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+            <Button onClick={() => { setShowRuleModal(false); setEditing(null); }} variant="outline">Cancel</Button>
+            <Button onClick={saveRule}>Save rule</Button>
+          </div>
+        </Modal>
+      )}
+
+      {deleteRule && (
+        <Modal isOpen={!!deleteRule} onClose={() => setDeleteRule(null)} title="Delete alert rule">
+          <p className="text-sm text-gray-700">Delete <b>{deleteRule.name}</b>? This cannot be undone.</p>
+          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+            <Button onClick={() => setDeleteRule(null)} variant="outline">Cancel</Button>
+            <Button onClick={doDelete} variant="destructive">Delete</Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function RuleEditor({ editing, setEditing, types, schedules }: {
+  editing: NotificationRule;
+  setEditing: (r: NotificationRule) => void;
+  types: AlertTypeDef[];
+  schedules: ScheduleDef[];
+}) {
+  const [recipientInput, setRecipientInput] = useState('');
+  const currentType = types.find(t => t.type === editing.type);
+  const addRecipient = () => {
+    const e = recipientInput.trim();
+    if (!e || !e.includes('@')) return;
+    if (editing.recipients.includes(e)) { setRecipientInput(''); return; }
+    setEditing({ ...editing, recipients: [...editing.recipients, e] });
+    setRecipientInput('');
+  };
+  const removeRecipient = (e: string) => setEditing({ ...editing, recipients: editing.recipients.filter(x => x !== e) });
+
+  return (
+    <div className="space-y-3">
+      <div><Label>Rule name</Label><Input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} placeholder="e.g. Morning low stock alert" /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Alert type</Label>
+          <Select value={editing.type} onChange={e => {
+            const t = types.find(x => x.type === e.target.value);
+            setEditing({ ...editing, type: e.target.value, threshold: t?.defaultThreshold ?? null });
+          }}>
+            {types.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
+          </Select>
+        </div>
+        <div>
+          <Label>Schedule</Label>
+          <Select value={editing.schedule} onChange={e => setEditing({ ...editing, schedule: e.target.value })}>
+            {schedules.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </Select>
+        </div>
+      </div>
+      {currentType && <p className="text-xs text-gray-500 -mt-1">{currentType.description}</p>}
+      {currentType?.defaultThreshold && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+          <div className="text-xs font-semibold text-gray-700">Threshold</div>
+          {Object.entries(editing.threshold ?? currentType.defaultThreshold).map(([k, v]) => (
+            <div key={k} className="grid grid-cols-2 gap-2 items-center">
+              <Label>{k}</Label>
+              <Input type={typeof v === 'number' ? 'number' : 'text'} value={String(v)} onChange={e => {
+                const next = { ...(editing.threshold ?? currentType.defaultThreshold!) };
+                next[k] = typeof v === 'number' ? Number(e.target.value) : e.target.value;
+                setEditing({ ...editing, threshold: next });
+              }} />
+            </div>
+          ))}
+        </div>
+      )}
+      <div>
+        <Label>Recipients</Label>
+        <div className="flex gap-2">
+          <Input value={recipientInput} onChange={e => setRecipientInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addRecipient(); } }} placeholder="email@example.com (Enter to add)" />
+          <Button onClick={addRecipient} type="button">Add</Button>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {editing.recipients.map(e => (
+            <span key={e} className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-md text-xs">
+              {e}<button onClick={() => removeRecipient(e)} className="hover:text-red-600">×</button>
+            </span>
+          ))}
+          {editing.recipients.length === 0 && <span className="text-xs text-gray-400">No recipients yet.</span>}
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm pt-2">
+        <input type="checkbox" checked={editing.enabled} onChange={e => setEditing({ ...editing, enabled: e.target.checked })} />
+        <span>Enabled (will fire on schedule)</span>
+      </label>
     </div>
   );
 }
