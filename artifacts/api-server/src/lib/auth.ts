@@ -55,7 +55,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 }
 
 export function adminOnly(req: Request, res: Response, next: NextFunction): void {
-  if ((req as any).userRole !== "admin") {
+  // Both `admin` and `owner` are administrative roles. The owner role
+  // was added with the new RBAC system and carries the same default
+  // permission set as admin.
+  const role = (req as any).userRole;
+  if (role !== "admin" && role !== "owner") {
     res.status(403).json({ error: "Admin access required" });
     return;
   }
@@ -64,7 +68,7 @@ export function adminOnly(req: Request, res: Response, next: NextFunction): void
 
 export function managerOrAdmin(req: Request, res: Response, next: NextFunction): void {
   const role = (req as any).userRole;
-  if (role !== "admin" && role !== "manager") {
+  if (role !== "admin" && role !== "manager" && role !== "owner") {
     res.status(403).json({ error: "Manager or admin access required" });
     return;
   }

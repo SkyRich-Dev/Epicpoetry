@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, inArray, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, rolesTable, rolePermissionsTable, usersTable } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import {
@@ -131,45 +131,39 @@ router.delete("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise
 });
 
 /**
- * Idempotent seed: ensure every BUILT_IN_ROLES entry exists with the
- * latest default permission set. Called from seed.ts on boot AND can be
- * triggered manually. We never overwrite a non-built-in role.
+ * Idempotent seed: ensure every BUILT_IN_ROLES entry EXISTS with its
+ * default permission set on first creation.
+ *
+ * Important: for roles that already exist we leave both the role row
+ * AND its permission set ALONE. The owner can tune built-in roles from
+ * the Roles UI, and we must not silently revert those edits on reboot.
+ *
+ * If an owner deliberately wants to "reset" a built-in role to its
+ * shipped defaults, they can delete it (or we can add an explicit
+ * "reset" button later) and the next seed will recreate it.
  */
 export async function seedBuiltInRoles() {
   for (const def of BUILT_IN_ROLES) {
-    let [role] = await db.select().from(rolesTable).where(eq(rolesTable.name, def.name));
-    if (!role) {
-      [role] = await db.insert(rolesTable).values({
-        name: def.name,
-        description: def.description,
-        isBuiltIn: true,
-      }).returning();
-    } else if (!role.isBuiltIn) {
-      await db.update(rolesTable).set({ isBuiltIn: true, description: def.description }).where(eq(rolesTable.id, role.id));
+    const [existing] = await db.select().from(rolesTable).where(eq(rolesTable.name, def.name));
+    if (existing) {
+      // Already present — never mutate. Honors any user customization
+      // and avoids accidentally promoting a custom role with a colliding
+      // name to built-in.
+      continue;
     }
+
+    const [role] = await db.insert(rolesTable).values({
+      name: def.name,
+      description: def.description,
+      isBuiltIn: true,
+    }).returning();
 
     const wantKeys: string[] =
       def.permissions === "*" ? ALL_PERMISSION_KEYS : def.permissions;
 
-    const have = await db
-      .select({ permissionKey: rolePermissionsTable.permissionKey })
-      .from(rolePermissionsTable)
-      .where(eq(rolePermissionsTable.roleId, role.id));
-    const haveSet = new Set(have.map((p) => p.permissionKey));
-    const wantSet = new Set(wantKeys);
-
-    const toAdd = [...wantSet].filter((k) => !haveSet.has(k));
-    const toRemove = [...haveSet].filter((k) => !wantSet.has(k));
-
-    if (toAdd.length > 0) {
-      await db.insert(rolePermissionsTable).values(toAdd.map((k) => ({ roleId: role.id, permissionKey: k })));
-    }
-    if (toRemove.length > 0) {
-      await db.delete(rolePermissionsTable).where(
-        and(
-          eq(rolePermissionsTable.roleId, role.id),
-          inArray(rolePermissionsTable.permissionKey, toRemove),
-        )
+    if (wantKeys.length > 0) {
+      await db.insert(rolePermissionsTable).values(
+        wantKeys.map((k) => ({ roleId: role.id, permissionKey: k }))
       );
     }
   }

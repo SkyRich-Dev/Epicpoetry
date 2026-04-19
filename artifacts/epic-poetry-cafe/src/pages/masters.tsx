@@ -4,13 +4,61 @@ import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency,
 import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, AlertTriangle, CheckCircle2, Trash } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { customFetch } from '@workspace/api-client-react/custom-fetch';
 
 const TABS = [
   { id: 'config', label: 'Categories & Config', icon: FolderCog },
   { id: 'users', label: 'User Management', icon: UserCog },
+  { id: 'roles', label: 'Roles & Permissions', icon: Shield },
   { id: 'pos', label: 'POS & Integrations', icon: Plug },
   { id: 'audit', label: 'Audit Logs', icon: ScrollText },
 ] as const;
+
+type ApiRole = {
+  id: number;
+  name: string;
+  description: string | null;
+  isBuiltIn: boolean;
+  permissions: string[];
+  userCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type PermissionDef = { key: string; label: string; description?: string };
+type PermissionCategory = { id: string; label: string; permissions: PermissionDef[] };
+
+function useRoles() {
+  const [roles, setRoles] = useState<ApiRole[]>([]);
+  const [loading, setLoading] = useState(true);
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await customFetch<ApiRole[]>('/api/roles');
+      setRoles(data);
+    } catch (e) {
+      console.error('Failed to load roles', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+  return { roles, loading, reload };
+}
+
+function usePermissionsCatalog() {
+  const [catalog, setCatalog] = useState<{ categories: PermissionCategory[]; allKeys: string[] } | null>(null);
+  useEffect(() => {
+    customFetch<{ categories: PermissionCategory[]; allKeys: string[] }>('/api/permissions')
+      .then(setCatalog)
+      .catch((e) => console.error('Failed to load permissions catalog', e));
+  }, []);
+  return catalog;
+}
+
+function prettyRoleName(name: string): string {
+  return name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
 
 type TabId = typeof TABS[number]['id'];
 
@@ -33,9 +81,14 @@ const ROLES = [
 ];
 
 function RoleBadge({ role }: { role: string }) {
+  if (role === 'owner') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-800"><ShieldCheck size={12} /> Owner</span>;
   if (role === 'admin') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700"><ShieldCheck size={12} /> Admin</span>;
   if (role === 'manager') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700"><Shield size={12} /> Manager</span>;
-  return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700"><Eye size={12} /> Viewer</span>;
+  if (role === 'accountant') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700"><Shield size={12} /> Accountant</span>;
+  if (role === 'store') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-cyan-100 text-cyan-700"><Shield size={12} /> Store</span>;
+  if (role === 'hr') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-pink-100 text-pink-700"><Shield size={12} /> HR</span>;
+  if (role === 'viewer') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700"><Eye size={12} /> Viewer</span>;
+  return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-orange-100 text-orange-700"><Shield size={12} /> {prettyRoleName(role)}</span>;
 }
 
 function CategoriesConfigTab() {
@@ -295,9 +348,18 @@ function UsersTab() {
   const { data: users, isLoading } = useListUsers();
   const createMut = useCreateUser();
   const updateMut = useUpdateUser();
+  const { roles: apiRoles } = useRoles();
+  const { toast } = useToast();
+
+  // Build role options from the API; fall back to the legacy hardcoded
+  // list if roles haven't loaded yet (so the form is never empty).
+  const roleOptions = apiRoles.length > 0
+    ? apiRoles.map(r => ({ value: r.name, label: prettyRoleName(r.name), description: r.description || `${r.permissions.length} permission${r.permissions.length === 1 ? '' : 's'}` }))
+    : ROLES;
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<any>(null);
+  const [deleteUser, setDeleteUserState] = useState<any>(null);
 
   const [createForm, setCreateForm] = useState({
     username: '',
@@ -368,22 +430,34 @@ function UsersTab() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteUser) return;
+    try {
+      await customFetch(`/api/users/${deleteUser.id}`, { method: 'DELETE' });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({ title: 'User deleted', description: `${deleteUser.username} has been removed.` });
+      setDeleteUserState(null);
+    } catch (e: any) {
+      toast({ title: 'Delete failed', description: e?.data?.error || e?.message || 'Error deleting user', variant: 'destructive' });
+    }
+  };
+
   return (
     <>
       <div className="flex justify-end mb-4">
         <Button onClick={openCreate}><UserPlus size={18} /> Add User</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {ROLES.map(r => {
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {roleOptions.map(r => {
           const count = users?.filter(u => u.role === r.value).length || 0;
           return (
             <div key={r.value} className="bg-card rounded-xl border border-border p-4">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-semibold text-foreground">{r.label}s</span>
+                <span className="text-sm font-semibold text-foreground capitalize">{r.label}</span>
                 <span className="text-2xl font-display font-bold text-primary">{count}</span>
               </div>
-              <p className="text-xs text-muted-foreground">{r.description}</p>
+              <p className="text-xs text-muted-foreground line-clamp-2">{r.description}</p>
             </div>
           );
         })}
@@ -416,9 +490,14 @@ function UsersTab() {
                   <Badge variant={u.active ? 'success' : 'danger'}>{u.active ? 'Active' : 'Inactive'}</Badge>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <button onClick={() => openEdit(u)} className="text-muted-foreground hover:text-primary transition-colors">
-                    <Pencil size={16} />
-                  </button>
+                  <div className="inline-flex items-center gap-3">
+                    <button onClick={() => openEdit(u)} className="text-muted-foreground hover:text-primary transition-colors" title="Edit">
+                      <Pencil size={16} />
+                    </button>
+                    <button onClick={() => setDeleteUserState(u)} className="text-muted-foreground hover:text-rose-600 transition-colors" title="Delete">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -451,12 +530,12 @@ function UsersTab() {
           </div>
           <div>
             <Label>Role & Access Level</Label>
-            <div className="space-y-2 mt-2">
-              {ROLES.map(r => (
+            <div className="space-y-2 mt-2 max-h-72 overflow-y-auto pr-1">
+              {roleOptions.map(r => (
                 <label key={r.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${createForm.role === r.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
                   <input type="radio" name="role" value={r.value} checked={createForm.role === r.value} onChange={() => setCreateForm({ ...createForm, role: r.value })} className="mt-1" />
                   <div>
-                    <p className="font-medium text-sm">{r.label}</p>
+                    <p className="font-medium text-sm capitalize">{r.label}</p>
                     <p className="text-xs text-muted-foreground">{r.description}</p>
                   </div>
                 </label>
@@ -481,12 +560,12 @@ function UsersTab() {
           </div>
           <div>
             <Label>Role & Access Level</Label>
-            <div className="space-y-2 mt-2">
-              {ROLES.map(r => (
+            <div className="space-y-2 mt-2 max-h-72 overflow-y-auto pr-1">
+              {roleOptions.map(r => (
                 <label key={r.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${editForm.role === r.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
                   <input type="radio" name="editRole" value={r.value} checked={editForm.role === r.value} onChange={() => setEditForm({ ...editForm, role: r.value })} className="mt-1" />
                   <div>
-                    <p className="font-medium text-sm">{r.label}</p>
+                    <p className="font-medium text-sm capitalize">{r.label}</p>
                     <p className="text-xs text-muted-foreground">{r.description}</p>
                   </div>
                 </label>
@@ -504,6 +583,296 @@ function UsersTab() {
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
               </Select>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!deleteUser} onClose={() => setDeleteUserState(null)} title="Delete User" maxWidth="max-w-md"
+        footer={<><Button variant="ghost" onClick={() => setDeleteUserState(null)}>Cancel</Button><Button onClick={handleDelete} className="bg-rose-600 hover:bg-rose-700">Delete User</Button></>}>
+        <div className="py-2 space-y-3">
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200">
+            <AlertTriangle className="text-rose-600 mt-0.5 flex-shrink-0" size={20} />
+            <div className="text-sm text-rose-800">
+              This will permanently remove <strong>{deleteUser?.username}</strong> ({deleteUser?.fullName}) and revoke all access. This cannot be undone.
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Tip: if you only want to disable access temporarily, edit the user and set status to Inactive instead.</p>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+function RolesTab() {
+  const { roles, loading, reload } = useRoles();
+  const catalog = usePermissionsCatalog();
+  const { toast } = useToast();
+
+  const [editing, setEditing] = useState<ApiRole | null>(null);
+  const [editPerms, setEditPerms] = useState<Set<string>>(new Set());
+  const [editDescription, setEditDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', description: '', permissions: new Set<string>() });
+  const [deleteRole, setDeleteRole] = useState<ApiRole | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const openEdit = (r: ApiRole) => {
+    setEditing(r);
+    setEditPerms(new Set(r.permissions));
+    setEditDescription(r.description || '');
+  };
+
+  const togglePerm = (set: Set<string>, key: string, setter: (s: Set<string>) => void) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setter(next);
+  };
+
+  const toggleCategory = (set: Set<string>, cat: PermissionCategory, setter: (s: Set<string>) => void, allOn: boolean) => {
+    const next = new Set(set);
+    for (const p of cat.permissions) {
+      if (allOn) next.delete(p.key); else next.add(p.key);
+    }
+    setter(next);
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await customFetch(`/api/roles/${editing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ description: editDescription, permissions: [...editPerms] }),
+      });
+      toast({ title: 'Role updated', description: `${prettyRoleName(editing.name)} permissions saved.` });
+      setEditing(null);
+      reload();
+    } catch (e: any) {
+      toast({ title: 'Save failed', description: e?.data?.error || e?.message || 'Error', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveCreate = async () => {
+    if (!createForm.name.trim()) return;
+    setSaving(true);
+    try {
+      await customFetch('/api/roles', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: createForm.name.trim(),
+          description: createForm.description.trim() || null,
+          permissions: [...createForm.permissions],
+        }),
+      });
+      toast({ title: 'Role created', description: `${createForm.name} is ready to assign.` });
+      setCreateOpen(false);
+      setCreateForm({ name: '', description: '', permissions: new Set() });
+      reload();
+    } catch (e: any) {
+      toast({ title: 'Create failed', description: e?.data?.error || e?.message || 'Error', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteRole) return;
+    try {
+      await customFetch(`/api/roles/${deleteRole.id}`, { method: 'DELETE' });
+      toast({ title: 'Role deleted', description: `${prettyRoleName(deleteRole.name)} removed.` });
+      setDeleteRole(null);
+      reload();
+    } catch (e: any) {
+      toast({ title: 'Delete failed', description: e?.data?.error || e?.message || 'Cannot delete', variant: 'destructive' });
+    }
+  };
+
+  const renderMatrix = (current: Set<string>, setter: (s: Set<string>) => void, readOnly: boolean) => {
+    if (!catalog) return <p className="text-sm text-muted-foreground py-6 text-center">Loading permission catalog…</p>;
+    return (
+      <div className="space-y-3">
+        {catalog.categories.map(cat => {
+          const isCollapsed = collapsed.has(cat.id);
+          const enabledInCat = cat.permissions.filter(p => current.has(p.key)).length;
+          const allOn = enabledInCat === cat.permissions.length;
+          return (
+            <div key={cat.id} className="border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-muted/40">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const n = new Set(collapsed);
+                    if (isCollapsed) n.delete(cat.id); else n.add(cat.id);
+                    setCollapsed(n);
+                  }}
+                  className="flex items-center gap-2 font-semibold text-sm text-foreground"
+                >
+                  <span className={`inline-block transition-transform ${isCollapsed ? '' : 'rotate-90'}`}>▸</span>
+                  {cat.label}
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">{enabledInCat}/{cat.permissions.length}</span>
+                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(current, cat, setter, allOn)}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {allOn ? 'Clear all' : 'Select all'}
+                  </button>
+                )}
+              </div>
+              {!isCollapsed && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-3">
+                  {cat.permissions.map(p => {
+                    const checked = current.has(p.key);
+                    return (
+                      <label key={p.key} className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${checked ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-muted/40'} ${readOnly ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={readOnly}
+                          onChange={() => togglePerm(current, p.key, setter)}
+                          className="mt-1 accent-primary"
+                        />
+                        <span className="flex-1">
+                          <span className="block">{p.label}</span>
+                          <span className="block text-xs text-muted-foreground font-mono">{p.key}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-sm text-muted-foreground">
+          Roles bundle permissions by feature category (Operations, Accounts, Purchase, HR, Reports, Admin). Built-in roles can be tuned but not deleted.
+        </p>
+        <Button onClick={() => setCreateOpen(true)}><Plus size={18} /> New Role</Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {loading && <div className="col-span-full text-center text-muted-foreground py-8">Loading roles…</div>}
+        {!loading && roles.map(r => (
+          <div key={r.id} className="bg-card rounded-xl border border-border p-5 flex flex-col gap-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <RoleBadge role={r.name} />
+                  {r.isBuiltIn && <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Built-in</span>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2 min-h-[2.5rem]">{r.description || '—'}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-3">
+              <span>{r.permissions.length} permission{r.permissions.length === 1 ? '' : 's'}</span>
+              <span>{r.userCount} user{r.userCount === 1 ? '' : 's'}</span>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => openEdit(r)} className="flex-1"><Pencil size={14} /> Edit</Button>
+              {!r.isBuiltIn && (
+                <Button variant="ghost" onClick={() => setDeleteRole(r)} className="text-rose-600 hover:bg-rose-50">
+                  <Trash2 size={14} />
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Modal
+        isOpen={!!editing}
+        onClose={() => setEditing(null)}
+        title={editing ? `Edit Role — ${prettyRoleName(editing.name)}` : ''}
+        maxWidth="max-w-3xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button onClick={saveEdit} disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</Button>
+          </>
+        }
+      >
+        <div className="space-y-4 py-2">
+          <div>
+            <Label>Description</Label>
+            <Input value={editDescription} onChange={(e: any) => setEditDescription(e.target.value)} placeholder="What does this role do?" />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label>Permissions ({editPerms.size} selected)</Label>
+            {catalog && (
+              <button
+                type="button"
+                onClick={() => setEditPerms(editPerms.size === catalog.allKeys.length ? new Set() : new Set(catalog.allKeys))}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                {catalog && editPerms.size === catalog.allKeys.length ? 'Clear all' : 'Grant everything'}
+              </button>
+            )}
+          </div>
+          {renderMatrix(editPerms, setEditPerms, false)}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Create Custom Role"
+        maxWidth="max-w-3xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={saveCreate} disabled={saving || !createForm.name.trim()}>{saving ? 'Saving…' : 'Create Role'}</Button>
+          </>
+        }
+      >
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Role Name</Label>
+              <Input value={createForm.name} onChange={(e: any) => setCreateForm({ ...createForm, name: e.target.value })} placeholder="e.g. shift_lead" />
+              <p className="text-xs text-muted-foreground mt-1">Lowercase, underscores allowed. Will be normalized.</p>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input value={createForm.description} onChange={(e: any) => setCreateForm({ ...createForm, description: e.target.value })} placeholder="Brief description" />
+            </div>
+          </div>
+          <div>
+            <Label>Permissions ({createForm.permissions.size} selected)</Label>
+            <div className="mt-2">
+              {renderMatrix(createForm.permissions, (s) => setCreateForm({ ...createForm, permissions: s }), false)}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!deleteRole}
+        onClose={() => setDeleteRole(null)}
+        title="Delete Role"
+        maxWidth="max-w-md"
+        footer={<><Button variant="ghost" onClick={() => setDeleteRole(null)}>Cancel</Button><Button onClick={confirmDelete} className="bg-rose-600 hover:bg-rose-700">Delete</Button></>}
+      >
+        <div className="py-2 space-y-3">
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200">
+            <AlertTriangle className="text-rose-600 mt-0.5 flex-shrink-0" size={20} />
+            <div className="text-sm text-rose-800">
+              Permanently delete the <strong>{deleteRole?.name}</strong> role? This cannot be undone.
+              {deleteRole && deleteRole.userCount > 0 && (
+                <p className="mt-2 font-semibold">⚠ {deleteRole.userCount} user(s) currently have this role and must be reassigned first.</p>
+              )}
             </div>
           </div>
         </div>
@@ -1018,6 +1387,7 @@ export default function Masters() {
 
       {activeTab === 'config' && <CategoriesConfigTab />}
       {activeTab === 'users' && <UsersTab />}
+      {activeTab === 'roles' && <RolesTab />}
       {activeTab === 'pos' && <POSIntegrationsTab />}
       {activeTab === 'audit' && <AuditLogsTab />}
     </div>
