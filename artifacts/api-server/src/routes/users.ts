@@ -82,4 +82,24 @@ router.patch("/users/:id", authMiddleware, adminOnly, async (req, res): Promise<
   });
 });
 
+router.delete("/users/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const params = UpdateUserParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const requestingUserId = (req as any).userId;
+  if (requestingUserId === params.data.id) {
+    res.status(400).json({ error: "You cannot delete your own account" });
+    return;
+  }
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.id));
+  if (!existing) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  await db.delete(usersTable).where(eq(usersTable.id, params.data.id));
+  res.json({ success: true });
+});
+
 export default router;

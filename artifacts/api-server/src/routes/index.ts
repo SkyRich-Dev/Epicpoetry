@@ -28,6 +28,7 @@ import posIntegrationsRouter from "./posIntegrations";
 import customersRouter from "./customers";
 import insightsRouter from "./insights";
 import decisionRouter from "./decision";
+import rolesRouter from "./roles";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(posIntegrationsRouter);
 router.use(customersRouter);
 router.use(insightsRouter);
 router.use(decisionRouter);
+router.use(rolesRouter);
 
 export default router;

@@ -1,12 +1,19 @@
 import { db, usersTable, categoriesTable, uomTable, systemConfigTable, vendorsTable, ingredientsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
+import { seedBuiltInRoles } from "./routes/roles";
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
 export async function seed() {
+  // Always (idempotently) ensure built-in roles + their default
+  // permission sets are present, even on already-seeded databases.
+  // This lets us ship new permissions in code and have them applied
+  // on the next boot without a separate migration.
+  await seedBuiltInRoles();
+
   const existingUsers = await db.select().from(usersTable);
   if (existingUsers.length > 0) {
     console.log("Seed: Database already has data, skipping seed.");

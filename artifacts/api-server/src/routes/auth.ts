@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { LoginBody, LoginResponse, GetMeResponse } from "@workspace/api-zod";
 import { hashPassword, verifyPassword, createToken, authMiddleware } from "../lib/auth";
+import { getEffectivePermissionsForRole } from "./roles";
 
 const router: IRouter = Router();
 
@@ -46,15 +47,19 @@ router.get("/auth/me", authMiddleware, async (req, res): Promise<void> => {
     res.status(404).json({ error: "User not found" });
     return;
   }
-  res.json(GetMeResponse.parse({
-    id: user.id,
-    username: user.username,
-    fullName: user.fullName,
-    email: user.email,
-    role: user.role,
-    active: user.active,
-    createdAt: user.createdAt.toISOString(),
-  }));
+  const permissions = await getEffectivePermissionsForRole(user.role);
+  res.json({
+    ...GetMeResponse.parse({
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      active: user.active,
+      createdAt: user.createdAt.toISOString(),
+    }),
+    permissions,
+  });
 });
 
 router.post("/auth/change-password", authMiddleware, async (req, res): Promise<void> => {
