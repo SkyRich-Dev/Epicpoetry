@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts",
-    "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
+    "dev": "node ../../node_modules/vite/bin/vite.js --config vite.config.ts --host 0.0.0.0",
+    "build": "node ../../node_modules/vite/bin/vite.js build --config vite.config.ts",
+    "serve": "node ../../node_modules/vite/bin/vite.js preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
@@ -72,9 +72,6 @@
     "vaul": "^1.1.2",
     "vite": "^7.3.0",
     "wouter": "^3.3.5",
-    "zod": "^3.25.76",
-    "@rollup/rollup-linux-x64-gnu": "^4.24.0",
-    "lightningcss-linux-x64-gnu": "^1.27.0",
-    "@tailwindcss/oxide-linux-x64-gnu": "^4.1.0"
+    "zod": "^3.25.76"
   }
 }

@@ -1,4 +1,5 @@
 #!/bin/bash
 set -e
-pnpm install
-pnpm --filter @workspace/db exec drizzle-kit push --force --config ./drizzle.config.ts
+npm install --legacy-peer-deps
+npm run db:prepare
+npm run db:push
