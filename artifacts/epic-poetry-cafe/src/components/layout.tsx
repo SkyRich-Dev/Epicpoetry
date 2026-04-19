@@ -109,7 +109,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-sidebar text-sidebar-foreground z-20 relative">
         <div className="flex items-center gap-3">
-          <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-8 object-contain" />
+          <div className="bg-white rounded-lg px-2 py-1">
+            <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-6 object-contain" />
+          </div>
         </div>
         <button onClick={toggleMobile} className="p-2 rounded-lg hover:bg-sidebar-accent transition-colors">
           {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -122,7 +124,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
       )}>
         <div className="px-5 py-6 hidden md:flex items-center justify-center">
-          <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-12 object-contain" />
+          <div className="bg-white rounded-xl px-4 py-3 w-full flex items-center justify-center shadow-sm">
+            <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-10 object-contain" />
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-4 md:py-2 custom-scrollbar">
