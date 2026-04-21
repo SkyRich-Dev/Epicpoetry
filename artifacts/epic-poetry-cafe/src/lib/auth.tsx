@@ -15,6 +15,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -30,8 +31,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
+  useEffect(() => {
+    if (user) {
+      setSessionUser(user);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!token) {
+      setSessionUser(null);
+    }
+  }, [token]);
+
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem('token', newToken);
+    setSessionUser(newUser);
     queryClient.setQueryData(getGetMeQueryKey(), newUser);
     setToken(newToken);
     void refetch();
@@ -39,11 +53,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem('token');
+    setSessionUser(null);
     setToken(null);
     queryClient.clear();
   };
 
-  const effectiveUser = token ? (user || null) : null;
+  const effectiveUser = token ? (sessionUser || user || null) : null;
 
   return (
     <AuthContext.Provider value={{ user: effectiveUser, isLoading: token ? isLoading : false, token, login, logout }}>

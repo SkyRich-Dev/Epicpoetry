@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { useAuth } from '../lib/auth';
 import { useLogin } from '@workspace/api-client-react';
 import { Input, Button, Label } from '../components/ui-extras';
@@ -6,6 +7,7 @@ import { Lock, User as UserIcon } from 'lucide-react';
 
 export default function Login() {
   const { login } = useAuth();
+  const [, setLocation] = useLocation();
   const { mutateAsync: loginMutation, isPending } = useLogin();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,6 +19,7 @@ export default function Login() {
     try {
       const res = await loginMutation({ data: { username, password } });
       login(res.token, res.user);
+      setLocation('/');
     } catch (err: any) {
       setError(err?.data?.message || 'Invalid credentials. Please try again.');
     }
