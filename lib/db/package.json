@@ -12,7 +12,7 @@
     "push-force": "node ../../node_modules/drizzle-kit/bin.cjs push --force --config ./drizzle.config.ts"
   },
   "dependencies": {
-    "drizzle-orm": "catalog:",
+    "drizzle-orm": "^0.45.1",
     "drizzle-zod": "^0.8.3",
     "pg": "^8.20.0",
     "zod": "^3.25.76"
