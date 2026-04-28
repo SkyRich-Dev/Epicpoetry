@@ -1,4 +1,5 @@
-import { pgTable, text, serial, boolean, integer, timestamp, date, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, integer, timestamp, date, index, jsonb } from "drizzle-orm/pg-core";
+import { salesInvoicesTable } from "./salesInvoices";
 
 export const posIntegrationsTable = pgTable("pos_integrations", {
   id: serial("id").primaryKey(),
@@ -40,4 +41,25 @@ export const posSyncLogsTable = pgTable("pos_sync_logs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byIntegration: index("pos_sync_logs_by_integration_idx").on(t.integrationId, t.createdAt),
+}));
+
+export const posWebhookEventsTable = pgTable("pos_webhook_events", {
+  id: serial("id").primaryKey(),
+  integrationId: integer("integration_id").notNull().references(() => posIntegrationsTable.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  eventType: text("event_type"),
+  externalOrderId: text("external_order_id"),
+  customerInvoiceId: text("customer_invoice_id"),
+  invoiceNo: text("invoice_no"),
+  salesInvoiceId: integer("sales_invoice_id").references(() => salesInvoicesTable.id, { onDelete: "set null" }),
+  status: text("status").notNull(),
+  message: text("message"),
+  tokenHint: text("token_hint"),
+  payload: jsonb("payload").notNull().$type<Record<string, unknown>>(),
+  responsePayload: jsonb("response_payload").$type<Record<string, unknown> | null>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  byIntegration: index("pos_webhook_events_by_integration_idx").on(t.integrationId, t.createdAt),
+  byOrder: index("pos_webhook_events_by_order_idx").on(t.integrationId, t.externalOrderId, t.customerInvoiceId),
 }));

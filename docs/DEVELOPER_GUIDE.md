@@ -72,7 +72,7 @@ Epic Poetry Cafe is a single-cafe operations management system where **all sales
 **Key architectural decisions:**
 - **Custom JWT** (no library dependency): HMAC-SHA256 signing with manual token creation/verification in `lib/auth.ts`.
 - **No ORM migrations**: Drizzle Kit `push` is used for schema sync (not migration files).
-- **Monorepo**: pnpm workspaces with shared packages (`lib/db`, `lib/api-zod`, `lib/api-client-react`, `lib/api-spec`).
+- **Monorepo**: npm workspaces with shared packages (`lib/db`, `lib/api-zod`, `lib/api-client-react`, `lib/api-spec`).
 - **Code generation**: OpenAPI spec → Orval → React Query hooks + Zod schemas.
 
 ---
@@ -93,7 +93,7 @@ Epic Poetry Cafe is a single-cafe operations management system where **all sales
 | Routing (Frontend) | Wouter | Latest |
 | Charts | Recharts | Latest |
 | UI Components | Custom (Tailwind CSS + Radix) | — |
-| Package Manager | pnpm | 9+ |
+| Package Manager | npm workspaces | 11+ |
 | Bundler (Backend) | esbuild | Latest |
 | API Codegen | Orval | Latest |
 
@@ -198,7 +198,7 @@ Epic Poetry Cafe is a single-cafe operations management system where **all sales
 │   ├── api-zod/                       # Zod schemas from OpenAPI (GENERATED — do not edit)
 │   └── api-client-react/              # React Query hooks from OpenAPI (GENERATED — do not edit)
 │
-├── pnpm-workspace.yaml
+├── pnpm-workspace.yaml            # Legacy workspace metadata retained for compatibility
 ├── package.json
 └── replit.md
 ```
@@ -211,23 +211,24 @@ Epic Poetry Cafe is a single-cafe operations management system where **all sales
 
 ### 5.1 Prerequisites
 - Node.js 24+
-- pnpm 9+
+- npm 11+
 - PostgreSQL database (provided by Replit environment via `DATABASE_URL`)
 
 ### 5.2 Installation
 
 ```bash
 # Install all dependencies
-pnpm install
+npm install --legacy-peer-deps
 
-# Push database schema (no migration files)
-cd lib/db && npx drizzle-kit push --force
+# Prepare and push database schema
+npm run db:prepare
+npm run db:push
 
 # Start the API server (builds + starts)
-pnpm --filter @workspace/api-server run dev
+npm run dev:api
 
 # Start the frontend (separate terminal)
-pnpm --filter @workspace/epic-poetry-cafe run dev
+npm run dev:web
 ```
 
 ### 5.3 Environment Variables
@@ -1208,11 +1209,11 @@ cd lib/db && npx drizzle-kit push --force
 
 ```bash
 # Backend
-pnpm --filter @workspace/api-server run build
+npm run build --workspace=@workspace/api-server
 # Produces: artifacts/api-server/dist/index.mjs
 
 # Frontend
-pnpm --filter @workspace/epic-poetry-cafe run build
+npm run build --workspace=@workspace/epic-poetry-cafe
 # Produces: artifacts/epic-poetry-cafe/dist/
 ```
 

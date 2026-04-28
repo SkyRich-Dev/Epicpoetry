@@ -11,14 +11,14 @@ router = "application"
 deploymentTarget = "autoscale"
 
 [deployment.postBuild]
-args = ["pnpm", "store", "prune"]
+args = ["npm", "cache", "verify"]
 env = { "CI" = "true" }
 
 [workflows]
 runButton = "Project"
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "NPM"
 expertMode = true
 integrations = ["github:1.0.0"]
 

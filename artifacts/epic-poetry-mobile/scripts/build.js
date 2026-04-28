@@ -11,12 +11,16 @@ const projectRoot = path.resolve(__dirname, "..");
 function findWorkspaceRoot(startDir) {
   let dir = startDir;
   while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) {
+    if (
+      fs.existsSync(path.join(dir, "package.json")) &&
+      fs.existsSync(path.join(dir, "artifacts")) &&
+      fs.existsSync(path.join(dir, "lib"))
+    ) {
       return dir;
     }
     dir = path.dirname(dir);
   }
-  throw new Error("Could not find workspace root (no pnpm-workspace.yaml found)");
+  throw new Error("Could not find workspace root");
 }
 
 const workspaceRoot = findWorkspaceRoot(projectRoot);
@@ -147,9 +151,10 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
   }
 
   metroProcess = spawn(
-    "pnpm",
+    "npm",
     [
       "exec",
+      "--",
       "expo",
       "start",
       "--no-dev",

@@ -10,7 +10,7 @@ I want you to act as a senior software engineer. I prefer detailed explanations 
 
 ## System Architecture
 
-The system is built as a monorepo utilizing `pnpm workspaces` for managing various components. It uses Node.js 24 and TypeScript 5.9.
+The system is built as a monorepo utilizing `npm workspaces` for managing various components. It uses Node.js 24 and TypeScript 5.9.
 
 **Frontend:**
 - Developed with React and Vite, located in `artifacts/epic-poetry-cafe`.
@@ -60,7 +60,7 @@ The system is built as a monorepo utilizing `pnpm workspaces` for managing vario
 - **API Framework**: Express 5
 - **Frontend Framework**: React
 - **Build Tool**: Vite, esbuild
-- **Package Manager**: pnpm
+- **Package Manager**: npm workspaces
 - **Validation Library**: Zod (`zod/v4`), `drizzle-zod`
 - **API Code Generation**: Orval (from OpenAPI spec)
 - **POS Systems**: Petpooja, POSist, UrbanPiper (integrations are planned/supported)

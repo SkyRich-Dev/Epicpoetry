@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, posIntegrationsTable, posSyncLogsTable, menuItemsTable, categoriesTable,
+import { db, posIntegrationsTable, posSyncLogsTable, posWebhookEventsTable, menuItemsTable, categoriesTable,
   salesInvoicesTable, salesImportBatchesTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { authMiddleware, adminOnly } from "../lib/auth";
@@ -20,6 +20,65 @@ function redactSecrets(obj: any) {
   if (redacted.webhookSecret) redacted.webhookSecret = "****";
   if (redacted.accessToken) redacted.accessToken = "****";
   return redacted;
+}
+
+function getProvidedWebhookToken(payload: any, headers: Record<string, any>) {
+  return payload?.token || payload?.Token || headers["x-webhook-secret"] || headers["x-webhook-token"] || null;
+}
+
+function maskToken(token: unknown) {
+  const text = String(token || "").trim();
+  if (!text) return null;
+  return text.length <= 4 ? `****${text}` : `****${text.slice(-4)}`;
+}
+
+function sanitizeWebhookPayload(payload: any): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { raw: payload };
+  }
+  const clone = JSON.parse(JSON.stringify(payload));
+  if (clone.token !== undefined) clone.token = "[REDACTED]";
+  if (clone.Token !== undefined) clone.Token = "[REDACTED]";
+  return clone;
+}
+
+async function createWebhookEvent(input: {
+  integrationId: number;
+  provider: string;
+  payload: any;
+  status: string;
+  message?: string;
+  tokenHint?: string | null;
+}) {
+  const order = input.payload?.properties?.Order || input.payload?.Order || null;
+  const [row] = await db.insert(posWebhookEventsTable).values({
+    integrationId: input.integrationId,
+    provider: input.provider,
+    eventType: input.payload?.event || null,
+    externalOrderId: order?.orderID ? String(order.orderID) : null,
+    customerInvoiceId: order?.customer_invoice_id ? String(order.customer_invoice_id) : null,
+    status: input.status,
+    message: input.message || null,
+    tokenHint: input.tokenHint || null,
+    payload: sanitizeWebhookPayload(input.payload),
+  }).returning();
+  return row;
+}
+
+async function updateWebhookEvent(id: number, updates: {
+  status?: string;
+  message?: string;
+  invoiceNo?: string | null;
+  salesInvoiceId?: number | null;
+  responsePayload?: Record<string, unknown> | null;
+}) {
+  await db.update(posWebhookEventsTable).set({
+    status: updates.status,
+    message: updates.message,
+    invoiceNo: updates.invoiceNo,
+    salesInvoiceId: updates.salesInvoiceId,
+    responsePayload: updates.responsePayload,
+  }).where(eq(posWebhookEventsTable.id, id));
 }
 
 router.get("/pos-integrations", authMiddleware, adminOnly, async (req, res): Promise<void> => {
@@ -182,7 +241,7 @@ router.get("/pos-integrations/:id/stats", authMiddleware, adminOnly, async (req,
   res.json({ totalOrdersSynced: integration.totalOrdersSynced, lastSync: integration.lastSyncAt });
 });
 
-router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> => {
+async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
   const integrationId = Number(req.params.integrationId);
   const [integration] = await db.select().from(posIntegrationsTable).where(
     and(eq(posIntegrationsTable.id, integrationId), eq(posIntegrationsTable.provider, "petpooja"))
@@ -192,15 +251,32 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
   }
 
   const payload = req.body;
+  const providedToken = getProvidedWebhookToken(payload, req.headers || {});
+  const webhookEvent = await createWebhookEvent({
+    integrationId,
+    provider: integration.provider,
+    payload,
+    status: "received",
+    tokenHint: maskToken(providedToken),
+  });
 
   if (integration.webhookSecret) {
-    const providedToken = payload?.token || req.headers["x-webhook-secret"];
     if (!providedToken || providedToken !== integration.webhookSecret) {
+      await updateWebhookEvent(webhookEvent.id, {
+        status: "invalid_auth",
+        message: "Invalid webhook token",
+        responsePayload: { success: false, error: "Invalid webhook token" },
+      });
       res.status(401).json({ error: "Invalid webhook token" }); return;
     }
   }
 
   if (payload?.event !== "orderdetails" || !payload?.properties) {
+    await updateWebhookEvent(webhookEvent.id, {
+      status: "invalid_payload",
+      message: "Invalid payload: expected event=orderdetails with properties",
+      responsePayload: { success: false, error: "Invalid payload: expected event=orderdetails with properties" },
+    });
     res.status(400).json({ error: "Invalid payload: expected event=orderdetails with properties" }); return;
   }
 
@@ -210,18 +286,44 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
   const ppCustomer = props.Customer;
 
   if (!ppOrder || !ppItems || !Array.isArray(ppItems) || ppItems.length === 0) {
+    await updateWebhookEvent(webhookEvent.id, {
+      status: "invalid_payload",
+      message: "Missing Order or OrderItem in payload",
+      responsePayload: { success: false, error: "Missing Order or OrderItem in payload" },
+    });
     res.status(400).json({ error: "Missing Order or OrderItem in payload" }); return;
   }
 
   try {
     const result = await importPetpoojaOrder({ ppOrder, ppItems, ppCustomer, integration });
     if (!result.created) {
+      await updateWebhookEvent(webhookEvent.id, {
+        status: "skipped",
+        message: `Order ${result.invoiceNo} was already imported`,
+        invoiceNo: result.invoiceNo,
+        responsePayload: { success: true, skipped: true, invoiceNo: result.invoiceNo },
+      });
       res.json({ success: true, skipped: true, message: `Order ${result.invoiceNo} was already imported`, invoiceNo: result.invoiceNo });
       return;
     }
     if (ppCustomer) {
       try { await upsertPetpoojaCustomer({ name: ppCustomer.name, phone: ppCustomer.phone, email: ppCustomer.email }); } catch {}
     }
+    const [invoice] = await db.select({ id: salesInvoicesTable.id })
+      .from(salesInvoicesTable)
+      .where(and(eq(salesInvoicesTable.invoiceNo, result.invoiceNo), eq(salesInvoicesTable.sourceType, "petpooja")))
+      .limit(1);
+    await updateWebhookEvent(webhookEvent.id, {
+      status: "processed",
+      message: `Order ${result.invoiceNo} processed successfully`,
+      invoiceNo: result.invoiceNo,
+      salesInvoiceId: invoice?.id || null,
+      responsePayload: {
+        success: true,
+        invoiceNo: result.invoiceNo,
+        autoCreated: result.autoCreated,
+      },
+    });
     res.json({
       success: true,
       message: `Order ${result.invoiceNo} processed successfully`,
@@ -229,8 +331,21 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
     });
   } catch (e: any) {
     await updateSyncStatusFailed(integrationId);
+    await updateWebhookEvent(webhookEvent.id, {
+      status: "failed",
+      message: `Order processing failed: ${e.message}`,
+      responsePayload: { success: false, error: e.message || "Order processing failed" },
+    });
     res.status(500).json({ success: false, message: `Order processing failed: ${e.message}` });
   }
+}
+
+router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> => {
+  await handlePetpoojaWebhook(req, res);
+});
+
+router.post("/webhook/petpooja-global/:integrationId", async (req, res): Promise<void> => {
+  await handlePetpoojaWebhook(req, res);
 });
 
 async function updateSyncStatusFailed(integrationId: number) {
@@ -275,6 +390,26 @@ router.get("/pos-integrations/:id/sync-logs", authMiddleware, adminOnly, async (
     .orderBy(desc(posSyncLogsTable.createdAt))
     .limit(limit);
   res.json({ logs: rows });
+});
+
+router.get("/pos-integrations/:id/webhook-events", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const rawLimit = req.query.limit;
+  let limit = 20;
+  if (rawLimit !== undefined) {
+    const n = Number(rawLimit);
+    if (!Number.isInteger(n) || n < 1 || n > 100) {
+      res.status(400).json({ error: "limit must be an integer between 1 and 100" }); return;
+    }
+    limit = n;
+  }
+  const [integration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  if (!integration) { res.status(404).json({ error: "Not found" }); return; }
+  const rows = await db.select().from(posWebhookEventsTable)
+    .where(eq(posWebhookEventsTable.integrationId, id))
+    .orderBy(desc(posWebhookEventsTable.createdAt))
+    .limit(limit);
+  res.json({ events: rows });
 });
 
 const FETCH_RATE_LIMIT_MS = 30_000;

@@ -981,11 +981,20 @@ function AuditLogsTab() {
 }
 
 const BASE = import.meta.env.BASE_URL || '/';
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
+
+function getPosApiBase() {
+  if (API_BASE && !window.location.hostname.includes('replit')) {
+    return API_BASE.replace(/\/+$/, '');
+  }
+  return BASE.replace(/\/+$/, '');
+}
+
 async function posApiFetch(path: string, opts?: any) {
   const token = localStorage.getItem('token');
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
+  const res = await fetch(`${getPosApiBase()}/api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
   if (!res.ok) { const t = await res.text(); throw new Error(t); }
   return res.json();
 }
