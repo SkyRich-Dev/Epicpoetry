@@ -5,8 +5,17 @@ import { ListMenuItemsResponse, CreateMenuItemBody, GetMenuItemParams, UpdateMen
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { findNameDuplicates, shouldBlockNameDuplicates, buildDupeErrorPayload, type NameRecord } from "../lib/nameDedupe";
 
 const router: IRouter = Router();
+
+async function loadMenuItemPool(): Promise<NameRecord[]> {
+  const rows = await db
+    .select({ id: menuItemsTable.id, code: menuItemsTable.code, name: menuItemsTable.name, categoryId: menuItemsTable.categoryId, categoryName: categoriesTable.name })
+    .from(menuItemsTable)
+    .leftJoin(categoriesTable, eq(menuItemsTable.categoryId, categoriesTable.id));
+  return rows.map(r => ({ id: r.id, name: r.name, code: r.code, groupKey: r.categoryId, groupName: r.categoryName }));
+}
 
 async function getIngredientCostAndConversion(ingredientId: number): Promise<{ costPerStockUnit: number; conversionFactor: number }> {
   const configs = await db.select().from(systemConfigTable);
@@ -81,6 +90,12 @@ router.get("/menu-items", async (_req, res): Promise<void> => {
 router.post("/menu-items", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateMenuItemBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const confirmDuplicate = req.body?.confirmDuplicate === true;
+  const confirmSimilar = req.body?.confirmSimilar === true;
+  const pool = await loadMenuItemPool();
+  const matches = findNameDuplicates(parsed.data.name, parsed.data.categoryId ?? null, pool);
+  const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar);
+  if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "menu item", groupLabel: "category" })); return; }
   const code = await generateCode("MNU", "menu_items");
   const [item] = await db.insert(menuItemsTable).values({ ...parsed.data, code }).returning();
   await createAuditLog("menu_items", item.id, "create", null, item);
@@ -165,6 +180,18 @@ router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> 
   const [old] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
   if (!old) { res.status(404).json({ error: "Not found" }); return; }
   if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
+  const newName = parsed.data.name ?? old.name;
+  const newCategoryId = parsed.data.categoryId !== undefined ? parsed.data.categoryId : old.categoryId;
+  const nameChanged = newName !== old.name;
+  const categoryChanged = newCategoryId !== old.categoryId;
+  if (nameChanged || categoryChanged) {
+    const confirmDuplicate = req.body?.confirmDuplicate === true;
+    const confirmSimilar = req.body?.confirmSimilar === true;
+    const pool = await loadMenuItemPool();
+    const matches = findNameDuplicates(newName, newCategoryId ?? null, pool, params.data.id);
+    const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar);
+    if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "menu item", groupLabel: "category" })); return; }
+  }
   const [item] = await db.update(menuItemsTable).set(parsed.data).where(eq(menuItemsTable.id, params.data.id)).returning();
   await createAuditLog("menu_items", item.id, "update", old, item);
   const costing = await calculateItemCost(item.id);

@@ -5,8 +5,17 @@ import { ListVendorsResponse, CreateVendorBody, GetVendorParams, GetVendorRespon
 import { authMiddleware } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { findNameDuplicates, shouldBlockNameDuplicates, buildDupeErrorPayload, type NameRecord } from "../lib/nameDedupe";
 
 const router: IRouter = Router();
+
+async function loadVendorPool(): Promise<NameRecord[]> {
+  const rows = await db
+    .select({ id: vendorsTable.id, code: vendorsTable.code, name: vendorsTable.name, categoryId: vendorsTable.categoryId, categoryName: categoriesTable.name })
+    .from(vendorsTable)
+    .leftJoin(categoriesTable, eq(vendorsTable.categoryId, categoriesTable.id));
+  return rows.map(r => ({ id: r.id, name: r.name, code: r.code, groupKey: r.categoryId, groupName: r.categoryName }));
+}
 
 router.get("/vendors", async (req, res): Promise<void> => {
   const vendors = await db
@@ -37,6 +46,13 @@ router.get("/vendors", async (req, res): Promise<void> => {
 router.post("/vendors", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateVendorBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const confirmDuplicate = req.body?.confirmDuplicate === true;
+  const confirmSimilar = req.body?.confirmSimilar === true;
+  const pool = await loadVendorPool();
+  const matches = findNameDuplicates(parsed.data.name, parsed.data.categoryId ?? null, pool);
+  const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar);
+  if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "vendor", groupLabel: "category" })); return; }
 
   const code = await generateCode("VND", "vendors");
   const [vendor] = await db.insert(vendorsTable).values({ ...parsed.data, code }).returning();
@@ -82,6 +98,19 @@ router.patch("/vendors/:id", authMiddleware, async (req, res): Promise<void> => 
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const [old] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, params.data.id));
+  if (!old) { res.status(404).json({ error: "Not found" }); return; }
+  const newName = parsed.data.name ?? old.name;
+  const newCategoryId = parsed.data.categoryId !== undefined ? parsed.data.categoryId : old.categoryId;
+  const nameChanged = newName !== old.name;
+  const categoryChanged = newCategoryId !== old.categoryId;
+  if (nameChanged || categoryChanged) {
+    const confirmDuplicate = req.body?.confirmDuplicate === true;
+    const confirmSimilar = req.body?.confirmSimilar === true;
+    const pool = await loadVendorPool();
+    const matches = findNameDuplicates(newName, newCategoryId ?? null, pool, params.data.id);
+    const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar);
+    if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "vendor", groupLabel: "category" })); return; }
+  }
   const [vendor] = await db.update(vendorsTable).set(parsed.data).where(eq(vendorsTable.id, params.data.id)).returning();
   if (!vendor) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("vendors", vendor.id, "update", old, vendor);

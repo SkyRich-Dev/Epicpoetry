@@ -4,8 +4,20 @@ import { db, categoriesTable, menuItemsTable, ingredientsTable } from "@workspac
 import { ListCategoriesResponse, CreateCategoryBody, UpdateCategoryParams, UpdateCategoryBody, DeleteCategoryParams, ListCategoriesQueryParams } from "@workspace/api-zod";
 import { authMiddleware } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { findNameDuplicates, shouldBlockNameDuplicates, buildDupeErrorPayload, type NameRecord } from "../lib/nameDedupe";
 
 const router: IRouter = Router();
+
+const CATEGORY_TYPE_LABEL: Record<string, string> = {
+  ingredient: "Ingredient",
+  menu: "Menu",
+  expense: "Expense",
+};
+
+async function loadCategoryPool(): Promise<NameRecord[]> {
+  const rows = await db.select({ id: categoriesTable.id, name: categoriesTable.name, type: categoriesTable.type }).from(categoriesTable);
+  return rows.map(r => ({ id: r.id, name: r.name, groupKey: r.type, groupName: CATEGORY_TYPE_LABEL[r.type] ?? r.type }));
+}
 
 router.get("/categories", async (req, res): Promise<void> => {
   const query = ListCategoriesQueryParams.safeParse(req.query);
@@ -24,6 +36,12 @@ router.post("/categories", authMiddleware, async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const confirmDuplicate = req.body?.confirmDuplicate === true;
+  const confirmSimilar = req.body?.confirmSimilar === true;
+  const pool = await loadCategoryPool();
+  const matches = findNameDuplicates(parsed.data.name, parsed.data.type, pool);
+  const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar);
+  if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "category", groupLabel: "type" })); return; }
   const [cat] = await db.insert(categoriesTable).values({
     name: parsed.data.name,
     type: parsed.data.type,
@@ -42,6 +60,19 @@ router.patch("/categories/:id", authMiddleware, async (req, res): Promise<void> 
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const [old] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, params.data.id));
+  if (!old) { res.status(404).json({ error: "Not found" }); return; }
+  const newName = parsed.data.name ?? old.name;
+  const newType = parsed.data.type ?? old.type;
+  const nameChanged = newName !== old.name;
+  const typeChanged = newType !== old.type;
+  if (nameChanged || typeChanged) {
+    const confirmDuplicate = req.body?.confirmDuplicate === true;
+    const confirmSimilar = req.body?.confirmSimilar === true;
+    const pool = await loadCategoryPool();
+    const matches = findNameDuplicates(newName, newType, pool, params.data.id);
+    const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar);
+    if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "category", groupLabel: "type" })); return; }
+  }
   const [cat] = await db.update(categoriesTable).set(parsed.data).where(eq(categoriesTable.id, params.data.id)).returning();
   if (!cat) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("categories", cat.id, "update", old, cat);

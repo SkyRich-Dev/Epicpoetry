@@ -99,6 +99,7 @@ function CategoriesConfigTab() {
   const createCatMut = useCreateCategory();
   const updateConfigMut = useUpdateConfig();
 
+  const { toast } = useToast();
   const [catModal, setCatModal] = useState(false);
   const [catEditId, setCatEditId] = useState<number | null>(null);
   const [catForm, setCatForm] = useState({ name: '', type: 'ingredient', active: true });
@@ -106,6 +107,7 @@ function CategoriesConfigTab() {
   const [configModal, setConfigModal] = useState(false);
   const [configForm, setConfigForm] = useState(DEFAULT_CONFIG);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [catDupConfirm, setCatDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
 
   useEffect(() => {
     if (config) {
@@ -135,22 +137,63 @@ function CategoriesConfigTab() {
     setCatModal(true);
   };
 
+  const submitCat = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
+    const base = import.meta.env.BASE_URL || '/';
+    const token = localStorage.getItem('token');
+    const url = catEditId ? `${base}api/categories/${catEditId}` : `${base}api/categories`;
+    const method = catEditId ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ ...catForm, ...extraFlags }),
+    });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      if (body && body.duplicateKind) return { needsConfirm: true, body };
+      throw new Error(body?.error || 'Conflict');
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text;
+      try { const j = JSON.parse(text); msg = j.error || text; } catch { /* keep raw */ }
+      throw new Error(msg);
+    }
+    return { needsConfirm: false };
+  };
+
   const handleSaveCat = async () => {
+    if (!catForm.name.trim()) { toast({ title: 'Name is required', variant: 'destructive' }); return; }
     try {
-      if (catEditId) {
-        const base = import.meta.env.BASE_URL || '/';
-        const token = localStorage.getItem('token');
-        await fetch(`${base}api/categories/${catEditId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify(catForm),
-        });
-      } else {
-        await createCatMut.mutateAsync({ data: catForm as any });
+      const r = await submitCat();
+      if (r.needsConfirm) {
+        const b = (r as any).body;
+        if (!b.canConfirm) {
+          toast({ title: 'Duplicate category', description: b.error, variant: 'destructive' });
+          return;
+        }
+        setCatDupConfirm({ message: b.error, kind: b.duplicateKind, canConfirm: !!b.canConfirm, matches: b.duplicates || [] });
+        return;
       }
       queryClient.invalidateQueries({ queryKey: ['/api/categories'] });
       setCatModal(false);
-    } catch(e) {}
+      toast({ title: catEditId ? 'Category updated' : 'Category created' });
+    } catch(e: any) {
+      toast({ title: 'Failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  const handleConfirmCatDuplicate = async () => {
+    if (!catDupConfirm) return;
+    try {
+      const flags = catDupConfirm.kind === 'exact' ? { confirmDuplicate: true } : { confirmSimilar: true };
+      await submitCat(flags);
+      queryClient.invalidateQueries({ queryKey: ['/api/categories'] });
+      setCatDupConfirm(null);
+      setCatModal(false);
+      toast({ title: catEditId ? 'Category updated' : 'Category created' });
+    } catch(e: any) {
+      toast({ title: 'Failed', description: e.message, variant: 'destructive' });
+    }
   };
 
   const handleDeleteCat = async () => {
@@ -275,6 +318,28 @@ function CategoriesConfigTab() {
         <p className="py-2 text-sm text-muted-foreground">
           Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This action cannot be undone.
         </p>
+      </Modal>
+
+      <Modal isOpen={!!catDupConfirm} onClose={() => setCatDupConfirm(null)} title={catDupConfirm?.kind === 'exact' ? 'Possible duplicate found' : 'Similar name found'}
+        footer={<><Button variant="ghost" onClick={() => setCatDupConfirm(null)} data-testid="category-dup-cancel">Cancel</Button><Button onClick={handleConfirmCatDuplicate} data-testid="category-dup-confirm">{catDupConfirm?.kind === 'exact' ? 'Save anyway' : 'Create anyway'}</Button></>}>
+        <div className="py-2 space-y-3 text-sm">
+          <p className="text-muted-foreground">{catDupConfirm?.message}</p>
+          {catDupConfirm?.matches && catDupConfirm.matches.length > 0 && (
+            <div className="border rounded-lg divide-y" data-testid="category-dup-matches">
+              {catDupConfirm.matches.slice(0, 5).map((m: any) => (
+                <div key={m.id} className="p-2.5 flex items-center justify-between text-xs">
+                  <span className="font-medium">{m.name}</span>
+                  <span className="text-muted-foreground">{m.groupName || m.type || ''}{m.matchType !== 'exact' ? ` · ${m.matchType === 'stem' ? 'singular/plural' : '1-letter diff'}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {catDupConfirm?.kind === 'exact'
+              ? 'Confirming will save this category even though one with the same name exists in another type.'
+              : 'Confirming will create this as a separate category. Use only if it really is a different one.'}
+          </p>
+        </div>
       </Modal>
 
       <Modal isOpen={configModal} onClose={() => { setConfigModal(false); setConfigError(null); }} title="Edit System Configuration" maxWidth="max-w-lg"

@@ -44,6 +44,7 @@ export default function CustomersPage() {
   const [detail, setDetail] = useState<any>(null);
   const [reminders, setReminders] = useState<{ birthdays: any[]; anniversaries: any[] }>({ birthdays: [], anniversaries: [] });
   const [form, setForm] = useState({ name: '', phone: '', email: '', birthday: '', anniversary: '', notes: '' });
+  const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -72,17 +73,57 @@ export default function CustomersPage() {
     setModal(true);
   };
 
+  const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
+    const token = localStorage.getItem('token');
+    const url = editing ? `${BASE}api/customers/${editing.id}` : `${BASE}api/customers`;
+    const method = editing ? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ ...form, ...extraFlags }) });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      if (body && body.duplicateKind) return { needsConfirm: true, body };
+      throw new Error(body?.error || 'Conflict');
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text;
+      try { const j = JSON.parse(text); msg = j.error || text; } catch { /* keep raw */ }
+      throw new Error(msg);
+    }
+    return { needsConfirm: false };
+  };
+
   const save = async () => {
     if (!form.name.trim() || !form.phone.trim()) { toast({ title: 'Name and phone required', variant: 'destructive' }); return; }
     try {
-      if (editing) await apiFetch(`customers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(form) });
-      else await apiFetch('customers', { method: 'POST', body: JSON.stringify(form) });
+      const r = await submitSave();
+      if (r.needsConfirm) {
+        const b = (r as any).body;
+        if (!b.canConfirm) {
+          toast({ title: 'Duplicate customer', description: b.error, variant: 'destructive' });
+          return;
+        }
+        setDupConfirm({ message: b.error, kind: b.duplicateKind, canConfirm: !!b.canConfirm, matches: b.duplicates || [] });
+        return;
+      }
       setModal(false);
       toast({ title: editing ? 'Customer updated' : 'Customer created' });
       load();
     } catch (e: any) {
-      try { const j = JSON.parse(e.message); toast({ title: 'Failed', description: j.error, variant: 'destructive' }); }
-      catch { toast({ title: 'Failed', description: e.message, variant: 'destructive' }); }
+      toast({ title: 'Failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  const handleConfirmDuplicate = async () => {
+    if (!dupConfirm) return;
+    try {
+      const flags = dupConfirm.kind === 'exact' ? { confirmDuplicate: true } : { confirmSimilar: true };
+      await submitSave(flags);
+      setDupConfirm(null);
+      setModal(false);
+      toast({ title: editing ? 'Customer updated' : 'Customer created' });
+      load();
+    } catch (e: any) {
+      toast({ title: 'Failed', description: e.message, variant: 'destructive' });
     }
   };
 
@@ -286,6 +327,28 @@ export default function CustomersPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={!!dupConfirm} onClose={() => setDupConfirm(null)} title={dupConfirm?.kind === 'exact' ? 'Possible duplicate found' : 'Similar name found'}
+        footer={<><Button variant="ghost" onClick={() => setDupConfirm(null)} data-testid="customer-dup-cancel">Cancel</Button><Button onClick={handleConfirmDuplicate} data-testid="customer-dup-confirm">{dupConfirm?.kind === 'exact' ? 'Save anyway' : 'Create anyway'}</Button></>}>
+        <div className="py-2 space-y-3 text-sm">
+          <p className="text-muted-foreground">{dupConfirm?.message}</p>
+          {dupConfirm?.matches && dupConfirm.matches.length > 0 && (
+            <div className="border rounded-lg divide-y" data-testid="customer-dup-matches">
+              {dupConfirm.matches.slice(0, 5).map((m: any) => (
+                <div key={m.id} className="p-2.5 flex items-center justify-between text-xs">
+                  <span className="font-medium">{m.name}</span>
+                  <span className="text-muted-foreground">{m.matchType !== 'exact' ? (m.matchType === 'stem' ? 'singular/plural' : '1-letter diff') : 'same name'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {dupConfirm?.kind === 'exact'
+              ? 'Confirming will save this customer even though one with the same name exists.'
+              : 'Confirming will create this as a separate customer. Use only if it really is a different person.'}
+          </p>
+        </div>
       </Modal>
     </div>
   );

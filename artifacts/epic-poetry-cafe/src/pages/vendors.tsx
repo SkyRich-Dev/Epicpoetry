@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useListVendors, useCreateVendor } from '@workspace/api-client-react';
+import { useListVendors } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Modal, Badge, formatCurrency } from '../components/ui-extras';
 import { Plus, Phone, Mail, Pencil, Trash2, Eye, AlertTriangle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -22,7 +22,6 @@ export default function Vendors() {
   const isAdmin = user?.role === 'admin';
   const isViewer = user?.role === 'viewer';
   const { data: vendors, isLoading } = useListVendors();
-  const createMut = useCreateVendor();
   const [, setLocation] = useLocation();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,6 +29,8 @@ export default function Vendors() {
   const [formData, setFormData] = useState(emptyForm);
   const { toast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [vendorSummaries, setVendorSummaries] = useState<Map<number, any>>(new Map());
   const [filter, setFilter] = useState<'all' | 'withDues' | 'overdue'>('all');
 
@@ -54,20 +55,56 @@ export default function Vendors() {
     setIsModalOpen(true);
   };
 
+  const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
+    const token = localStorage.getItem('token');
+    const payload: any = { ...formData, ...extraFlags };
+    const url = editId ? `${BASE}api/vendors/${editId}` : `${BASE}api/vendors`;
+    const method = editId ? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      if (body && body.duplicateKind) return { needsConfirm: true, body };
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text;
+      try { const j = JSON.parse(text); msg = j.error || text; } catch { /* keep raw */ }
+      throw new Error(msg);
+    }
+    return { needsConfirm: false };
+  };
+
   const handleSave = async () => {
     if (!formData.name.trim()) { toast({ title: 'Vendor name is required', variant: 'destructive' }); return; }
+    setIsSaving(true);
     try {
-      const token = localStorage.getItem('token');
-      if (editId) {
-        const res = await fetch(`${BASE}api/vendors/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
-        if (!res.ok) throw new Error(await res.text());
-      } else {
-        await createMut.mutateAsync({ data: formData as any });
+      const r = await submitSave();
+      if (r.needsConfirm) {
+        const b = (r as any).body;
+        if (!b.canConfirm) {
+          toast({ title: 'Duplicate vendor', description: b.error, variant: 'destructive' });
+          return;
+        }
+        setDupConfirm({ message: b.error, kind: b.duplicateKind, canConfirm: !!b.canConfirm, matches: b.duplicates || [] });
+        return;
       }
       queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
       setIsModalOpen(false);
       toast({ title: editId ? 'Vendor updated' : 'Vendor created' });
     } catch(e: any) { toast({ title: 'Failed to save vendor', description: e.message, variant: 'destructive' }); }
+    finally { setIsSaving(false); }
+  };
+
+  const handleConfirmDuplicate = async () => {
+    if (!dupConfirm) return;
+    try {
+      const flags = dupConfirm.kind === 'exact' ? { confirmDuplicate: true } : { confirmSimilar: true };
+      await submitSave(flags);
+      queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
+      setDupConfirm(null);
+      setIsModalOpen(false);
+      toast({ title: editId ? 'Vendor updated' : 'Vendor created' });
+    } catch (e: any) { toast({ title: 'Failed to save vendor', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async () => {
@@ -158,7 +195,7 @@ export default function Vendors() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Vendor" : "Add Vendor"} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
+        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={isSaving}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div><Label>Company Name</Label><Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} /></div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
@@ -180,6 +217,28 @@ export default function Vendors() {
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Vendor"
         footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This cannot be undone.</p>
+      </Modal>
+
+      <Modal isOpen={!!dupConfirm} onClose={() => setDupConfirm(null)} title={dupConfirm?.kind === 'exact' ? 'Possible duplicate found' : 'Similar name found'}
+        footer={<><Button variant="ghost" onClick={() => setDupConfirm(null)} data-testid="vendor-dup-cancel">Cancel</Button><Button onClick={handleConfirmDuplicate} data-testid="vendor-dup-confirm">{dupConfirm?.kind === 'exact' ? 'Save anyway' : 'Create anyway'}</Button></>}>
+        <div className="py-2 space-y-3 text-sm">
+          <p className="text-muted-foreground">{dupConfirm?.message}</p>
+          {dupConfirm?.matches && dupConfirm.matches.length > 0 && (
+            <div className="border rounded-lg divide-y" data-testid="vendor-dup-matches">
+              {dupConfirm.matches.slice(0, 5).map((m: any) => (
+                <div key={m.id} className="p-2.5 flex items-center justify-between text-xs">
+                  <span className="font-medium">{m.name}{m.code && <span className="font-mono text-muted-foreground ml-1">({m.code})</span>}</span>
+                  <span className="text-muted-foreground">{m.groupName || m.categoryName || 'uncategorized'}{m.matchType !== 'exact' ? ` · ${m.matchType === 'stem' ? 'singular/plural' : '1-letter diff'}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {dupConfirm?.kind === 'exact'
+              ? 'Confirming will save this vendor even though one with this name exists in another category.'
+              : 'Confirming will create this as a separate vendor. Use only if it really is a different supplier.'}
+          </p>
+        </div>
       </Modal>
     </div>
   );

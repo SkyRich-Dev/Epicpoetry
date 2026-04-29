@@ -72,7 +72,7 @@ export default function UploadPage() {
 
     const formData = new FormData();
     formData.append('file', selectedFile);
-    if (activeType === 'ingredients') {
+    if (activeType === 'ingredients' || activeType === 'menu') {
       if (mergeAcrossCategories) formData.append('mergeAcrossCategories', 'true');
       if (allowSimilar) formData.append('allowSimilar', 'true');
     }
@@ -175,8 +175,8 @@ export default function UploadPage() {
           ))}
         </div>
 
-        {activeType === 'ingredients' && (
-          <div className="mb-4 p-4 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl space-y-2" data-testid="ingredients-dedupe-options">
+        {(activeType === 'ingredients' || activeType === 'menu') && (
+          <div className="mb-4 p-4 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl space-y-2" data-testid={`${activeType}-dedupe-options`}>
             <h4 className="text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
               <AlertCircle size={14} /> Duplicate handling
             </h4>
@@ -201,7 +201,7 @@ export default function UploadPage() {
                 className="mt-0.5 rounded"
                 data-testid="checkbox-allow-similar"
               />
-              <span><b>Allow similar names.</b> Permit names that look like singular/plural variants or differ by 1 letter from existing ingredients (use only when they really are different items).</span>
+              <span><b>Allow similar names.</b> Permit names that look like singular/plural variants or differ by 1 letter from existing {activeType === 'menu' ? 'menu items' : 'ingredients'} (use only when they really are different items).</span>
             </label>
           </div>
         )}

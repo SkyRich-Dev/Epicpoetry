@@ -22,6 +22,8 @@ export default function MenuItems() {
   const [recipeModalOpen, setRecipeModalOpen] = useState(false);
   const [activeItem, setActiveItem] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -77,13 +79,65 @@ export default function MenuItems() {
       const v = formData[k];
       if (v !== '') payload[k] = Number(v);
     }
+    setIsSaving(true);
     try {
-      if (editId) {
-        await updateMut.mutateAsync({ id: editId, data: payload });
-      } else {
-        await createMut.mutateAsync({ data: payload });
+      const r = await submitSave(payload);
+      if (r.needsConfirm) {
+        const b = (r as any).body;
+        if (!b.canConfirm) {
+          toast({ title: 'Duplicate menu item', description: b.error, variant: 'destructive' });
+          return;
+        }
+        setDupConfirm({ message: b.error, kind: b.duplicateKind, canConfirm: !!b.canConfirm, matches: b.duplicates || [] });
+        return;
       }
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
+      setIsModalOpen(false);
+      toast({ title: editId ? 'Menu item updated' : 'Menu item created' });
+    } catch (e: any) { toast({ title: 'Failed to save menu item', description: e.message, variant: 'destructive' }); }
+    finally { setIsSaving(false); }
+  };
+
+  const submitSave = async (payload: any, extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
+    const base = import.meta.env.BASE_URL || '/';
+    const token = localStorage.getItem('token');
+    const url = editId ? `${base}api/menu-items/${editId}` : `${base}api/menu-items`;
+    const method = editId ? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ ...payload, ...extraFlags }) });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      if (body && body.duplicateKind) return { needsConfirm: true, body };
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text;
+      try { const j = JSON.parse(text); msg = j.error || text; } catch { /* keep raw */ }
+      throw new Error(msg);
+    }
+    return { needsConfirm: false };
+  };
+
+  const buildPayload = () => {
+    const channels: Array<['dineInPrice' | 'takeawayPrice' | 'deliveryPrice' | 'onlinePrice', string]> = [
+      ['dineInPrice', 'Dine-in'], ['takeawayPrice', 'Takeaway'], ['deliveryPrice', 'Delivery'], ['onlinePrice', 'Online'],
+    ];
+    const payload: any = {
+      name: formData.name,
+      categoryId: formData.categoryId,
+      sellingPrice: formData.sellingPrice,
+      active: formData.active,
+    };
+    for (const [k] of channels) { const v = formData[k]; if (v !== '') payload[k] = Number(v); }
+    return payload;
+  };
+
+  const handleConfirmDuplicate = async () => {
+    if (!dupConfirm) return;
+    try {
+      const flags = dupConfirm.kind === 'exact' ? { confirmDuplicate: true } : { confirmSimilar: true };
+      await submitSave(buildPayload(), flags);
+      queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
+      setDupConfirm(null);
       setIsModalOpen(false);
       toast({ title: editId ? 'Menu item updated' : 'Menu item created' });
     } catch (e: any) { toast({ title: 'Failed to save menu item', description: e.message, variant: 'destructive' }); }
@@ -167,7 +221,7 @@ export default function MenuItems() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Menu Item" : "Add Menu Item"} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={createMut.isPending || updateMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
+        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={isSaving || createMut.isPending || updateMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div>
             <Label>Item Name</Label>
@@ -218,6 +272,28 @@ export default function MenuItems() {
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Menu Item"
         footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This will also remove its recipe.</p>
+      </Modal>
+
+      <Modal isOpen={!!dupConfirm} onClose={() => setDupConfirm(null)} title={dupConfirm?.kind === 'exact' ? 'Possible duplicate found' : 'Similar name found'}
+        footer={<><Button variant="ghost" onClick={() => setDupConfirm(null)} data-testid="menu-dup-cancel">Cancel</Button><Button onClick={handleConfirmDuplicate} data-testid="menu-dup-confirm">{dupConfirm?.kind === 'exact' ? 'Save anyway' : 'Create anyway'}</Button></>}>
+        <div className="py-2 space-y-3 text-sm">
+          <p className="text-muted-foreground">{dupConfirm?.message}</p>
+          {dupConfirm?.matches && dupConfirm.matches.length > 0 && (
+            <div className="border rounded-lg divide-y" data-testid="menu-dup-matches">
+              {dupConfirm.matches.slice(0, 5).map((m: any) => (
+                <div key={m.id} className="p-2.5 flex items-center justify-between text-xs">
+                  <span className="font-medium">{m.name}{m.code && <span className="font-mono text-muted-foreground ml-1">({m.code})</span>}</span>
+                  <span className="text-muted-foreground">{m.groupName || m.categoryName || 'uncategorized'}{m.matchType !== 'exact' ? ` · ${m.matchType === 'stem' ? 'singular/plural' : '1-letter diff'}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {dupConfirm?.kind === 'exact'
+              ? 'Confirming will save this menu item even though one with the same name exists in another category.'
+              : 'Confirming will create this as a separate menu item. Use only if it really is a different dish.'}
+          </p>
+        </div>
       </Modal>
 
       {recipeModalOpen && activeItem && (

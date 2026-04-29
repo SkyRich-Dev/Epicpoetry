@@ -7,8 +7,14 @@ import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { recomputeCustomerStats, normalizePhone } from "../lib/customers";
 import { normalizePaymentMode } from "../lib/paymentMode";
+import { findNameDuplicates, shouldBlockNameDuplicates, buildDupeErrorPayload, type NameRecord } from "../lib/nameDedupe";
 
 const router: IRouter = Router();
+
+async function loadCustomerPool(): Promise<NameRecord[]> {
+  const rows = await db.select({ id: customersTable.id, name: customersTable.name }).from(customersTable);
+  return rows.map(r => ({ id: r.id, name: r.name }));
+}
 
 router.get("/customers", authMiddleware, async (req, res): Promise<void> => {
   const search = (req.query.search as string)?.trim();
@@ -123,6 +129,13 @@ router.post("/customers", authMiddleware, async (req, res): Promise<void> => {
   const [existing] = await db.select().from(customersTable).where(eq(customersTable.phone, normPhone));
   if (existing) { res.status(409).json({ error: "Customer with this phone already exists", customerId: existing.id }); return; }
 
+  const confirmDuplicate = req.body?.confirmDuplicate === true;
+  const confirmSimilar = req.body?.confirmSimilar === true;
+  const pool = await loadCustomerPool();
+  const matches = findNameDuplicates(String(name), null, pool);
+  const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar, { groupless: true });
+  if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "customer", groupless: true })); return; }
+
   const [created] = await db.insert(customersTable).values({
     name: String(name).trim(), phone: normPhone, email: email || null,
     birthday: birthday || null, anniversary: anniversary || null, notes: notes || null,
@@ -139,6 +152,14 @@ router.patch("/customers/:id", authMiddleware, async (req, res): Promise<void> =
   const updates: any = {};
   for (const f of ["name", "email", "birthday", "anniversary", "notes"]) {
     if (req.body[f] !== undefined) updates[f] = req.body[f] || null;
+  }
+  if (req.body.name !== undefined && req.body.name && String(req.body.name).trim() !== existing.name) {
+    const confirmDuplicate = req.body?.confirmDuplicate === true;
+    const confirmSimilar = req.body?.confirmSimilar === true;
+    const pool = await loadCustomerPool();
+    const matches = findNameDuplicates(String(req.body.name), null, pool, id);
+    const block = shouldBlockNameDuplicates(matches, confirmDuplicate, confirmSimilar, { groupless: true });
+    if (block) { res.status(409).json(buildDupeErrorPayload(block.reason, matches, { entity: "customer", groupless: true })); return; }
   }
   if (req.body.phone !== undefined) {
     const np = normalizePhone(req.body.phone);

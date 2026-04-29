@@ -23,6 +23,7 @@ import { generateCode } from "../lib/codeGenerator";
 import { logger } from "../lib/logger";
 import { upsertCustomerFromInvoice, recomputeCustomerStats } from "../lib/customers";
 import { findDuplicates, normalizeName, normalizeStem, describeMatch, type IngredientLite } from "../lib/ingredientDedupe";
+import { findNameDuplicates, describeNameMatch, type NameRecord } from "../lib/nameDedupe";
 
 const router: IRouter = Router();
 
@@ -323,12 +324,24 @@ router.post("/upload/menu", authMiddleware, handleUpload, async (req, res): Prom
   if (error) { res.status(400).json({ error }); return; }
   if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
 
+  const flag = (v: unknown) => v === true || v === "true" || v === "1" || v === 1;
+  const mergeAcrossCategories = flag(req.body?.mergeAcrossCategories);
+  const allowSimilar = flag(req.body?.allowSimilar);
+
   const categories = await db.select().from(categoriesTable);
   const catByName = new Map(categories.map(c => [c.name.toLowerCase().trim(), c]));
   const ingredients = await db.select().from(ingredientsTable);
   const ingByName = new Map(ingredients.map(i => [i.name.toLowerCase().trim(), i]));
   const existingMenuItems = await db.select().from(menuItemsTable);
-  const menuByName = new Map(existingMenuItems.map(m => [m.name.toLowerCase().trim(), m]));
+  const menuById = new Map(existingMenuItems.map(m => [m.id, m]));
+  const menuByNameCat = new Map<string, typeof existingMenuItems[number]>();
+  for (const m of existingMenuItems) {
+    menuByNameCat.set(`${m.name.toLowerCase().trim()}|${m.categoryId ?? ''}`, m);
+  }
+  const menuPool: NameRecord[] = existingMenuItems.map(m => {
+    const cat = m.categoryId != null ? categories.find(c => c.id === m.categoryId) : null;
+    return { id: m.id, name: m.name, code: m.code, groupKey: m.categoryId, groupName: cat?.name ?? null };
+  });
 
   const grouped = new Map<string, {
     name: string;
@@ -413,7 +426,28 @@ router.post("/upload/menu", authMiddleware, handleUpload, async (req, res): Prom
           }
         }
 
-        const existing = menuByName.get(group.name.toLowerCase());
+        // Same-name same-category record always updates in place (idempotent re-uploads).
+        let existing = menuByNameCat.get(`${group.name.toLowerCase().trim()}|${categoryId ?? ''}`);
+
+        // Always run the smart dedupe so the upload flags are honored
+        // even when a same-name row exists in another category.
+        const matches = findNameDuplicates(group.name, categoryId, menuPool, existing?.id);
+        const exactCross = matches.find(m => m.matchType === "exact" && !m.sameGroup);
+        const similar = matches.filter(m => m.matchType !== "exact");
+
+        if (!existing && exactCross) {
+          if (!mergeAcrossCategories) {
+            throw new Error(`"${group.name}" already exists in another category — enable "Merge across categories" to update it. (${describeNameMatch(exactCross, { groupLabel: "category" })})`);
+          }
+          const matched = menuById.get(exactCross.id);
+          if (matched) {
+            existing = matched;
+            menuByNameCat.set(`${matched.name.toLowerCase().trim()}|${matched.categoryId ?? ''}`, matched);
+          }
+        } else if (!existing && similar.length > 0 && !allowSimilar) {
+          const top = similar[0];
+          throw new Error(`Possible duplicate of an existing menu item — enable "Allow similar names" to create anyway. (${describeNameMatch(top, { groupLabel: "category" })})`);
+        }
         let menuItemId: number;
         let menuItemCode: string;
 
@@ -445,7 +479,9 @@ router.post("/upload/menu", authMiddleware, handleUpload, async (req, res): Prom
             deliveryPrice: group.deliveryPrice,
           }).returning();
           menuItemId = newItem.id;
-          menuByName.set(group.name.toLowerCase(), newItem);
+          menuByNameCat.set(`${newItem.name.toLowerCase().trim()}|${newItem.categoryId ?? ''}`, newItem);
+          menuById.set(newItem.id, newItem);
+          menuPool.push({ id: newItem.id, name: newItem.name, code: newItem.code, groupKey: newItem.categoryId, groupName: group.categoryName || null });
         }
 
         for (const line of group.recipeLines) {
