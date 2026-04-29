@@ -15,13 +15,14 @@ import {
   ingredientsTable,
   expensesTable,
   salesImportBatchesTable,
+  customersTable,
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { isFutureDate, getTodayISO } from "../lib/dateValidation";
 import { generateCode } from "../lib/codeGenerator";
 import { logger } from "../lib/logger";
-import { upsertCustomerFromInvoice, recomputeCustomerStats } from "../lib/customers";
+import { upsertCustomerFromInvoice, recomputeCustomerStats, normalizePhone } from "../lib/customers";
 import { findDuplicates, normalizeName, normalizeStem, describeMatch, type IngredientLite } from "../lib/ingredientDedupe";
 import { findNameDuplicates, describeNameMatch, type NameRecord } from "../lib/nameDedupe";
 
@@ -1086,6 +1087,423 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
   });
 });
 
+const truthyFlag = (v: unknown): boolean =>
+  v === true || v === "true" || v === "1" || v === 1 || v === "yes" || v === "YES";
+
+const falsyFlag = (v: unknown): boolean =>
+  v === false || v === "false" || v === "0" || v === 0 || v === "no" || v === "NO";
+
+router.post("/upload/vendors", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const mergeAcrossCategories = truthyFlag(req.body?.mergeAcrossCategories);
+  const allowSimilar = truthyFlag(req.body?.allowSimilar);
+
+  const categories = await db.select().from(categoriesTable);
+  const catByNameType = new Map(categories.map(c => [`${c.name.toLowerCase().trim()}|${c.type}`, c]));
+  const catById = new Map(categories.map(c => [c.id, c]));
+
+  const existingVendors = await db.select().from(vendorsTable);
+  const vendorByCode = new Map(existingVendors.map(v => [v.code.toLowerCase().trim(), v]));
+  const vendorByNameCat = new Map<string, typeof existingVendors[number]>();
+  for (const v of existingVendors) {
+    vendorByNameCat.set(`${v.name.toLowerCase().trim()}|${v.categoryId ?? ''}`, v);
+  }
+  const vendorPool: NameRecord[] = existingVendors.map(v => ({
+    id: v.id, name: v.name, code: v.code, groupKey: v.categoryId,
+    groupName: v.categoryId != null ? (catById.get(v.categoryId)?.name ?? null) : null,
+  }));
+
+  const seenInThisFile = new Set<string>();
+  const seenStemInThisFile = new Map<string, string>();
+  const results: { row: number; status: string; error?: string; data?: any; needsConfirmation?: "crossCategory" | "similar" }[] = [];
+  const autoCreated: string[] = [];
+  let successCount = 0;
+  let needsCrossCategoryConfirm = 0;
+  let needsSimilarConfirm = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const name = String(raw.name || raw.vendor || raw.vendor_name || "").trim();
+      const codeInput = String(raw.code || raw.vendor_code || "").trim();
+      const categoryName = String(raw.category || raw.category_name || "").trim();
+      const contactPerson = String(raw.contact_person || raw.contact || "").trim();
+      const mobile = String(raw.mobile || raw.phone || "").trim();
+      const email = String(raw.email || "").trim();
+      const address = String(raw.address || "").trim();
+      const gstNumber = String(raw.gst_number || raw.gst || raw.gstin || "").trim();
+      const paymentTerms = String(raw.payment_terms || raw.terms || "").trim();
+      const creditDaysRaw = raw.credit_days ?? raw.credit ?? "";
+      const creditDays = creditDaysRaw === "" ? null : Number(creditDaysRaw);
+      const remarks = String(raw.remarks || raw.notes || "").trim();
+      const preferred = truthyFlag(raw.preferred);
+      const active = !falsyFlag(raw.active);
+
+      if (!name) { results.push({ row: i + 2, status: "error", error: "Name is required" }); continue; }
+      if (creditDaysRaw !== "" && (creditDays === null || !Number.isFinite(creditDays) || creditDays < 0)) {
+        results.push({ row: i + 2, status: "error", error: "Credit_Days must be a non-negative number" }); continue;
+      }
+
+      const dedupeKey = name.toLowerCase().trim();
+      const normKey = normalizeName(name);
+      const stemKey = normalizeStem(name);
+      if (seenInThisFile.has(dedupeKey) || (normKey && seenInThisFile.has(normKey))) {
+        results.push({ row: i + 2, status: "error", error: `Duplicate name in file: "${name}"` }); continue;
+      }
+      if (stemKey && seenStemInThisFile.has(stemKey) && !allowSimilar) {
+        const earlierName = seenStemInThisFile.get(stemKey)!;
+        needsSimilarConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `"${name}" looks similar to an earlier row in this file ("${earlierName}"). Re-upload with "Allow similar names" if these are different vendors.` });
+        continue;
+      }
+
+      let categoryId: number | null = null;
+      if (categoryName) {
+        const cat = catByNameType.get(`${categoryName.toLowerCase()}|vendor`);
+        if (cat) {
+          categoryId = cat.id;
+        } else {
+          const [newCat] = await db.insert(categoriesTable).values({
+            name: categoryName, type: "vendor", active: true, sortOrder: 0,
+          }).returning();
+          categoryId = newCat.id;
+          catByNameType.set(`${categoryName.toLowerCase()}|vendor`, newCat);
+          catById.set(newCat.id, newCat);
+          autoCreated.push(`Vendor Category: ${categoryName}`);
+        }
+      }
+
+      const matchByCode = codeInput ? vendorByCode.get(codeInput.toLowerCase()) : undefined;
+      const matchByNameCat = vendorByNameCat.get(`${dedupeKey}|${categoryId ?? ''}`);
+      if (matchByCode && matchByNameCat && matchByCode.id !== matchByNameCat.id) {
+        results.push({ row: i + 2, status: "error", error: `Name "${name}" and Code "${codeInput}" point to different existing vendors (${matchByNameCat.code} vs ${matchByCode.code}). Refusing to update.` });
+        continue;
+      }
+      let existing = matchByNameCat || matchByCode;
+
+      const dupMatches = findNameDuplicates(name, categoryId, vendorPool, existing?.id);
+      const exactCross = dupMatches.filter(m => m.matchType === "exact" && !m.sameGroup);
+      const similar = dupMatches.filter(m => m.matchType !== "exact");
+
+      if (!existing && exactCross.length > 0 && !mergeAcrossCategories) {
+        needsCrossCategoryConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "crossCategory", error: `"${name}" already exists in another category — ${exactCross.slice(0, 3).map(m => describeNameMatch(m, { groupLabel: "category" })).join("; ")}. Re-upload with "Merge across categories" to update it.` });
+        continue;
+      }
+      if (!existing && exactCross.length > 0 && mergeAcrossCategories) {
+        const target = exactCross[0];
+        const [full] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, target.id));
+        if (full) existing = full;
+      }
+      if (!existing && similar.length > 0 && !allowSimilar) {
+        needsSimilarConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `Possible duplicate of existing vendor — ${similar.slice(0, 3).map(m => describeNameMatch(m, { groupLabel: "category" })).join("; ")}. Re-upload with "Allow similar names" if this is a different vendor.` });
+        continue;
+      }
+
+      seenInThisFile.add(dedupeKey); if (normKey) seenInThisFile.add(normKey);
+      if (stemKey) seenStemInThisFile.set(stemKey, name);
+
+      const baseValues = {
+        name,
+        categoryId,
+        contactPerson: contactPerson || null,
+        mobile: mobile || null,
+        email: email || null,
+        address: address || null,
+        gstNumber: gstNumber || null,
+        paymentTerms: paymentTerms || null,
+        creditDays: creditDays ?? null,
+        preferred,
+        active,
+        remarks: remarks || null,
+      } as const;
+
+      if (existing) {
+        const [updated] = await db.update(vendorsTable).set({
+          ...baseValues,
+          categoryId: categoryId ?? existing.categoryId,
+        }).where(eq(vendorsTable.id, existing.id)).returning();
+        await createAuditLog("vendors", existing.id, "update", existing, updated);
+        vendorByCode.set(updated.code.toLowerCase(), updated);
+        vendorByNameCat.delete(`${existing.name.toLowerCase().trim()}|${existing.categoryId ?? ''}`);
+        vendorByNameCat.set(`${updated.name.toLowerCase().trim()}|${updated.categoryId ?? ''}`, updated);
+        const idx = vendorPool.findIndex(p => p.id === updated.id);
+        if (idx >= 0) vendorPool[idx] = { ...vendorPool[idx], name: updated.name, groupKey: updated.categoryId, groupName: updated.categoryId != null ? (catById.get(updated.categoryId)?.name ?? null) : null };
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: updated.id, code: updated.code, name, action: existing.id === matchByCode?.id && !matchByNameCat ? "updated-by-code" : "updated" } });
+      } else {
+        const code = codeInput || await generateCode("VND", "vendors");
+        const [created] = await db.insert(vendorsTable).values({ ...baseValues, code }).returning();
+        await createAuditLog("vendors", created.id, "create", null, created);
+        vendorByCode.set(code.toLowerCase(), created);
+        vendorByNameCat.set(`${created.name.toLowerCase().trim()}|${created.categoryId ?? ''}`, created);
+        vendorPool.push({
+          id: created.id, name: created.name, code: created.code, groupKey: created.categoryId,
+          groupName: created.categoryId != null ? (catById.get(created.categoryId)?.name ?? null) : null,
+        });
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: created.id, code: created.code, name, action: "created" } });
+      }
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Vendor upload row error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  res.json({
+    totalRows: rows.length,
+    successCount,
+    errorCount: rows.length - successCount,
+    results,
+    autoCreated: autoCreated.length > 0 ? autoCreated : undefined,
+    needsConfirmation: (needsCrossCategoryConfirm > 0 || needsSimilarConfirm > 0) ? {
+      crossCategory: needsCrossCategoryConfirm,
+      similar: needsSimilarConfirm,
+    } : undefined,
+  });
+});
+
+router.post("/upload/customers", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  // Customers are groupless — `mergeAcrossCategories` does not apply.
+  const allowSimilar = truthyFlag(req.body?.allowSimilar);
+
+  const existingCustomers = await db.select().from(customersTable);
+  const custByPhone = new Map(existingCustomers.map(c => [c.phone, c]));
+  const customerPool: NameRecord[] = existingCustomers.map(c => ({ id: c.id, name: c.name }));
+
+  const seenPhonesInFile = new Set<string>();
+  const seenStemInThisFile = new Map<string, string>();
+  const results: { row: number; status: string; error?: string; data?: any; needsConfirmation?: "crossCategory" | "similar" }[] = [];
+  let successCount = 0;
+  let needsSimilarConfirm = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const name = String(raw.name || raw.customer || raw.customer_name || "").trim();
+      const phoneRaw = String(raw.phone || raw.mobile || raw.contact || "").trim();
+      const email = String(raw.email || "").trim();
+      const birthday = String(raw.birthday || raw.birth_date || raw.dob || "").trim();
+      const anniversary = String(raw.anniversary || "").trim();
+      const notes = String(raw.notes || raw.remarks || "").trim();
+
+      if (!name) { results.push({ row: i + 2, status: "error", error: "Name is required" }); continue; }
+      const phone = normalizePhone(phoneRaw);
+      if (!phone) { results.push({ row: i + 2, status: "error", error: "Valid 10-digit phone is required" }); continue; }
+
+      if (seenPhonesInFile.has(phone)) {
+        results.push({ row: i + 2, status: "error", error: `Duplicate phone in file: "${phone}"` }); continue;
+      }
+
+      const existing = custByPhone.get(phone);
+      const stemKey = normalizeStem(name);
+
+      if (!existing) {
+        // Check name-based dedupe only when creating a new customer.
+        if (stemKey && seenStemInThisFile.has(stemKey) && !allowSimilar) {
+          const earlierName = seenStemInThisFile.get(stemKey)!;
+          needsSimilarConfirm++;
+          results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `"${name}" looks similar to an earlier row in this file ("${earlierName}"). Re-upload with "Allow similar names" if these are different customers.` });
+          continue;
+        }
+        const dupMatches = findNameDuplicates(name, null, customerPool);
+        const similar = dupMatches.filter(m => m.matchType !== "exact");
+        if (similar.length > 0 && !allowSimilar) {
+          needsSimilarConfirm++;
+          results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `Possible duplicate of existing customer — ${similar.slice(0, 3).map(m => describeNameMatch(m, { groupless: true })).join("; ")}. Re-upload with "Allow similar names" if this is a different customer.` });
+          continue;
+        }
+      }
+
+      seenPhonesInFile.add(phone);
+      if (stemKey) seenStemInThisFile.set(stemKey, name);
+
+      if (existing) {
+        const [updated] = await db.update(customersTable).set({
+          name,
+          email: email || existing.email,
+          birthday: birthday || existing.birthday,
+          anniversary: anniversary || existing.anniversary,
+          notes: notes || existing.notes,
+        }).where(eq(customersTable.id, existing.id)).returning();
+        await createAuditLog("customers", existing.id, "update", existing, updated);
+        custByPhone.set(phone, updated);
+        const idx = customerPool.findIndex(p => p.id === updated.id);
+        if (idx >= 0) customerPool[idx] = { ...customerPool[idx], name: updated.name };
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: updated.id, phone, name, action: "updated" } });
+      } else {
+        const [created] = await db.insert(customersTable).values({
+          name, phone,
+          email: email || null,
+          birthday: birthday || null,
+          anniversary: anniversary || null,
+          notes: notes || null,
+        }).returning();
+        await createAuditLog("customers", created.id, "create", null, created);
+        custByPhone.set(phone, created);
+        customerPool.push({ id: created.id, name: created.name });
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: created.id, phone, name, action: "created" } });
+      }
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Customer upload row error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  res.json({
+    totalRows: rows.length,
+    successCount,
+    errorCount: rows.length - successCount,
+    results,
+    needsConfirmation: needsSimilarConfirm > 0 ? {
+      crossCategory: 0,
+      similar: needsSimilarConfirm,
+    } : undefined,
+  });
+});
+
+router.post("/upload/categories", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  // For categories the "group" is the category type. The cross-group flag is
+  // surfaced as "Merge across types" in the UI but we keep the same field name
+  // (`mergeAcrossCategories`) on the wire so the existing Upload page can stay
+  // generic.
+  const mergeAcrossTypes = truthyFlag(req.body?.mergeAcrossCategories);
+  const allowSimilar = truthyFlag(req.body?.allowSimilar);
+
+  const VALID_TYPES = new Set(["ingredient", "menu", "expense", "vendor"]);
+  const TYPE_LABEL: Record<string, string> = {
+    ingredient: "Ingredient", menu: "Menu", expense: "Expense", vendor: "Vendor",
+  };
+
+  const existingCategories = await db.select().from(categoriesTable);
+  const catByNameType = new Map(existingCategories.map(c => [`${c.name.toLowerCase().trim()}|${c.type}`, c]));
+  const catPool: NameRecord[] = existingCategories.map(c => ({
+    id: c.id, name: c.name, groupKey: c.type, groupName: TYPE_LABEL[c.type] ?? c.type,
+  }));
+
+  const seenInThisFile = new Set<string>();
+  const seenStemInThisFile = new Map<string, string>();
+  const results: { row: number; status: string; error?: string; data?: any; needsConfirmation?: "crossCategory" | "similar" }[] = [];
+  let successCount = 0;
+  let needsCrossTypeConfirm = 0;
+  let needsSimilarConfirm = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const name = String(raw.name || raw.category || raw.category_name || "").trim();
+      const typeRaw = String(raw.type || raw.category_type || "").trim().toLowerCase();
+      const description = String(raw.description || raw.desc || "").trim();
+      const sortOrderRaw = raw.sort_order ?? raw.sortorder ?? raw.order ?? "";
+      const sortOrder = sortOrderRaw === "" ? 0 : Number(sortOrderRaw);
+      const active = !falsyFlag(raw.active);
+
+      if (!name) { results.push({ row: i + 2, status: "error", error: "Name is required" }); continue; }
+      if (!typeRaw) { results.push({ row: i + 2, status: "error", error: "Type is required (ingredient, menu, expense, or vendor)" }); continue; }
+      if (!VALID_TYPES.has(typeRaw)) { results.push({ row: i + 2, status: "error", error: `Invalid type "${typeRaw}". Use ingredient, menu, expense, or vendor.` }); continue; }
+      if (sortOrderRaw !== "" && !Number.isFinite(sortOrder)) { results.push({ row: i + 2, status: "error", error: "Sort_Order must be a number" }); continue; }
+
+      const dedupeKey = `${name.toLowerCase().trim()}|${typeRaw}`;
+      const normKey = `${normalizeName(name)}|${typeRaw}`;
+      const stemKey = `${normalizeStem(name)}|${typeRaw}`;
+      if (seenInThisFile.has(dedupeKey) || seenInThisFile.has(normKey)) {
+        results.push({ row: i + 2, status: "error", error: `Duplicate name + type in file: "${name}" (${typeRaw})` }); continue;
+      }
+      if (seenStemInThisFile.has(stemKey) && !allowSimilar) {
+        const earlierName = seenStemInThisFile.get(stemKey)!;
+        needsSimilarConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `"${name}" looks similar to an earlier row in this file ("${earlierName}"). Re-upload with "Allow similar names" if these are different categories.` });
+        continue;
+      }
+
+      const existing = catByNameType.get(dedupeKey);
+      const dupMatches = findNameDuplicates(name, typeRaw, catPool, existing?.id);
+      const exactCross = dupMatches.filter(m => m.matchType === "exact" && !m.sameGroup);
+      const similar = dupMatches.filter(m => m.matchType !== "exact");
+
+      if (!existing && exactCross.length > 0 && !mergeAcrossTypes) {
+        needsCrossTypeConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "crossCategory", error: `"${name}" already exists with another type — ${exactCross.slice(0, 3).map(m => describeNameMatch(m, { groupLabel: "type" })).join("; ")}. Re-upload with "Merge across types" to also create it under this type.` });
+        continue;
+      }
+      // Categories don't actually "merge across types" cleanly because (name, type)
+      // is the natural key. When the flag is set, we simply allow creating the
+      // new (name, type) row alongside the existing one (i.e. confirm there is
+      // an exact match of the same name in a different type).
+      if (!existing && similar.length > 0 && !allowSimilar) {
+        needsSimilarConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `Possible duplicate of existing category — ${similar.slice(0, 3).map(m => describeNameMatch(m, { groupLabel: "type" })).join("; ")}. Re-upload with "Allow similar names" if this is a different category.` });
+        continue;
+      }
+
+      seenInThisFile.add(dedupeKey);
+      seenInThisFile.add(normKey);
+      seenStemInThisFile.set(stemKey, name);
+
+      if (existing) {
+        const [updated] = await db.update(categoriesTable).set({
+          name,
+          description: description || existing.description,
+          active,
+          sortOrder: Number.isFinite(sortOrder) ? sortOrder : existing.sortOrder,
+        }).where(eq(categoriesTable.id, existing.id)).returning();
+        await createAuditLog("categories", existing.id, "update", existing, updated);
+        catByNameType.set(dedupeKey, updated);
+        const idx = catPool.findIndex(p => p.id === updated.id);
+        if (idx >= 0) catPool[idx] = { ...catPool[idx], name: updated.name };
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: updated.id, name, type: typeRaw, action: "updated" } });
+      } else {
+        const [created] = await db.insert(categoriesTable).values({
+          name, type: typeRaw,
+          description: description || undefined,
+          active,
+          sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+        }).returning();
+        await createAuditLog("categories", created.id, "create", null, created);
+        catByNameType.set(dedupeKey, created);
+        catPool.push({ id: created.id, name: created.name, groupKey: created.type, groupName: TYPE_LABEL[created.type] ?? created.type });
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: created.id, name, type: typeRaw, action: "created" } });
+      }
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Category upload row error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  res.json({
+    totalRows: rows.length,
+    successCount,
+    errorCount: rows.length - successCount,
+    results,
+    needsConfirmation: (needsCrossTypeConfirm > 0 || needsSimilarConfirm > 0) ? {
+      crossCategory: needsCrossTypeConfirm,
+      similar: needsSimilarConfirm,
+    } : undefined,
+  });
+});
+
 router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<void> => {
   const { type } = req.params;
   let headers: string[];
@@ -1133,8 +1551,23 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
       headers = ["Date", "Order_ID", "Time", "Order_Type", "Customer", "Item", "Category", "Price", "Quantity", "GST_Percent", "Discount", "Payment_Mode"];
       sampleRow = ["2026-03-30", "PP-1234", "10:30", "dine-in", "Walk-in", "Cappuccino", "Beverages", 180, 2, 5, 0, "cash"];
       break;
+    case "vendors":
+      sheetName = "Vendors";
+      headers = ["Name", "Code", "Category", "Contact_Person", "Mobile", "Email", "Address", "GST_Number", "Payment_Terms", "Credit_Days", "Preferred", "Active", "Remarks"];
+      sampleRow = ["Fresh Dairy Co", "", "Dairy Suppliers", "Ramesh Kumar", "9876543210", "ramesh@freshdairy.com", "12 MG Road, Bengaluru", "29ABCDE1234F1Z5", "Net 30", 30, "true", "true", "Preferred milk supplier"];
+      break;
+    case "customers":
+      sheetName = "Customers";
+      headers = ["Name", "Phone", "Email", "Birthday", "Anniversary", "Notes"];
+      sampleRow = ["Anita Sharma", "9876543210", "anita@example.com", "1990-05-12", "2018-11-21", "Loves cappuccino"];
+      break;
+    case "categories":
+      sheetName = "Categories";
+      headers = ["Name", "Type", "Description", "Active", "Sort_Order"];
+      sampleRow = ["Beverages", "menu", "Hot and cold drinks", "true", 1];
+      break;
     default:
-      res.status(400).json({ error: "Invalid template type. Use: ingredients, purchases, expenses, menu, sales-invoices, or petpooja" });
+      res.status(400).json({ error: "Invalid template type. Use: ingredients, purchases, expenses, menu, sales-invoices, petpooja, vendors, customers, or categories" });
       return;
   }
 

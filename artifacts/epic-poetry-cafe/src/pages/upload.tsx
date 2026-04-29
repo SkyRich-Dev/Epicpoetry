@@ -2,7 +2,16 @@ import React, { useState, useRef } from 'react';
 import { PageHeader, Button, formatCurrency } from '../components/ui-extras';
 import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
 
-type UploadType = 'sales-invoices' | 'purchases' | 'expenses' | 'menu' | 'ingredients' | 'petpooja';
+type UploadType =
+  | 'sales-invoices'
+  | 'purchases'
+  | 'expenses'
+  | 'menu'
+  | 'ingredients'
+  | 'petpooja'
+  | 'vendors'
+  | 'customers'
+  | 'categories';
 
 interface UploadResult {
   totalRows: number;
@@ -13,7 +22,21 @@ interface UploadResult {
   needsConfirmation?: { crossCategory: number; similar: number };
 }
 
-const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; columns: string[] }> = {
+type DedupeConfig = {
+  // Singular noun used in prose ("an existing vendor").
+  entityLabel: string;
+  // Plural noun used in prose ("vendors").
+  entityPlural: string;
+  // Group label ("category" / "type"). Omit for groupless entities.
+  groupLabel?: 'category' | 'type';
+};
+
+const UPLOAD_CONFIGS: Record<UploadType, {
+  label: string;
+  description: string;
+  columns: string[];
+  dedupe?: DedupeConfig;
+}> = {
   'sales-invoices': {
     label: 'Sales Invoices',
     description: 'Upload invoices with multiple line items and GST. Rows with the same Invoice_No are grouped into one invoice.',
@@ -33,16 +56,36 @@ const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; c
     label: 'Menu & Recipes',
     description: 'Upload menu items with recipe lines. Rows with the same item name are grouped — first row sets item details, all rows add recipe lines.',
     columns: ['Menu_Item', 'Category', 'Description', 'Selling_Price', 'Dine_In_Price', 'Takeaway_Price', 'Delivery_Price', 'Ingredient', 'Quantity', 'UOM', 'Wastage_Percent', 'Stage', 'Notes'],
+    dedupe: { entityLabel: 'menu item', entityPlural: 'menu items', groupLabel: 'category' },
   },
   ingredients: {
     label: 'Ingredients Master',
     description: 'Upload ingredients (raw materials). Existing ingredients are matched by Name and updated; new ones get an auto-generated code. Categories are auto-created if missing.',
     columns: ['Name', 'Code (optional)', 'Category', 'Description', 'Stock_UOM', 'Purchase_UOM', 'Recipe_UOM', 'Conversion_Factor', 'Current_Cost', 'Reorder_Level', 'Current_Stock', 'Perishable', 'Shelf_Life_Days', 'Active'],
+    dedupe: { entityLabel: 'ingredient', entityPlural: 'ingredients', groupLabel: 'category' },
   },
   petpooja: {
     label: 'Petpooja Import',
     description: 'Import Petpooja sales data. Items are matched by name — new items and categories are auto-created with price if they don\'t exist.',
     columns: ['Date', 'Order_ID', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Category', 'Price', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode'],
+  },
+  vendors: {
+    label: 'Vendors Master',
+    description: 'Upload vendors (suppliers). Existing vendors are matched by Code or Name + Category and updated; new ones get an auto-generated code. Vendor categories are auto-created if missing.',
+    columns: ['Name', 'Code (optional)', 'Category', 'Contact_Person', 'Mobile', 'Email', 'Address', 'GST_Number', 'Payment_Terms', 'Credit_Days', 'Preferred', 'Active', 'Remarks'],
+    dedupe: { entityLabel: 'vendor', entityPlural: 'vendors', groupLabel: 'category' },
+  },
+  customers: {
+    label: 'Customers Master',
+    description: 'Upload customers. Phone is the unique key — existing customers are matched by Phone and updated; new ones are inserted.',
+    columns: ['Name', 'Phone (10 digits)', 'Email', 'Birthday', 'Anniversary', 'Notes'],
+    dedupe: { entityLabel: 'customer', entityPlural: 'customers' },
+  },
+  categories: {
+    label: 'Categories Master',
+    description: 'Upload categories grouped by Type (ingredient, menu, expense, vendor). Existing rows are matched by Name + Type and updated.',
+    columns: ['Name', 'Type (ingredient/menu/expense/vendor)', 'Description', 'Active', 'Sort_Order'],
+    dedupe: { entityLabel: 'category', entityPlural: 'categories', groupLabel: 'type' },
   },
 };
 
@@ -72,8 +115,8 @@ export default function UploadPage() {
 
     const formData = new FormData();
     formData.append('file', selectedFile);
-    if (activeType === 'ingredients' || activeType === 'menu') {
-      if (mergeAcrossCategories) formData.append('mergeAcrossCategories', 'true');
+    if (config.dedupe) {
+      if (mergeAcrossCategories && config.dedupe.groupLabel) formData.append('mergeAcrossCategories', 'true');
       if (allowSimilar) formData.append('allowSimilar', 'true');
     }
 
@@ -175,7 +218,7 @@ export default function UploadPage() {
           ))}
         </div>
 
-        {(activeType === 'ingredients' || activeType === 'menu') && (
+        {config.dedupe && (
           <div className="mb-4 p-4 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl space-y-2" data-testid={`${activeType}-dedupe-options`}>
             <h4 className="text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
               <AlertCircle size={14} /> Duplicate handling
@@ -183,16 +226,23 @@ export default function UploadPage() {
             <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
               Names are matched case-insensitively, including singular/plural forms and 1-letter typos. By default, duplicates are rejected so you can review them.
             </p>
-            <label className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={mergeAcrossCategories}
-                onChange={e => setMergeAcrossCategories(e.target.checked)}
-                className="mt-0.5 rounded"
-                data-testid="checkbox-merge-cross-category"
-              />
-              <span><b>Merge across categories.</b> If a name already exists in a different category, update that record (and move it to the new category) instead of rejecting.</span>
-            </label>
+            {config.dedupe.groupLabel && (
+              <label className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mergeAcrossCategories}
+                  onChange={e => setMergeAcrossCategories(e.target.checked)}
+                  className="mt-0.5 rounded"
+                  data-testid="checkbox-merge-cross-category"
+                />
+                <span>
+                  <b>Merge across {config.dedupe.groupLabel === 'type' ? 'types' : 'categories'}.</b>{' '}
+                  {config.dedupe.groupLabel === 'type'
+                    ? `If a name already exists under a different type, also create it under this type instead of rejecting (each (name, type) is its own record).`
+                    : `If a name already exists in a different ${config.dedupe.groupLabel}, update that record (and move it to the new ${config.dedupe.groupLabel}) instead of rejecting.`}
+                </span>
+              </label>
+            )}
             <label className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
               <input
                 type="checkbox"
@@ -201,7 +251,7 @@ export default function UploadPage() {
                 className="mt-0.5 rounded"
                 data-testid="checkbox-allow-similar"
               />
-              <span><b>Allow similar names.</b> Permit names that look like singular/plural variants or differ by 1 letter from existing {activeType === 'menu' ? 'menu items' : 'ingredients'} (use only when they really are different items).</span>
+              <span><b>Allow similar names.</b> Permit names that look like singular/plural variants or differ by 1 letter from existing {config.dedupe.entityPlural} (use only when they really are different {config.dedupe.entityPlural}).</span>
             </label>
           </div>
         )}
@@ -265,10 +315,18 @@ export default function UploadPage() {
               </h4>
               <ul className="text-xs text-amber-800/90 dark:text-amber-200/90 space-y-1 mb-3 list-disc pl-5">
                 {result.needsConfirmation.crossCategory > 0 && (
-                  <li>{result.needsConfirmation.crossCategory} row(s) match an existing ingredient in a <b>different category</b>. Tick <b>"Merge across categories"</b> above and re-upload to update them.</li>
+                  <li>
+                    {result.needsConfirmation.crossCategory} row(s) match an existing {config.dedupe?.entityLabel ?? 'item'} in a{' '}
+                    <b>different {config.dedupe?.groupLabel ?? 'category'}</b>. Tick{' '}
+                    <b>"Merge across {config.dedupe?.groupLabel === 'type' ? 'types' : 'categories'}"</b> above and re-upload to{' '}
+                    {config.dedupe?.groupLabel === 'type' ? 'also create them under this type' : 'update them'}.
+                  </li>
                 )}
                 {result.needsConfirmation.similar > 0 && (
-                  <li>{result.needsConfirmation.similar} row(s) look like <b>singular/plural variants or 1-letter typos</b> of an existing ingredient. Either fix the names, or tick <b>"Allow similar names"</b> above and re-upload to create them as new items.</li>
+                  <li>
+                    {result.needsConfirmation.similar} row(s) look like <b>singular/plural variants or 1-letter typos</b> of an existing {config.dedupe?.entityLabel ?? 'item'}. Either fix the names, or tick{' '}
+                    <b>"Allow similar names"</b> above and re-upload to create them as new {config.dedupe?.entityPlural ?? 'items'}.
+                  </li>
                 )}
               </ul>
             </div>
