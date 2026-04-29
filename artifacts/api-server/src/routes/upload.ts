@@ -884,7 +884,7 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
       if (currentCost === null) { results.push({ row: i + 2, status: "error", error: "Current_Cost must be a number" }); continue; }
       if (reorderLevel === null) { results.push({ row: i + 2, status: "error", error: "Reorder_Level must be a number" }); continue; }
       if (currentStock === null) { results.push({ row: i + 2, status: "error", error: "Current_Stock must be a number" }); continue; }
-      if (shelfLifeDaysParsed === null) { results.push({ row: i + 2, status: "error", error: "Shelf_Life_Days must be a number or blank" }); continue; }
+      if (hasShelfLife && shelfLifeDaysParsed === null) { results.push({ row: i + 2, status: "error", error: "Shelf_Life_Days must be a number or blank" }); continue; }
       if (conversionFactor <= 0) { results.push({ row: i + 2, status: "error", error: "Conversion_Factor must be > 0" }); continue; }
       if (currentCost < 0 || reorderLevel < 0 || currentStock < 0) { results.push({ row: i + 2, status: "error", error: "Cost, reorder level, and stock cannot be negative" }); continue; }
 
