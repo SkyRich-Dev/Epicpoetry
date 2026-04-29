@@ -5,8 +5,43 @@ import { ListIngredientsResponse, CreateIngredientBody, GetIngredientParams, Get
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { findDuplicates, describeMatch, type IngredientLite, type DuplicateMatch } from "../lib/ingredientDedupe";
 
 const router: IRouter = Router();
+
+async function loadIngredientPool(): Promise<IngredientLite[]> {
+  return await db
+    .select({ id: ingredientsTable.id, code: ingredientsTable.code, name: ingredientsTable.name, categoryId: ingredientsTable.categoryId, categoryName: categoriesTable.name })
+    .from(ingredientsTable)
+    .leftJoin(categoriesTable, eq(ingredientsTable.categoryId, categoriesTable.id));
+}
+
+function shouldBlockDuplicates(matches: DuplicateMatch[], confirmDuplicate: boolean, confirmSimilar: boolean): { blocked: DuplicateMatch[]; reason: "exact" | "similar" } | null {
+  const exactSame = matches.filter(m => m.matchType === "exact" && m.sameCategory);
+  if (exactSame.length > 0) return { blocked: exactSame, reason: "exact" };
+  const exactCross = matches.filter(m => m.matchType === "exact" && !m.sameCategory);
+  if (exactCross.length > 0 && !confirmDuplicate) return { blocked: exactCross, reason: "exact" };
+  const similar = matches.filter(m => m.matchType !== "exact");
+  if (similar.length > 0 && !confirmSimilar) return { blocked: similar, reason: "similar" };
+  return null;
+}
+
+function dupeErrorPayload(reason: "exact" | "similar", matches: DuplicateMatch[]) {
+  const isExact = reason === "exact";
+  const sameCat = matches.some(m => m.sameCategory && m.matchType === "exact");
+  const lead = sameCat
+    ? `An ingredient with this name already exists in the same category.`
+    : isExact
+      ? `An ingredient with this name already exists in another category.`
+      : `Possible duplicate of an existing ingredient.`;
+  const detail = matches.slice(0, 5).map(describeMatch).join("; ");
+  return {
+    error: `${lead} ${detail}.`,
+    duplicateKind: reason,
+    canConfirm: !sameCat,
+    duplicates: matches,
+  };
+}
 
 router.get("/ingredients", async (_req, res): Promise<void> => {
   const ingredients = await db
@@ -42,6 +77,12 @@ router.get("/ingredients", async (_req, res): Promise<void> => {
 router.post("/ingredients", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateIngredientBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const confirmDuplicate = req.body?.confirmDuplicate === true;
+  const confirmSimilar = req.body?.confirmSimilar === true;
+  const pool = await loadIngredientPool();
+  const matches = findDuplicates(parsed.data.name, parsed.data.categoryId ?? null, pool);
+  const blocked = shouldBlockDuplicates(matches, confirmDuplicate, confirmSimilar);
+  if (blocked) { res.status(409).json(dupeErrorPayload(blocked.reason, blocked.blocked)); return; }
   const code = await generateCode("ING", "ingredients");
   const [ing] = await db.insert(ingredientsTable).values({
     ...parsed.data,
@@ -93,6 +134,18 @@ router.patch("/ingredients/:id", authMiddleware, async (req, res): Promise<void>
   const [old] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, params.data.id));
   if (!old) { res.status(404).json({ error: "Not found" }); return; }
   if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
+  const nextName = parsed.data.name ?? old.name;
+  const nextCategoryId = parsed.data.categoryId !== undefined ? parsed.data.categoryId : old.categoryId;
+  const nameChanged = parsed.data.name !== undefined && parsed.data.name.trim().toLowerCase() !== old.name.trim().toLowerCase();
+  const categoryChanged = parsed.data.categoryId !== undefined && parsed.data.categoryId !== old.categoryId;
+  if (nameChanged || categoryChanged) {
+    const confirmDuplicate = req.body?.confirmDuplicate === true;
+    const confirmSimilar = req.body?.confirmSimilar === true;
+    const pool = await loadIngredientPool();
+    const matches = findDuplicates(nextName, nextCategoryId ?? null, pool, old.id);
+    const blocked = shouldBlockDuplicates(matches, confirmDuplicate, confirmSimilar);
+    if (blocked) { res.status(409).json(dupeErrorPayload(blocked.reason, blocked.blocked)); return; }
+  }
   const [ing] = await db.update(ingredientsTable).set(parsed.data).where(eq(ingredientsTable.id, params.data.id)).returning();
   await createAuditLog("ingredients", ing.id, "update", old, ing);
   res.json({ ...ing, categoryName: null });

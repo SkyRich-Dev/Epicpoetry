@@ -8,8 +8,9 @@ interface UploadResult {
   totalRows: number;
   successCount: number;
   errorCount: number;
-  results: { row: number; status: string; error?: string; data?: any }[];
+  results: { row: number; status: string; error?: string; data?: any; needsConfirmation?: 'crossCategory' | 'similar' }[];
   autoCreated?: string[];
+  needsConfirmation?: { crossCategory: number; similar: number };
 }
 
 const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; columns: string[] }> = {
@@ -50,6 +51,8 @@ export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
+  const [mergeAcrossCategories, setMergeAcrossCategories] = useState(false);
+  const [allowSimilar, setAllowSimilar] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const config = UPLOAD_CONFIGS[activeType];
@@ -69,6 +72,10 @@ export default function UploadPage() {
 
     const formData = new FormData();
     formData.append('file', selectedFile);
+    if (activeType === 'ingredients') {
+      if (mergeAcrossCategories) formData.append('mergeAcrossCategories', 'true');
+      if (allowSimilar) formData.append('allowSimilar', 'true');
+    }
 
     try {
       const token = localStorage.getItem('token');
@@ -168,6 +175,37 @@ export default function UploadPage() {
           ))}
         </div>
 
+        {activeType === 'ingredients' && (
+          <div className="mb-4 p-4 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl space-y-2" data-testid="ingredients-dedupe-options">
+            <h4 className="text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+              <AlertCircle size={14} /> Duplicate handling
+            </h4>
+            <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+              Names are matched case-insensitively, including singular/plural forms and 1-letter typos. By default, duplicates are rejected so you can review them.
+            </p>
+            <label className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={mergeAcrossCategories}
+                onChange={e => setMergeAcrossCategories(e.target.checked)}
+                className="mt-0.5 rounded"
+                data-testid="checkbox-merge-cross-category"
+              />
+              <span><b>Merge across categories.</b> If a name already exists in a different category, update that record (and move it to the new category) instead of rejecting.</span>
+            </label>
+            <label className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allowSimilar}
+                onChange={e => setAllowSimilar(e.target.checked)}
+                className="mt-0.5 rounded"
+                data-testid="checkbox-allow-similar"
+              />
+              <span><b>Allow similar names.</b> Permit names that look like singular/plural variants or differ by 1 letter from existing ingredients (use only when they really are different items).</span>
+            </label>
+          </div>
+        )}
+
         <div className="border-2 border-dashed border-border rounded-xl p-8 text-center">
           {selectedFile ? (
             <div className="space-y-3">
@@ -219,6 +257,22 @@ export default function UploadPage() {
               </div>
             </div>
           </div>
+
+          {result.needsConfirmation && (result.needsConfirmation.crossCategory > 0 || result.needsConfirmation.similar > 0) && (
+            <div className="px-6 py-4 border-b border-border/50 bg-amber-50/60 dark:bg-amber-950/20" data-testid="dedupe-confirm-banner">
+              <h4 className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1.5">
+                <AlertCircle size={14} /> Some rows need confirmation
+              </h4>
+              <ul className="text-xs text-amber-800/90 dark:text-amber-200/90 space-y-1 mb-3 list-disc pl-5">
+                {result.needsConfirmation.crossCategory > 0 && (
+                  <li>{result.needsConfirmation.crossCategory} row(s) match an existing ingredient in a <b>different category</b>. Tick <b>"Merge across categories"</b> above and re-upload to update them.</li>
+                )}
+                {result.needsConfirmation.similar > 0 && (
+                  <li>{result.needsConfirmation.similar} row(s) look like <b>singular/plural variants or 1-letter typos</b> of an existing ingredient. Either fix the names, or tick <b>"Allow similar names"</b> above and re-upload to create them as new items.</li>
+                )}
+              </ul>
+            </div>
+          )}
 
           {result.autoCreated && result.autoCreated.length > 0 && (
             <div className="px-6 py-4 border-b border-border/50 bg-blue-50/50 dark:bg-blue-950/10">

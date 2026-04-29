@@ -22,6 +22,7 @@ import { isFutureDate, getTodayISO } from "../lib/dateValidation";
 import { generateCode } from "../lib/codeGenerator";
 import { logger } from "../lib/logger";
 import { upsertCustomerFromInvoice, recomputeCustomerStats } from "../lib/customers";
+import { findDuplicates, normalizeName, normalizeStem, describeMatch, type IngredientLite } from "../lib/ingredientDedupe";
 
 const router: IRouter = Router();
 
@@ -822,17 +823,29 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
   const userRole = (req as any).userRole;
   const isAdmin = userRole === "admin";
 
+  const flag = (v: any) => String(v ?? "").toLowerCase() === "true";
+  const mergeAcrossCategories = flag(req.body?.mergeAcrossCategories);
+  const allowSimilar = flag(req.body?.allowSimilar);
+
   const categories = await db.select().from(categoriesTable);
   const catByName = new Map(categories.map(c => [c.name.toLowerCase().trim(), c]));
+  const catById = new Map(categories.map(c => [c.id, c]));
 
   const existingIngredients = await db.select().from(ingredientsTable);
   const ingByName = new Map(existingIngredients.map(i => [i.name.toLowerCase().trim(), i]));
   const ingByCode = new Map(existingIngredients.map(i => [i.code.toLowerCase().trim(), i]));
+  const ingPool: IngredientLite[] = existingIngredients.map(i => ({
+    id: i.id, code: i.code, name: i.name, categoryId: i.categoryId,
+    categoryName: i.categoryId != null ? (catById.get(i.categoryId)?.name ?? null) : null,
+  }));
 
   const seenInThisFile = new Set<string>();
-  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+  const seenStemInThisFile = new Map<string, string>();
+  const results: { row: number; status: string; error?: string; data?: any; needsConfirmation?: "crossCategory" | "similar" }[] = [];
   const autoCreated: string[] = [];
   let successCount = 0;
+  let needsCrossCategoryConfirm = 0;
+  let needsSimilarConfirm = 0;
 
   const parseStrictNum = (val: any, blankDefault: number): number | null => {
     if (val == null || val === "") return blankDefault;
@@ -875,9 +888,18 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
       if (conversionFactor <= 0) { results.push({ row: i + 2, status: "error", error: "Conversion_Factor must be > 0" }); continue; }
       if (currentCost < 0 || reorderLevel < 0 || currentStock < 0) { results.push({ row: i + 2, status: "error", error: "Cost, reorder level, and stock cannot be negative" }); continue; }
 
-      const dedupeKey = name.toLowerCase();
-      if (seenInThisFile.has(dedupeKey)) { results.push({ row: i + 2, status: "error", error: `Duplicate name in file: "${name}"` }); continue; }
-      seenInThisFile.add(dedupeKey);
+      const dedupeKey = name.toLowerCase().trim();
+      const normKey = normalizeName(name);
+      const stemKey = normalizeStem(name);
+      if (seenInThisFile.has(dedupeKey) || (normKey && seenInThisFile.has(normKey))) {
+        results.push({ row: i + 2, status: "error", error: `Duplicate name in file: "${name}"` }); continue;
+      }
+      if (stemKey && seenStemInThisFile.has(stemKey) && !allowSimilar) {
+        const earlierName = seenStemInThisFile.get(stemKey)!;
+        needsSimilarConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `"${name}" looks similar to an earlier row in this file ("${earlierName}"). Re-upload with "Allow similar names" if these are different items.` });
+        continue;
+      }
 
       let categoryId: number | null = null;
       if (categoryName) {
@@ -893,6 +915,7 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
           }).returning();
           categoryId = newCat.id;
           catByName.set(categoryName.toLowerCase(), newCat);
+          catById.set(newCat.id, newCat);
           autoCreated.push(`Category: ${categoryName}`);
         }
       }
@@ -909,6 +932,51 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
         results.push({ row: i + 2, status: "error", error: `"${existing.name}" is verified — only admin can modify` });
         continue;
       }
+
+      const dupMatches = findDuplicates(name, categoryId, ingPool, existing?.id);
+      const exactCrossCat = dupMatches.filter(m => m.matchType === "exact" && !m.sameCategory);
+      const similar = dupMatches.filter(m => m.matchType !== "exact");
+      if (!existing && exactCrossCat.length > 0 && !mergeAcrossCategories) {
+        needsCrossCategoryConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "crossCategory", error: `"${name}" already exists in another category — ${exactCrossCat.slice(0, 3).map(describeMatch).join("; ")}. Re-upload with "Merge across categories" to update it.` });
+        continue;
+      }
+      if (!existing && exactCrossCat.length > 0 && mergeAcrossCategories) {
+        const target = exactCrossCat[0];
+        const [full] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, target.id));
+        if (full) {
+          if (full.verified && !isAdmin) {
+            results.push({ row: i + 2, status: "error", error: `"${full.name}" is verified — only admin can modify` });
+            continue;
+          }
+          const [updated] = await db.update(ingredientsTable).set({
+            name, categoryId: categoryId ?? full.categoryId,
+            description: description || full.description,
+            stockUom, purchaseUom, recipeUom, conversionFactor, currentCost,
+            latestCost: currentCost > 0 ? currentCost : full.latestCost,
+            reorderLevel, currentStock, perishable,
+            shelfLifeDays: shelfLifeDaysParsed ?? full.shelfLifeDays, active,
+          }).where(eq(ingredientsTable.id, full.id)).returning();
+          await createAuditLog("ingredients", full.id, "update", full, updated);
+          ingByName.delete(full.name.toLowerCase().trim());
+          ingByName.set(dedupeKey, updated);
+          ingByCode.set(full.code.toLowerCase(), updated);
+          const idx = ingPool.findIndex(p => p.id === full.id);
+          if (idx >= 0) ingPool[idx] = { ...ingPool[idx], name, categoryId: updated.categoryId, categoryName: updated.categoryId != null ? (catById.get(updated.categoryId)?.name ?? null) : null };
+          successCount++;
+          seenInThisFile.add(dedupeKey); if (normKey) seenInThisFile.add(normKey);
+          if (stemKey) seenStemInThisFile.set(stemKey, name);
+          results.push({ row: i + 2, status: "success", data: { id: full.id, code: full.code, name, action: "merged-across-category" } });
+          continue;
+        }
+      }
+      if (!existing && similar.length > 0 && !allowSimilar) {
+        needsSimilarConfirm++;
+        results.push({ row: i + 2, status: "error", needsConfirmation: "similar", error: `Possible duplicate of existing ingredient — ${similar.slice(0, 3).map(describeMatch).join("; ")}. Re-upload with "Allow similar names" if this is a different item.` });
+        continue;
+      }
+      seenInThisFile.add(dedupeKey); if (normKey) seenInThisFile.add(normKey);
+      if (stemKey) seenStemInThisFile.set(stemKey, name);
 
       if (existing) {
         const [updated] = await db.update(ingredientsTable).set({
@@ -952,6 +1020,13 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
         }).returning();
         ingByName.set(dedupeKey, created);
         ingByCode.set(code.toLowerCase(), created);
+        ingPool.push({
+          id: created.id,
+          code: created.code,
+          name: created.name,
+          categoryId: created.categoryId,
+          categoryName: created.categoryId != null ? (catById.get(created.categoryId)?.name ?? null) : null,
+        });
         await createAuditLog("ingredients", created.id, "create", null, created);
         successCount++;
         results.push({ row: i + 2, status: "success", data: { id: created.id, code: created.code, name, action: "created" } });
@@ -968,6 +1043,10 @@ router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res
     errorCount: rows.length - successCount,
     results,
     autoCreated: autoCreated.length > 0 ? autoCreated : undefined,
+    needsConfirmation: (needsCrossCategoryConfirm > 0 || needsSimilarConfirm > 0) ? {
+      crossCategory: needsCrossCategoryConfirm,
+      similar: needsSimilarConfirm,
+    } : undefined,
   });
 });
 

@@ -22,6 +22,7 @@ export default function Ingredients() {
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState(emptyForm);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
 
   const openCreate = () => {
     setEditId(null);
@@ -39,21 +40,57 @@ export default function Ingredients() {
     setIsModalOpen(true);
   };
 
+  const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
+    const base = import.meta.env.BASE_URL || '/';
+    const token = localStorage.getItem('token');
+    const payload: any = { ...formData, ...extraFlags };
+    const url = editId ? `${base}api/ingredients/${editId}` : `${base}api/ingredients`;
+    const method = editId ? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      if (body && body.duplicateKind) {
+        return { needsConfirm: true, body };
+      }
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text;
+      try { const j = JSON.parse(text); msg = j.error || text; } catch { /* keep raw */ }
+      throw new Error(msg);
+    }
+    return { needsConfirm: false };
+  };
+
   const handleSave = async () => {
     if (!formData.name.trim()) { toast({ title: 'Ingredient name is required', variant: 'destructive' }); return; }
     try {
-      const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
-      if (editId) {
-        const res = await fetch(`${base}api/ingredients/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
-        if (!res.ok) throw new Error(await res.text());
-      } else {
-        await createMut.mutateAsync({ data: formData as any });
+      const r = await submitSave();
+      if (r.needsConfirm) {
+        const b = (r as any).body;
+        if (!b.canConfirm) {
+          toast({ title: 'Duplicate ingredient', description: b.error, variant: 'destructive' });
+          return;
+        }
+        setDupConfirm({ message: b.error, kind: b.duplicateKind, canConfirm: !!b.canConfirm, matches: b.duplicates || [] });
+        return;
       }
       queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
       setIsModalOpen(false);
       toast({ title: editId ? 'Ingredient updated' : 'Ingredient created' });
     } catch(e: any) { toast({ title: 'Failed to save ingredient', description: e.message, variant: 'destructive' }); }
+  };
+
+  const handleConfirmDuplicate = async () => {
+    if (!dupConfirm) return;
+    try {
+      const flags = dupConfirm.kind === 'exact' ? { confirmDuplicate: true } : { confirmSimilar: true };
+      await submitSave(flags);
+      queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+      setDupConfirm(null);
+      setIsModalOpen(false);
+      toast({ title: editId ? 'Ingredient updated' : 'Ingredient created' });
+    } catch (e: any) { toast({ title: 'Failed to save ingredient', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async () => {
@@ -140,6 +177,28 @@ export default function Ingredients() {
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Ingredient"
         footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This cannot be undone.</p>
+      </Modal>
+
+      <Modal isOpen={!!dupConfirm} onClose={() => setDupConfirm(null)} title={dupConfirm?.kind === 'exact' ? 'Possible duplicate found' : 'Similar name found'}
+        footer={<><Button variant="ghost" onClick={() => setDupConfirm(null)} data-testid="dup-cancel">Cancel</Button><Button onClick={handleConfirmDuplicate} data-testid="dup-confirm">{dupConfirm?.kind === 'exact' ? 'Update existing record' : 'Create anyway'}</Button></>}>
+        <div className="py-2 space-y-3 text-sm">
+          <p className="text-muted-foreground">{dupConfirm?.message}</p>
+          {dupConfirm?.matches && dupConfirm.matches.length > 0 && (
+            <div className="border rounded-lg divide-y" data-testid="dup-matches">
+              {dupConfirm.matches.slice(0, 5).map((m: any) => (
+                <div key={m.id} className="p-2.5 flex items-center justify-between text-xs">
+                  <span className="font-medium">{m.name} <span className="font-mono text-muted-foreground ml-1">({m.code})</span></span>
+                  <span className="text-muted-foreground">{m.categoryName || 'uncategorized'}{m.matchType !== 'exact' ? ` · ${m.matchType === 'stem' ? 'singular/plural' : '1-letter diff'}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {dupConfirm?.kind === 'exact'
+              ? 'Confirming will update the existing record with the values you entered (and move it to the new category if changed).'
+              : 'Confirming will create this as a separate ingredient. Use only if it really is a different item.'}
+          </p>
+        </div>
       </Modal>
     </div>
   );
