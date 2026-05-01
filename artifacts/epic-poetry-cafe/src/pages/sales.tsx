@@ -101,9 +101,68 @@ export default function Sales() {
     setInvoiceForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: value } : l) }));
   };
 
-  const calcLineGross = () => invoiceForm.lines.reduce((sum, l) => sum + l.quantity * getMenuPrice(l.menuItemId), 0);
-  const grossTotal = calcLineGross();
-  const netTotal = grossTotal - invoiceForm.totalDiscount;
+  const draftTotals = useMemo(() => {
+    const preparedLines = invoiceForm.lines.map((line) => {
+      const fixedPrice = getMenuPrice(line.menuItemId);
+      const quantity = Number(line.quantity) || 0;
+      const gstPercent = Number(line.gstPercent) || 0;
+      const grossLineAmount = quantity * fixedPrice;
+      return { ...line, fixedPrice, quantity, gstPercent, grossLineAmount };
+    });
+
+    const grossTotal = preparedLines.reduce((sum, line) => sum + line.grossLineAmount, 0);
+    const invoiceDiscount = Number(invoiceForm.totalDiscount) || 0;
+    const hasDiscount = invoiceDiscount > 0;
+
+    let gstTotal = 0;
+    let finalTotal = 0;
+
+    const lines = preparedLines.map((line) => {
+      const allocatedDiscount = hasDiscount && grossTotal > 0
+        ? Math.round((line.grossLineAmount / grossTotal) * invoiceDiscount * 100) / 100
+        : 0;
+      const discountedGross = line.grossLineAmount - allocatedDiscount;
+
+      if (!hasDiscount) {
+        finalTotal += line.grossLineAmount;
+        return {
+          ...line,
+          lineDiscountAmount: 0,
+          gstAmount: 0,
+          finalLineAmount: line.grossLineAmount,
+        };
+      }
+
+      let gstAmount = 0;
+      let finalLineAmount = discountedGross;
+      if (!invoiceForm.gstInclusive) {
+        gstAmount = discountedGross * (line.gstPercent / 100);
+        finalLineAmount = discountedGross + gstAmount;
+      } else if (line.gstPercent > 0) {
+        const taxableAmount = discountedGross / (1 + line.gstPercent / 100);
+        gstAmount = discountedGross - taxableAmount;
+      }
+
+      gstTotal += gstAmount;
+      finalTotal += finalLineAmount;
+
+      return {
+        ...line,
+        lineDiscountAmount: allocatedDiscount,
+        gstAmount,
+        finalLineAmount,
+      };
+    });
+
+    return {
+      hasDiscount,
+      grossTotal,
+      discountTotal: invoiceDiscount,
+      gstTotal,
+      finalTotal,
+      lines,
+    };
+  }, [invoiceForm, menuItems]);
 
   const handleInvoiceCreate = async () => {
     try {
@@ -396,7 +455,7 @@ export default function Sales() {
                   </div>
                   <div className="w-24 text-right font-numbers text-sm pt-1">
                     {idx === 0 && <span className="text-xs text-muted-foreground block">Line Total</span>}
-                    {formatCurrency(line.quantity * getMenuPrice(line.menuItemId))}
+                    {formatCurrency((draftTotals.lines[idx]?.finalLineAmount ?? 0))}
                   </div>
                   {invoiceForm.lines.length > 1 && (
                     <button onClick={() => removeLine(idx)} className="p-1.5 text-muted-foreground hover:text-red-500"><X size={14} /></button>
@@ -406,9 +465,10 @@ export default function Sales() {
             </div>
           </div>
           <div className="p-4 bg-primary/10 rounded-xl border border-primary/20 space-y-1">
-            <div className="flex justify-between text-sm"><span>Gross Total:</span><span className="font-numbers">{formatCurrency(grossTotal)}</span></div>
-            <div className="flex justify-between text-sm text-orange-600"><span>Discount:</span><span className="font-numbers">-{formatCurrency(invoiceForm.totalDiscount)}</span></div>
-            <div className="flex justify-between font-semibold text-primary text-lg border-t pt-1 mt-1"><span>Net Total:</span><span className="font-numbers">{formatCurrency(netTotal)}</span></div>
+            <div className="flex justify-between text-sm"><span>Gross Total:</span><span className="font-numbers">{formatCurrency(draftTotals.grossTotal)}</span></div>
+            <div className="flex justify-between text-sm text-orange-600"><span>Discount:</span><span className="font-numbers">-{formatCurrency(draftTotals.discountTotal)}</span></div>
+            <div className="flex justify-between text-sm text-blue-600"><span>GST:</span><span className="font-numbers">{draftTotals.hasDiscount ? formatCurrency(draftTotals.gstTotal) : '-'}</span></div>
+            <div className="flex justify-between font-semibold text-primary text-lg border-t pt-1 mt-1"><span>Final Total:</span><span className="font-numbers">{formatCurrency(draftTotals.finalTotal)}</span></div>
           </div>
         </div>
       </Modal>

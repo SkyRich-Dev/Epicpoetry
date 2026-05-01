@@ -100,25 +100,36 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
   }
 
   const invoiceDiscount = totalDiscount ?? 0;
+  const hasDiscount = invoiceDiscount > 0 || processedLines.some((line) => (line.lineDiscountAmount ?? 0) > 0);
 
   const finalLines: any[] = [];
   for (const pl of processedLines) {
-    const allocatedDiscount = grossAmount > 0
+    const allocatedDiscount = hasDiscount && grossAmount > 0
       ? Math.round((pl.lineGross / grossAmount) * invoiceDiscount * 100) / 100
       : 0;
-    const lineDiscount = pl.lineDiscountAmount ?? allocatedDiscount;
+    const lineDiscount = hasDiscount ? (pl.lineDiscountAmount ?? allocatedDiscount) : 0;
     const discountedGross = pl.lineGross - lineDiscount;
-    const discountedUnitPrice = pl.quantity > 0 ? discountedGross / pl.quantity : 0;
+    const discountedUnitPrice = hasDiscount
+      ? (pl.quantity > 0 ? discountedGross / pl.quantity : 0)
+      : pl.fixedPrice;
 
-    let taxableAmount: number, gstAmt: number, finalAmount: number;
-    if (gstInclusive) {
-      finalAmount = discountedGross;
-      taxableAmount = pl.gstPercent > 0 ? finalAmount / (1 + pl.gstPercent / 100) : finalAmount;
-      gstAmt = finalAmount - taxableAmount;
+    let taxableAmount: number;
+    let gstAmt: number;
+    let finalAmount: number;
+    if (hasDiscount) {
+      if (gstInclusive) {
+        finalAmount = discountedGross;
+        taxableAmount = pl.gstPercent > 0 ? finalAmount / (1 + pl.gstPercent / 100) : finalAmount;
+        gstAmt = finalAmount - taxableAmount;
+      } else {
+        taxableAmount = discountedGross;
+        gstAmt = taxableAmount * (pl.gstPercent / 100);
+        finalAmount = taxableAmount + gstAmt;
+      }
     } else {
-      taxableAmount = discountedGross;
-      gstAmt = taxableAmount * (pl.gstPercent / 100);
-      finalAmount = taxableAmount + gstAmt;
+      taxableAmount = pl.lineGross;
+      gstAmt = 0;
+      finalAmount = pl.lineGross;
     }
 
     totalGst += gstAmt;
