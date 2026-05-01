@@ -57,6 +57,8 @@ export default function Purchases() {
 
   const handleSave = async () => {
     if (!formData.vendorId) { toast({ title: 'Please select a vendor', variant: 'destructive' }); return; }
+    const incompleteLine = lines.find(l => !l.ingredientId || l.ingredientId <= 0 || !l.quantity || l.quantity <= 0);
+    if (incompleteLine) { toast({ title: 'Complete every purchase row', description: 'Each row needs an ingredient and quantity greater than 0.', variant: 'destructive' }); return; }
     const validLines = lines.filter(l => l.ingredientId > 0 && l.quantity > 0);
     if (validLines.length === 0) { toast({ title: 'Add at least one item with quantity', variant: 'destructive' }); return; }
     const today = new Date().toISOString().split('T')[0];

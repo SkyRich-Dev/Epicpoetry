@@ -107,6 +107,8 @@ export default function Sales() {
 
   const handleInvoiceCreate = async () => {
     try {
+      const incompleteLine = invoiceForm.lines.find(l => !l.menuItemId || l.menuItemId <= 0 || !l.quantity || l.quantity <= 0);
+      if (incompleteLine) { toast({ title: 'Complete every invoice row', description: 'Each row needs a menu item and quantity greater than 0.', variant: 'destructive' }); return; }
       const validLines = invoiceForm.lines.filter(l => l.menuItemId > 0 && l.quantity > 0);
       if (validLines.length === 0) { toast({ title: 'Add at least one item', variant: 'destructive' }); return; }
       await apiFetch('sales-invoices', {

@@ -77,6 +77,13 @@ router.get("/ingredients", async (_req, res): Promise<void> => {
 router.post("/ingredients", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateIngredientBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.data.categoryId || parsed.data.categoryId <= 0) {
+    res.status(400).json({ error: "Please select a valid ingredient category." }); return;
+  }
+  const [category] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.categoryId)).limit(1);
+  if (!category || category.type !== "ingredient") {
+    res.status(400).json({ error: "Please select a valid ingredient category." }); return;
+  }
   const confirmDuplicate = req.body?.confirmDuplicate === true;
   const confirmSimilar = req.body?.confirmSimilar === true;
   const pool = await loadIngredientPool();
@@ -134,6 +141,15 @@ router.patch("/ingredients/:id", authMiddleware, async (req, res): Promise<void>
   const [old] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, params.data.id));
   if (!old) { res.status(404).json({ error: "Not found" }); return; }
   if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
+  if (parsed.data.categoryId !== undefined) {
+    if (!parsed.data.categoryId || parsed.data.categoryId <= 0) {
+      res.status(400).json({ error: "Please select a valid ingredient category." }); return;
+    }
+    const [category] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.categoryId)).limit(1);
+    if (!category || category.type !== "ingredient") {
+      res.status(400).json({ error: "Please select a valid ingredient category." }); return;
+    }
+  }
   const nextName = parsed.data.name ?? old.name;
   const nextCategoryId = parsed.data.categoryId !== undefined ? parsed.data.categoryId : old.categoryId;
   const nameChanged = parsed.data.name !== undefined && parsed.data.name.trim().toLowerCase() !== old.name.trim().toLowerCase();

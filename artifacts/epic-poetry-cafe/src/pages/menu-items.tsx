@@ -81,7 +81,9 @@ export default function MenuItems() {
   };
 
   const handleSaveItem = async () => {
-    if (!formData.name?.trim()) { toast({ title: 'Item name is required', variant: 'destructive' }); return; }
+      if (!formData.name?.trim()) { toast({ title: 'Item name is required', variant: 'destructive' }); return; }
+    if (!categories || categories.length === 0) { toast({ title: 'Create a menu category first', description: 'Go to Masters and add at least one category with type Menu before creating menu items.', variant: 'destructive' }); return; }
+    if (!formData.categoryId || formData.categoryId <= 0) { toast({ title: 'Please select a menu category', variant: 'destructive' }); return; }
     if (formData.sellingPrice <= 0) { toast({ title: 'Selling price must be greater than 0', variant: 'destructive' }); return; }
     const channels: Array<['dineInPrice' | 'takeawayPrice' | 'deliveryPrice' | 'onlinePrice', string]> = [
       ['dineInPrice', 'Dine-in'], ['takeawayPrice', 'Takeaway'], ['deliveryPrice', 'Delivery'], ['onlinePrice', 'Online'],
@@ -347,11 +349,12 @@ export default function MenuItems() {
           </div>
           <div>
             <Label>Category</Label>
-            <Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}>
-              <option value={0}>Select Category</option>
-              {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-          </div>
+              <Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}>
+                <option value={0}>Select Category</option>
+                {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              {(!categories || categories.length === 0) && <p className="text-[11px] text-amber-600 mt-1">No menu categories found. Create one in Masters first.</p>}
+            </div>
           <div className="border-t border-border pt-4">
             <h3 className="text-sm font-semibold text-foreground mb-1">Pricing</h3>
             <p className="text-xs text-muted-foreground mb-3">Selling price is the default. Channel-specific prices override it for that order type. Leave blank to use the selling price.</p>
@@ -456,11 +459,14 @@ function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: (
 
   const handleSave = async () => {
     try {
+      const invalidLine = lines.find((l) => !l.ingredientId || l.ingredientId <= 0 || !l.quantity || l.quantity <= 0);
+      if (invalidLine) { toast({ title: 'Complete every recipe row', description: 'Each row needs an ingredient and quantity greater than 0.', variant: 'destructive' }); return; }
       const validLines = lines.filter(l => l.ingredientId > 0);
       await saveMut.mutateAsync({ id: item.id, data: { lines: validLines } });
       queryClient.invalidateQueries({ queryKey: [`/api/menu-items/${item.id}/recipe`] });
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       refetchCosting();
+      toast({ title: 'Recipe saved' });
     } catch (e: any) { toast({ title: 'Failed to save recipe', description: e.message, variant: 'destructive' }); }
   };
 

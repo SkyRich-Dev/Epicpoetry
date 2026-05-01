@@ -100,6 +100,10 @@ export default function Ingredients() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) { toast({ title: 'Ingredient name is required', variant: 'destructive' }); return; }
+    if (!categories || categories.length === 0) { toast({ title: 'Create an ingredient category first', description: 'Go to Masters and add at least one category with type Ingredient before creating ingredients.', variant: 'destructive' }); return; }
+    if (!formData.categoryId || formData.categoryId <= 0) { toast({ title: 'Please select an ingredient category', variant: 'destructive' }); return; }
+    if (!formData.stockUom.trim() || !formData.purchaseUom.trim() || !formData.recipeUom.trim()) { toast({ title: 'All UOM fields are required', variant: 'destructive' }); return; }
+    if (formData.conversionFactor <= 0) { toast({ title: 'Conversion factor must be greater than 0', variant: 'destructive' }); return; }
     try {
       const r = await submitSave();
       if (r.needsConfirm) {
@@ -235,11 +239,11 @@ export default function Ingredients() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={ingFormDirty} title={editId ? "Edit Ingredient" : "Add Ingredient"} maxWidth="max-w-2xl"
-        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || !categories || categories.length === 0}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Name</Label><Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Arabica Beans" /></div>
-            <div><Label>Category</Label><Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}><option value={0}>Select Category</option>{categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>
+            <div><Label>Category</Label><Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}><option value={0}>Select Category</option>{categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>{(!categories || categories.length === 0) && <p className="text-[11px] text-amber-600 mt-1">No ingredient categories found. Create one in Masters first.</p>}</div>
           </div>
           <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div>

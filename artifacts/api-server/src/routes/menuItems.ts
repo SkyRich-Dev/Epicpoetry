@@ -90,6 +90,13 @@ router.get("/menu-items", async (_req, res): Promise<void> => {
 router.post("/menu-items", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateMenuItemBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.data.categoryId || parsed.data.categoryId <= 0) {
+    res.status(400).json({ error: "Please select a valid menu category." }); return;
+  }
+  const [category] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.categoryId)).limit(1);
+  if (!category || category.type !== "menu") {
+    res.status(400).json({ error: "Please select a valid menu category." }); return;
+  }
   const confirmDuplicate = req.body?.confirmDuplicate === true;
   const confirmSimilar = req.body?.confirmSimilar === true;
   const pool = await loadMenuItemPool();
@@ -180,6 +187,15 @@ router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> 
   const [old] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
   if (!old) { res.status(404).json({ error: "Not found" }); return; }
   if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
+  if (parsed.data.categoryId !== undefined) {
+    if (!parsed.data.categoryId || parsed.data.categoryId <= 0) {
+      res.status(400).json({ error: "Please select a valid menu category." }); return;
+    }
+    const [category] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.categoryId)).limit(1);
+    if (!category || category.type !== "menu") {
+      res.status(400).json({ error: "Please select a valid menu category." }); return;
+    }
+  }
   const newName = parsed.data.name ?? old.name;
   const newCategoryId = parsed.data.categoryId !== undefined ? parsed.data.categoryId : old.categoryId;
   const nameChanged = newName !== old.name;
