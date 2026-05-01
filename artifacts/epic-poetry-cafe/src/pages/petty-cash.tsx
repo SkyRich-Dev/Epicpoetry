@@ -41,7 +41,7 @@ export default function PettyCash() {
     setObSaving(true);
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${base}api/petty-cash/opening-balance`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -86,7 +86,7 @@ export default function PettyCash() {
     try {
       if (editingId) {
         const base = import.meta.env.BASE_URL || '/';
-        const token = localStorage.getItem('token');
+        const token = sessionStorage.getItem('token');
         const res = await fetch(`${base}api/petty-cash/${editingId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

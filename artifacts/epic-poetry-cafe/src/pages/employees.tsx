@@ -250,7 +250,7 @@ export default function EmployeesPage() {
   const togglePaymentStatus = async (record: SalaryRecord) => {
     const newStatus = record.paymentStatus === 'paid' ? 'pending' : 'paid';
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       await fetch(`${BASE}api/salary/${record.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -263,7 +263,7 @@ export default function EmployeesPage() {
 
   const uploadProof = async (recordId: number, file: File) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch(`${BASE}api/salary/${recordId}/upload-proof`, {
@@ -567,7 +567,7 @@ export default function EmployeesPage() {
                       {s.paymentProofUrl ? (
                         <button
                           onClick={async () => {
-                            const token = localStorage.getItem('token');
+                            const token = sessionStorage.getItem('token');
                             const res = await fetch(`${BASE}api/salary/${s.id}/proof`, { headers: { 'Authorization': `Bearer ${token}` } });
                             if (res.ok) {
                               const blob = await res.blob();

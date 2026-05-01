@@ -14,14 +14,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(sessionStorage.getItem('token'));
   const [sessionUser, setSessionUser] = useState<User | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
     const apiBase = import.meta.env.VITE_API_BASE_URL?.trim();
     setBaseUrl(apiBase && !window.location.hostname.includes('replit') ? apiBase : null);
-    setAuthTokenGetter(() => localStorage.getItem('token'));
+    setAuthTokenGetter(() => sessionStorage.getItem('token'));
   }, []);
 
   const { data: user, isLoading, refetch } = useGetMe({
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const login = (newToken: string, newUser: User) => {
-    localStorage.setItem('token', newToken);
+    sessionStorage.setItem('token', newToken);
     setSessionUser(newUser);
     queryClient.setQueryData(getGetMeQueryKey(), newUser);
     setToken(newToken);
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     setSessionUser(null);
     setToken(null);
     queryClient.clear();

@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 
 function useIngredients() {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('token') : null;
   const [data, setData] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   React.useEffect(() => {

@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string) {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const res = await fetch(`${BASE}api/${path}`, { headers: { 'Authorization': `Bearer ${token}` } });
   return res.json();
 }
@@ -57,7 +57,7 @@ export default function Vendors() {
   };
 
   const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const payload: any = { ...formData, ...extraFlags };
     const url = editId ? `${BASE}api/vendors/${editId}` : `${BASE}api/vendors`;
     const method = editId ? 'PATCH' : 'POST';
@@ -111,7 +111,7 @@ export default function Vendors() {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${BASE}api/vendors/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });

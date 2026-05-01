@@ -142,7 +142,7 @@ export default function AnalyticsPage() {
   const fetchReport = async () => {
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const baseUrl = import.meta.env.BASE_URL || '/';
     const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
 

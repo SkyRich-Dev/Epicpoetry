@@ -114,7 +114,7 @@ export default function Settlements() {
     setSettlementDate(s.settlementDate);
     setRemarks(s.remarks || '');
     const base = import.meta.env.BASE_URL || '/';
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch(`${base}api/settlements/${s.id}`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.json())
       .then(detail => {

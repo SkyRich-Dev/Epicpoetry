@@ -88,7 +88,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setPwSaving(true);
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${base}api/auth/change-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

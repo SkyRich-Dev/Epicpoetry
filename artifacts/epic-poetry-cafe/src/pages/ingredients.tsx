@@ -78,7 +78,7 @@ export default function Ingredients() {
 
   const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
     const base = import.meta.env.BASE_URL || '/';
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const payload: any = { ...formData, ...extraFlags };
     const url = editId ? `${base}api/ingredients/${editId}` : `${base}api/ingredients`;
     const method = editId ? 'PATCH' : 'POST';
@@ -137,7 +137,7 @@ export default function Ingredients() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${base}api/ingredients/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });

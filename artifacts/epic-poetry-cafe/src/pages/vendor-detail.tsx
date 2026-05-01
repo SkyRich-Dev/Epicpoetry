@@ -7,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
@@ -63,7 +63,7 @@ export default function VendorDetailPage() {
   const downloadBillPdf = async (billId: number, purchaseNumber: string) => {
     setDownloadingBillId(billId);
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${BASE}api/purchases/${billId}/pdf`, {
         headers: { Authorization: `Bearer ${token}` },
       });

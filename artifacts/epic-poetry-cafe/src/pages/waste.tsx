@@ -33,7 +33,7 @@ export default function Waste() {
     if (formData.quantity <= 0) { toast({ title: 'Quantity must be greater than 0', variant: 'destructive' }); return; }
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (editId) {
         const res = await fetch(`${base}api/waste/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
         if (!res.ok) throw new Error(await res.text());
@@ -50,7 +50,7 @@ export default function Waste() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${base}api/waste/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) throw new Error(await res.text());
       queryClient.invalidateQueries({ queryKey: ['/api/waste'] });

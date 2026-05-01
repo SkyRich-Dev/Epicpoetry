@@ -121,7 +121,7 @@ export default function UploadPage() {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const baseUrl = import.meta.env.BASE_URL || '/';
       const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
 
@@ -148,7 +148,7 @@ export default function UploadPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const baseUrl = import.meta.env.BASE_URL || '/';
     const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
     const url = `${apiBase}/upload/template/${activeType}`;

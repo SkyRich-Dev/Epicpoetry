@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
@@ -75,7 +75,7 @@ export default function CustomersPage() {
   };
 
   const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const url = editing ? `${BASE}api/customers/${editing.id}` : `${BASE}api/customers`;
     const method = editing ? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ ...form, ...extraFlags }) });

@@ -142,7 +142,7 @@ function CategoriesConfigTab() {
 
   const submitCat = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
     const base = import.meta.env.BASE_URL || '/';
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const url = catEditId ? `${base}api/categories/${catEditId}` : `${base}api/categories`;
     const method = catEditId ? 'PATCH' : 'POST';
     const res = await fetch(url, {
@@ -203,7 +203,7 @@ function CategoriesConfigTab() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       await fetch(`${base}api/categories/${deleteConfirm.id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` },
@@ -962,7 +962,7 @@ function AuditLogsTab() {
     setLoading(true);
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const params = new URLSearchParams();
       params.set('limit', '100');
       if (moduleFilter) params.set('module', moduleFilter);
@@ -1059,7 +1059,7 @@ function getPosApiBase() {
 }
 
 async function posApiFetch(path: string, opts?: any) {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${getPosApiBase()}/api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
@@ -1596,7 +1596,7 @@ export default function Masters() {
         <Button onClick={async () => {
           try {
             const base = import.meta.env.BASE_URL || '/';
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             const response = await fetch(`${base}api/backup/download`, {
               headers: { 'Authorization': `Bearer ${token}` },
             });
@@ -1731,7 +1731,7 @@ function ExpenseCostTypesTab() {
     if (!editId && !form.code.trim()) { toast({ title: 'Code is required', variant: 'destructive' }); return; }
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const url = editId ? `${base}api/expense-cost-types/${editId}` : `${base}api/expense-cost-types`;
       const method = editId ? 'PATCH' : 'POST';
       // System rows: omit code so backend can't even attempt to change it.
@@ -1765,7 +1765,7 @@ function ExpenseCostTypesTab() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${base}api/expense-cost-types/${deleteConfirm.id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` },

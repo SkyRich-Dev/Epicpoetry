@@ -96,7 +96,7 @@ export default function Expenses() {
     if (!formData.description.trim()) { toast({ title: 'Description is required', variant: 'destructive' }); return; }
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       // The API treats vendorId as nullish — explicitly send null when cleared
       // so the backend can clear an existing link, and a number when picked.
       // Posting to vendor portal only makes sense when a vendor is selected.
@@ -132,7 +132,7 @@ export default function Expenses() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch(`${base}api/expenses/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) throw new Error(await res.text());
       queryClient.invalidateQueries({ queryKey: ['/api/expenses'] });
