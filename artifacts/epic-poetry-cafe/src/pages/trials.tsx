@@ -5,9 +5,10 @@ import { PageHeader, Button, Input, Label, Modal, Badge, Select, formatCurrency,
 import { FlaskConical, Plus, ArrowLeft, Clock, Beaker, ChevronRight, Trash2, CheckCircle2, Package, IndianRupee, Timer, XCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 function useIngredients() {
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? getAuthToken() : null;
   const [data, setData] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   React.useEffect(() => {

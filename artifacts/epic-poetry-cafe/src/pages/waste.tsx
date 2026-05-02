@@ -5,6 +5,7 @@ import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 export default function Waste() {
   const queryClient = useQueryClient();
@@ -33,7 +34,7 @@ export default function Waste() {
     if (formData.quantity <= 0) { toast({ title: 'Quantity must be greater than 0', variant: 'destructive' }); return; }
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = sessionStorage.getItem('token');
+      const token = getAuthToken();
       if (editId) {
         const res = await fetch(`${base}api/waste/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
         if (!res.ok) throw new Error(await res.text());
@@ -50,7 +51,7 @@ export default function Waste() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = sessionStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${base}api/waste/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) throw new Error(await res.text());
       queryClient.invalidateQueries({ queryKey: ['/api/waste'] });

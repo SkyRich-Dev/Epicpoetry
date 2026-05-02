@@ -4,10 +4,11 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, format
 import { Plus, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = localStorage.getItem('token');
+  const token = getAuthToken();
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });

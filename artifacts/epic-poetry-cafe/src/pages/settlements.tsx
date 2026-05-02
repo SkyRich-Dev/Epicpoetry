@@ -5,6 +5,7 @@ import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const PAYMENT_MODES = ['Cash', 'Card', 'QR', 'UPI', 'Bank Transfer', 'Swiggy', 'Zomato', 'Other'];
 
@@ -114,7 +115,7 @@ export default function Settlements() {
     setSettlementDate(s.settlementDate);
     setRemarks(s.remarks || '');
     const base = import.meta.env.BASE_URL || '/';
-    const token = sessionStorage.getItem('token');
+    const token = getAuthToken();
     fetch(`${base}api/settlements/${s.id}`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.json())
       .then(detail => {

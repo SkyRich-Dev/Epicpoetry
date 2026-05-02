@@ -3,10 +3,11 @@ import { PageHeader, Button, formatCurrency } from '../components/ui-extras';
 import { TrendingUp, TrendingDown, Users, Receipt, IndianRupee, Repeat, UserPlus, Clock, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
+import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = sessionStorage.getItem('token');
+  const token = getAuthToken();
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PageHeader, formatCurrency } from '../components/ui-extras';
 import {
+import { getAuthToken } from '../lib/auth-storage';
   Brain, AlertTriangle, TrendingUp, TrendingDown, IndianRupee, Users,
   ChefHat, Package, Wallet, LineChart as LineIcon, Bell, ArrowRight,
 } from 'lucide-react';
@@ -12,7 +13,7 @@ import {
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = sessionStorage.getItem('token');
+  const token = getAuthToken();
   const headers: any = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });

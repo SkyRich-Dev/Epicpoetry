@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getGetMeQueryKey, useGetMe, User } from '@workspace/api-client-react';
 import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react/custom-fetch';
 import { useQueryClient } from '@tanstack/react-query';
+import { clearAuthToken, getAuthToken, setAuthToken } from './auth-storage';
 
 interface AuthContextType {
   user: User | null;
@@ -14,14 +15,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(sessionStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(getAuthToken());
   const [sessionUser, setSessionUser] = useState<User | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
     const apiBase = import.meta.env.VITE_API_BASE_URL?.trim();
     setBaseUrl(apiBase && !window.location.hostname.includes('replit') ? apiBase : null);
-    setAuthTokenGetter(() => sessionStorage.getItem('token'));
+    setAuthTokenGetter(() => getAuthToken());
   }, []);
 
   const { data: user, isLoading, refetch } = useGetMe({
@@ -44,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const login = (newToken: string, newUser: User) => {
-    sessionStorage.setItem('token', newToken);
+    setAuthToken(newToken);
     setSessionUser(newUser);
     queryClient.setQueryData(getGetMeQueryKey(), newUser);
     setToken(newToken);
@@ -52,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    sessionStorage.removeItem('token');
+    clearAuthToken();
     setSessionUser(null);
     setToken(null);
     queryClient.clear();

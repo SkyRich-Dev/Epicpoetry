@@ -5,6 +5,7 @@ import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2, Pencil
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const METHODS = ['Cash', 'Bank Withdrawal', 'UPI', 'Card Withdrawal', 'Owner Contribution', 'Manager Float'];
 const CATEGORIES = ['Local Purchase', 'Cleaning Materials', 'Delivery Charges', 'Petty Maintenance', 'Staff Emergency', 'Small Repairs', 'Local Transport', 'Market Purchase', 'Tea/Snacks', 'Other'];
@@ -41,7 +42,7 @@ export default function PettyCash() {
     setObSaving(true);
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = sessionStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${base}api/petty-cash/opening-balance`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -86,7 +87,7 @@ export default function PettyCash() {
     try {
       if (editingId) {
         const base = import.meta.env.BASE_URL || '/';
-        const token = sessionStorage.getItem('token');
+        const token = getAuthToken();
         const res = await fetch(`${base}api/petty-cash/${editingId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

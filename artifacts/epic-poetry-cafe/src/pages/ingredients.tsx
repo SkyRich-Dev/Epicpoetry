@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const COMMON_UOMS = ['g', 'kg', 'ml', 'L', 'pcs', 'nos', 'piece', 'box', 'pack', 'dozen', 'bottle', 'can'];
 
@@ -78,7 +79,7 @@ export default function Ingredients() {
 
   const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
     const base = import.meta.env.BASE_URL || '/';
-    const token = sessionStorage.getItem('token');
+    const token = getAuthToken();
     const payload: any = { ...formData, ...extraFlags };
     const url = editId ? `${base}api/ingredients/${editId}` : `${base}api/ingredients`;
     const method = editId ? 'PATCH' : 'POST';
@@ -137,7 +138,7 @@ export default function Ingredients() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = sessionStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${base}api/ingredients/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });

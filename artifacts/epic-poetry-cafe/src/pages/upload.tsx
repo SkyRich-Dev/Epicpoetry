@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { PageHeader, Button, formatCurrency } from '../components/ui-extras';
 import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { getAuthToken } from '../lib/auth-storage';
 
 type UploadType =
   | 'sales-invoices'
@@ -121,7 +122,7 @@ export default function UploadPage() {
     }
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = getAuthToken();
       const baseUrl = import.meta.env.BASE_URL || '/';
       const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
 
@@ -148,7 +149,7 @@ export default function UploadPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const token = sessionStorage.getItem('token');
+    const token = getAuthToken();
     const baseUrl = import.meta.env.BASE_URL || '/';
     const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
     const url = `${apiBase}/upload/template/${activeType}`;

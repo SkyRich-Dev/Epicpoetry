@@ -6,10 +6,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string) {
-  const token = sessionStorage.getItem('token');
+  const token = getAuthToken();
   const res = await fetch(`${BASE}api/${path}`, { headers: { 'Authorization': `Bearer ${token}` } });
   return res.json();
 }
@@ -57,7 +58,7 @@ export default function Vendors() {
   };
 
   const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
-    const token = sessionStorage.getItem('token');
+    const token = getAuthToken();
     const payload: any = { ...formData, ...extraFlags };
     const url = editId ? `${BASE}api/vendors/${editId}` : `${BASE}api/vendors`;
     const method = editId ? 'PATCH' : 'POST';
@@ -111,7 +112,7 @@ export default function Vendors() {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     try {
-      const token = sessionStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${BASE}api/vendors/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });

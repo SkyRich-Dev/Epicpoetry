@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '../lib/auth';
-import { 
+import { getAuthToken } from '../lib/auth-storage';
+import {
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
   FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
@@ -88,7 +89,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setPwSaving(true);
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = sessionStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${base}api/auth/change-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

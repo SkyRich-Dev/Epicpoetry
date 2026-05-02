@@ -4,6 +4,7 @@ import { PageHeader, Button, Input, Label, Modal, formatCurrency, useFormDirty }
 import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee, CheckCircle2, Circle, Upload, ExternalLink, Settings2, Info, Wallet, Gift, AlertOctagon, TrendingUp } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
 
@@ -258,7 +259,7 @@ export default function EmployeesPage() {
   const togglePaymentStatus = async (record: SalaryRecord) => {
     const newStatus = record.paymentStatus === 'paid' ? 'pending' : 'paid';
     try {
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       await fetch(`${BASE}api/salary/${record.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -271,7 +272,7 @@ export default function EmployeesPage() {
 
   const uploadProof = async (recordId: number, file: File) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch(`${BASE}api/salary/${recordId}/upload-proof`, {
@@ -575,7 +576,7 @@ export default function EmployeesPage() {
                       {s.paymentProofUrl ? (
                         <button
                           onClick={async () => {
-                            const token = localStorage.getItem('token');
+                            const token = getAuthToken();
                             const res = await fetch(`${BASE}api/salary/${s.id}/proof`, { headers: { 'Authorization': `Bearer ${token}` } });
                             if (res.ok) {
                               const blob = await res.blob();

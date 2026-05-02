@@ -3,10 +3,11 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, format
 import { Plus, Search, Cake, Heart, Edit2, Trash2, Eye, Phone, RefreshCw } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = sessionStorage.getItem('token');
+  const token = getAuthToken();
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
@@ -75,7 +76,7 @@ export default function CustomersPage() {
   };
 
   const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
-    const token = sessionStorage.getItem('token');
+    const token = getAuthToken();
     const url = editing ? `${BASE}api/customers/${editing.id}` : `${BASE}api/customers`;
     const method = editing ? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ ...form, ...extraFlags }) });
