@@ -249,4 +249,43 @@ router.get("/customers/reminders/upcoming", authMiddleware, async (req, res): Pr
   res.json({ birthdays, anniversaries });
 });
 
+// Birthdays / anniversaries that fall *within the current calendar month*,
+// independent of how many days away they are. Each entry is augmented with
+// `dayOfMonth` (1-31) and `daysUntil` (negative for past days in the month,
+// 0 for today, positive for upcoming). Powers the dashboard "Celebrations"
+// card and the dedicated /celebrations page.
+router.get("/customers/reminders/this-month", authMiddleware, async (_req, res): Promise<void> => {
+  const all = await db.select().from(customersTable);
+  const today = new Date();
+  const currentMonth = today.getMonth() + 1;
+  const currentDay = today.getDate();
+
+  // Birthday/anniversary are TEXT columns. Parse them as calendar components
+  // (month/day) directly from the YYYY-MM-DD prefix instead of `new Date(...)`,
+  // which interprets date-only strings as UTC and shifts the calendar day
+  // by ±1 in non-UTC zones — wrong celebrations near month boundaries.
+  function entryFor(dateStr: string | null): { dayOfMonth: number; daysUntil: number } | null {
+    if (!dateStr) return null;
+    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(dateStr.trim());
+    if (!m) return null;
+    const month = Number(m[2]);
+    const dayOfMonth = Number(m[3]);
+    if (!month || !dayOfMonth || month < 1 || month > 12 || dayOfMonth < 1 || dayOfMonth > 31) return null;
+    if (month !== currentMonth) return null;
+    return { dayOfMonth, daysUntil: dayOfMonth - currentDay };
+  }
+
+  const birthdays: any[] = [];
+  const anniversaries: any[] = [];
+  for (const c of all) {
+    const b = entryFor(c.birthday);
+    const a = entryFor(c.anniversary);
+    if (b) birthdays.push({ ...c, ...b });
+    if (a) anniversaries.push({ ...c, ...a });
+  }
+  birthdays.sort((x, y) => x.dayOfMonth - y.dayOfMonth);
+  anniversaries.sort((x, y) => x.dayOfMonth - y.dayOfMonth);
+  res.json({ birthdays, anniversaries, month: currentMonth, year: today.getFullYear() });
+});
+
 export default router;

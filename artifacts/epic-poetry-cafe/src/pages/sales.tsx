@@ -7,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = sessionStorage.getItem('token');
+  const token = localStorage.getItem('token');
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
@@ -26,8 +26,13 @@ export default function Sales() {
   const { data: menuItems } = useListMenuItems({ active: true });
 
   const [tab, setTab] = useState<'invoices' | 'items' | 'daily' | 'consumption'>('invoices');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  // Default the filter to "this calendar month → today" so the Total Sales /
+  // Gross / GST cards reflect the current month on first load instead of
+  // accidentally summing all-time.
+  const monthStart = useMemo(() => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; }, []);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [fromDate, setFromDate] = useState(monthStart);
+  const [toDate, setToDate] = useState(todayStr);
 
   const [invoices, setInvoices] = useState<any[]>([]);
   const [itemSummary, setItemSummary] = useState<any[]>([]);
@@ -101,73 +106,12 @@ export default function Sales() {
     setInvoiceForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: value } : l) }));
   };
 
-  const draftTotals = useMemo(() => {
-    const preparedLines = invoiceForm.lines.map((line) => {
-      const fixedPrice = getMenuPrice(line.menuItemId);
-      const quantity = Number(line.quantity) || 0;
-      const gstPercent = Number(line.gstPercent) || 0;
-      const grossLineAmount = quantity * fixedPrice;
-      return { ...line, fixedPrice, quantity, gstPercent, grossLineAmount };
-    });
-
-    const grossTotal = preparedLines.reduce((sum, line) => sum + line.grossLineAmount, 0);
-    const invoiceDiscount = Number(invoiceForm.totalDiscount) || 0;
-    const hasDiscount = invoiceDiscount > 0;
-
-    let gstTotal = 0;
-    let finalTotal = 0;
-
-    const lines = preparedLines.map((line) => {
-      const allocatedDiscount = hasDiscount && grossTotal > 0
-        ? Math.round((line.grossLineAmount / grossTotal) * invoiceDiscount * 100) / 100
-        : 0;
-      const discountedGross = line.grossLineAmount - allocatedDiscount;
-
-      if (!hasDiscount) {
-        finalTotal += line.grossLineAmount;
-        return {
-          ...line,
-          lineDiscountAmount: 0,
-          gstAmount: 0,
-          finalLineAmount: line.grossLineAmount,
-        };
-      }
-
-      let gstAmount = 0;
-      let finalLineAmount = discountedGross;
-      if (!invoiceForm.gstInclusive) {
-        gstAmount = discountedGross * (line.gstPercent / 100);
-        finalLineAmount = discountedGross + gstAmount;
-      } else if (line.gstPercent > 0) {
-        const taxableAmount = discountedGross / (1 + line.gstPercent / 100);
-        gstAmount = discountedGross - taxableAmount;
-      }
-
-      gstTotal += gstAmount;
-      finalTotal += finalLineAmount;
-
-      return {
-        ...line,
-        lineDiscountAmount: allocatedDiscount,
-        gstAmount,
-        finalLineAmount,
-      };
-    });
-
-    return {
-      hasDiscount,
-      grossTotal,
-      discountTotal: invoiceDiscount,
-      gstTotal,
-      finalTotal,
-      lines,
-    };
-  }, [invoiceForm, menuItems]);
+  const calcLineGross = () => invoiceForm.lines.reduce((sum, l) => sum + l.quantity * getMenuPrice(l.menuItemId), 0);
+  const grossTotal = calcLineGross();
+  const netTotal = grossTotal - invoiceForm.totalDiscount;
 
   const handleInvoiceCreate = async () => {
     try {
-      const incompleteLine = invoiceForm.lines.find(l => !l.menuItemId || l.menuItemId <= 0 || !l.quantity || l.quantity <= 0);
-      if (incompleteLine) { toast({ title: 'Complete every invoice row', description: 'Each row needs a menu item and quantity greater than 0.', variant: 'destructive' }); return; }
       const validLines = invoiceForm.lines.filter(l => l.menuItemId > 0 && l.quantity > 0);
       if (validLines.length === 0) { toast({ title: 'Add at least one item', variant: 'destructive' }); return; }
       await apiFetch('sales-invoices', {
@@ -251,7 +195,7 @@ export default function Sales() {
             </button>
           ))}
         </div>
-        <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
+        <DateFilter fromDate={fromDate} toDate={toDate} defaultFrom={monthStart} defaultTo={todayStr} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
       </div>
 
       {tab === 'invoices' && (
@@ -455,7 +399,7 @@ export default function Sales() {
                   </div>
                   <div className="w-24 text-right font-numbers text-sm pt-1">
                     {idx === 0 && <span className="text-xs text-muted-foreground block">Line Total</span>}
-                    {formatCurrency((draftTotals.lines[idx]?.finalLineAmount ?? 0))}
+                    {formatCurrency(line.quantity * getMenuPrice(line.menuItemId))}
                   </div>
                   {invoiceForm.lines.length > 1 && (
                     <button onClick={() => removeLine(idx)} className="p-1.5 text-muted-foreground hover:text-red-500"><X size={14} /></button>
@@ -465,10 +409,9 @@ export default function Sales() {
             </div>
           </div>
           <div className="p-4 bg-primary/10 rounded-xl border border-primary/20 space-y-1">
-            <div className="flex justify-between text-sm"><span>Gross Total:</span><span className="font-numbers">{formatCurrency(draftTotals.grossTotal)}</span></div>
-            <div className="flex justify-between text-sm text-orange-600"><span>Discount:</span><span className="font-numbers">-{formatCurrency(draftTotals.discountTotal)}</span></div>
-            <div className="flex justify-between text-sm text-blue-600"><span>GST:</span><span className="font-numbers">{draftTotals.hasDiscount ? formatCurrency(draftTotals.gstTotal) : '-'}</span></div>
-            <div className="flex justify-between font-semibold text-primary text-lg border-t pt-1 mt-1"><span>Final Total:</span><span className="font-numbers">{formatCurrency(draftTotals.finalTotal)}</span></div>
+            <div className="flex justify-between text-sm"><span>Gross Total:</span><span className="font-numbers">{formatCurrency(grossTotal)}</span></div>
+            <div className="flex justify-between text-sm text-orange-600"><span>Discount:</span><span className="font-numbers">-{formatCurrency(invoiceForm.totalDiscount)}</span></div>
+            <div className="flex justify-between font-semibold text-primary text-lg border-t pt-1 mt-1"><span>Net Total:</span><span className="font-numbers">{formatCurrency(netTotal)}</span></div>
           </div>
         </div>
       </Modal>

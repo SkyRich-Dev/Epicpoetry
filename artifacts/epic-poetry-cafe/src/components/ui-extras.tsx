@@ -101,6 +101,7 @@ export function Modal({
   footer,
   dirty = false,
   confirmDiscardMessage = "You have unsaved changes. Discard them?",
+  closeRef,
 }: any) {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
@@ -109,6 +110,22 @@ export function Modal({
   useEffect(() => {
     if (!isOpen) setConfirmDiscard(false);
   }, [isOpen]);
+
+  const attemptClose = () => {
+    if (dirty) setConfirmDiscard(true);
+    else onClose?.();
+  };
+
+  // Optional escape-hatch: pages with Cancel buttons inside the body (not in
+  // the Modal footer render-prop) need a way to invoke the SAME guarded
+  // close logic the X / overlay / ESC use. Assign the latest closure each
+  // render so the consumer always reads fresh `dirty` and `onClose`.
+  useEffect(() => {
+    if (!closeRef) return;
+    closeRef.current = attemptClose;
+    return () => { if (closeRef.current === attemptClose) closeRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
 
   // Intercept ESC. Native Radix dialogs do this for us, but our Modal is a
   // bare div, so without this ESC silently does nothing — which is itself a
@@ -126,11 +143,6 @@ export function Modal({
     return () => document.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, dirty, confirmDiscard]);
-
-  const attemptClose = () => {
-    if (dirty) setConfirmDiscard(true);
-    else onClose?.();
-  };
 
   if (!isOpen) return null;
   return (
@@ -247,13 +259,16 @@ export function Label({ className, children, ...props }: any) {
   return <label className={cn("block text-sm font-medium text-foreground/80 mb-2", className)} {...props}>{children}</label>;
 }
 
-export function DateFilter({ fromDate, toDate, onChange }: { fromDate: string; toDate: string; onChange: (from: string, to: string) => void }) {
+export function DateFilter({ fromDate, toDate, onChange, defaultFrom = '', defaultTo = '' }: { fromDate: string; toDate: string; onChange: (from: string, to: string) => void; defaultFrom?: string; defaultTo?: string }) {
   const today = new Date().toISOString().split('T')[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
   const setPreset = (days: number) => {
     const to = today;
     const from = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
     onChange(from, to);
   };
+  const isAtDefault = fromDate === defaultFrom && toDate === defaultTo;
+  const hasDefault = !!(defaultFrom || defaultTo);
   return (
     <div className="flex flex-wrap items-center gap-2.5 p-3 bg-card rounded-xl border border-border">
       <CalendarDays size={16} className="text-muted-foreground" />
@@ -262,12 +277,13 @@ export function DateFilter({ fromDate, toDate, onChange }: { fromDate: string; t
       <Input type="date" max={today} value={toDate} onChange={(e: any) => onChange(fromDate, e.target.value)} className="w-[150px] h-9 text-sm" />
       <div className="flex gap-1 ml-1">
         <button onClick={() => onChange(today, today)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted hover:bg-accent transition-all duration-150">Today</button>
+        <button onClick={() => onChange(yesterday, yesterday)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted hover:bg-accent transition-all duration-150">Yesterday</button>
         <button onClick={() => setPreset(7)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted hover:bg-accent transition-all duration-150">7D</button>
         <button onClick={() => setPreset(30)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted hover:bg-accent transition-all duration-150">30D</button>
         <button onClick={() => setPreset(90)} className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted hover:bg-accent transition-all duration-150">90D</button>
       </div>
-      {(fromDate || toDate) && (
-        <button onClick={() => onChange('', '')} className="ml-1 p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-all duration-150" title="Clear filter">
+      {!isAtDefault && (
+        <button onClick={() => onChange(defaultFrom, defaultTo)} className="ml-1 p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-all duration-150" title={hasDefault ? "Reset to default" : "Clear filter"}>
           <RotateCcw size={14} />
         </button>
       )}
