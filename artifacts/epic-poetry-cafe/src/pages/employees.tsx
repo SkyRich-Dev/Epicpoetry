@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { PageHeader, Button, Input, Label, Modal, formatCurrency, useFormDirty } from '../components/ui-extras';
 import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee, CheckCircle2, Circle, Upload, ExternalLink, Settings2, Info, Wallet, Gift, AlertOctagon, TrendingUp } from 'lucide-react';
@@ -80,6 +80,14 @@ export default function EmployeesPage() {
   const [adjustmentModal, setAdjustmentModal] = useState(false);
   const [adjustmentForm, setAdjustmentForm] = useState({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), type: 'bonus' as 'bonus' | 'incentive' | 'penalty', amount: '', reason: '' });
   const adjustmentFormDirty = useFormDirty(adjustmentModal, adjustmentForm);
+
+  // Refs that expose each Modal's guarded close handler. Body-Cancel buttons
+  // call these instead of setXxxModal(false) directly so the dirty-guard fires.
+  const empCloseRef = useRef<(() => void) | null>(null);
+  const shiftCloseRef = useRef<(() => void) | null>(null);
+  const advanceCloseRef = useRef<(() => void) | null>(null);
+  const adjustmentCloseRef = useRef<(() => void) | null>(null);
+  const salarySettingsCloseRef = useRef<(() => void) | null>(null);
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
@@ -365,7 +373,7 @@ export default function EmployeesPage() {
             </table>
           </div>
 
-          <Modal isOpen={empModal} onClose={() => setEmpModal(false)} dirty={empFormDirty} title={editingEmp ? 'Edit Employee' : 'Add Employee'}>
+          <Modal isOpen={empModal} onClose={() => setEmpModal(false)} dirty={empFormDirty} closeRef={empCloseRef} title={editingEmp ? 'Edit Employee' : 'Add Employee'}>
             <div className="space-y-5">
               <div><Label>Name *</Label><Input value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} placeholder="Employee name" /></div>
               <div><Label>Contact Number</Label><Input value={empForm.contactNumber} onChange={e => setEmpForm({ ...empForm, contactNumber: e.target.value })} placeholder="Phone number" /></div>
@@ -391,7 +399,7 @@ export default function EmployeesPage() {
               )}
               <div className="flex gap-3 pt-2">
                 <Button onClick={saveEmployee} className="flex-1">{editingEmp ? 'Update' : 'Add'} Employee</Button>
-                <Button variant="outline" onClick={() => setEmpModal(false)} className="flex-1">Cancel</Button>
+                <Button variant="outline" onClick={() => empCloseRef.current?.()} className="flex-1">Cancel</Button>
               </div>
             </div>
           </Modal>
@@ -443,14 +451,14 @@ export default function EmployeesPage() {
             </table>
           </div>
 
-          <Modal isOpen={shiftModal} onClose={() => setShiftModal(false)} dirty={shiftFormDirty} title={editingShift ? 'Edit Shift' : 'Add Shift'}>
+          <Modal isOpen={shiftModal} onClose={() => setShiftModal(false)} dirty={shiftFormDirty} closeRef={shiftCloseRef} title={editingShift ? 'Edit Shift' : 'Add Shift'}>
             <div className="space-y-5">
               <div><Label>Shift Name *</Label><Input value={shiftForm.name} onChange={e => setShiftForm({ ...shiftForm, name: e.target.value })} placeholder="e.g. Morning Shift" /></div>
               <div><Label>Start Time *</Label><Input type="time" value={shiftForm.startTime} onChange={e => setShiftForm({ ...shiftForm, startTime: e.target.value })} /></div>
               <div><Label>End Time *</Label><Input type="time" value={shiftForm.endTime} onChange={e => setShiftForm({ ...shiftForm, endTime: e.target.value })} /></div>
               <div className="flex gap-3 pt-2">
                 <Button onClick={saveShift} className="flex-1">{editingShift ? 'Update' : 'Add'} Shift</Button>
-                <Button variant="outline" onClick={() => setShiftModal(false)} className="flex-1">Cancel</Button>
+                <Button variant="outline" onClick={() => shiftCloseRef.current?.()} className="flex-1">Cancel</Button>
               </div>
             </div>
           </Modal>
@@ -698,7 +706,7 @@ export default function EmployeesPage() {
           </div>
         </div>)}
 
-          <Modal isOpen={advanceModal} onClose={() => setAdvanceModal(false)} dirty={advanceFormDirty} title="Record Salary Advance">
+          <Modal isOpen={advanceModal} onClose={() => setAdvanceModal(false)} dirty={advanceFormDirty} closeRef={advanceCloseRef} title="Record Salary Advance">
             <div className="space-y-5">
               <div><Label>Employee *</Label>
                 <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={advanceForm.employeeId} onChange={e => setAdvanceForm({ ...advanceForm, employeeId: e.target.value })}>
@@ -714,12 +722,12 @@ export default function EmployeesPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <Button onClick={saveAdvance} className="flex-1">Save Advance</Button>
-                <Button variant="outline" onClick={() => setAdvanceModal(false)} className="flex-1">Cancel</Button>
+                <Button variant="outline" onClick={() => advanceCloseRef.current?.()} className="flex-1">Cancel</Button>
               </div>
             </div>
           </Modal>
 
-          <Modal isOpen={adjustmentModal} onClose={() => setAdjustmentModal(false)} dirty={adjustmentFormDirty} title="Add Bonus / Incentive / Penalty">
+          <Modal isOpen={adjustmentModal} onClose={() => setAdjustmentModal(false)} dirty={adjustmentFormDirty} closeRef={adjustmentCloseRef} title="Add Bonus / Incentive / Penalty">
             <div className="space-y-5">
               <div><Label>Employee *</Label>
                 <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={adjustmentForm.employeeId} onChange={e => setAdjustmentForm({ ...adjustmentForm, employeeId: e.target.value })}>
@@ -746,12 +754,12 @@ export default function EmployeesPage() {
               <div><Label>Reason</Label><Input value={adjustmentForm.reason} onChange={e => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} placeholder="e.g. Diwali bonus, late penalty" /></div>
               <div className="flex gap-3 pt-2">
                 <Button onClick={saveAdjustment} className="flex-1">Save</Button>
-                <Button variant="outline" onClick={() => setAdjustmentModal(false)} className="flex-1">Cancel</Button>
+                <Button variant="outline" onClick={() => adjustmentCloseRef.current?.()} className="flex-1">Cancel</Button>
               </div>
             </div>
           </Modal>
 
-          <Modal isOpen={salarySettingsModal} onClose={() => setSalarySettingsModal(false)} dirty={salarySettingsDirty} title="Salary Calculation Settings">
+          <Modal isOpen={salarySettingsModal} onClose={() => setSalarySettingsModal(false)} dirty={salarySettingsDirty} closeRef={salarySettingsCloseRef} title="Salary Calculation Settings">
             <div className="space-y-5">
               <div>
                 <Label>Allowed Week-Offs Per Month</Label>
@@ -765,7 +773,7 @@ export default function EmployeesPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <Button onClick={saveSalarySettings} className="flex-1">Save Settings</Button>
-                <Button variant="outline" onClick={() => setSalarySettingsModal(false)} className="flex-1">Cancel</Button>
+                <Button variant="outline" onClick={() => salarySettingsCloseRef.current?.()} className="flex-1">Cancel</Button>
               </div>
             </div>
           </Modal>

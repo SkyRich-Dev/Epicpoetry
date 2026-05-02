@@ -26,8 +26,13 @@ export default function Sales() {
   const { data: menuItems } = useListMenuItems({ active: true });
 
   const [tab, setTab] = useState<'invoices' | 'items' | 'daily' | 'consumption'>('invoices');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  // Default the filter to "this calendar month → today" so the Total Sales /
+  // Gross / GST cards reflect the current month on first load instead of
+  // accidentally summing all-time.
+  const monthStart = useMemo(() => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; }, []);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [fromDate, setFromDate] = useState(monthStart);
+  const [toDate, setToDate] = useState(todayStr);
 
   const [invoices, setInvoices] = useState<any[]>([]);
   const [itemSummary, setItemSummary] = useState<any[]>([]);
@@ -190,7 +195,7 @@ export default function Sales() {
             </button>
           ))}
         </div>
-        <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
+        <DateFilter fromDate={fromDate} toDate={toDate} defaultFrom={monthStart} defaultTo={todayStr} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
       </div>
 
       {tab === 'invoices' && (

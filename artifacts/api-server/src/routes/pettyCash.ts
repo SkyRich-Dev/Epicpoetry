@@ -96,58 +96,81 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
   const parsedAmount = Number(amount);
   if (parsedAmount <= 0) { res.status(400).json({ error: "Amount must be positive" }); return; }
 
-  if (transactionType === "expense") {
-    const balance = await getCurrentBalance();
-    if (balance < parsedAmount) {
-      res.status(400).json({ error: `Insufficient petty cash balance. Available: ${balance.toFixed(2)}` });
-      return;
-    }
-  }
-
-  const balance = await getCurrentBalance();
-  let newBalance = balance;
-  if (transactionType === "receipt") newBalance += parsedAmount;
-  else if (transactionType === "expense") newBalance -= parsedAmount;
-  else if (transactionType === "adjustment") newBalance += parsedAmount;
-
+  // Serialise every petty-cash write (this route + vendor-payment-via-petty-cash)
+  // via a postgres transaction-scoped advisory lock so concurrent requests
+  // cannot both observe the same balance and overdraw / write inconsistent
+  // running balances.
   const userId = (req as any).userId || null;
+  let txn: typeof pettyCashLedgerTable.$inferSelect;
+  try {
+    txn = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(91234567)`);
 
-  let expenseId: number | null = linkedExpenseId || null;
+      const [config] = await tx.select().from(systemConfigTable);
+      const opening = Number(config?.pettyCashOpeningBalance || 0);
+      const [agg] = await tx.select({
+        sum: sql<number>`COALESCE(
+          SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END) -
+          SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) +
+          SUM(CASE WHEN transaction_type = 'adjustment' THEN amount ELSE 0 END), 0)`
+      }).from(pettyCashLedgerTable);
+      const balance = opening + Number(agg?.sum || 0);
 
-  if (transactionType === "expense" && !linkedExpenseId) {
-    const expenseNumber = await generateCode("EXP", "expenses");
-    const [expense] = await db.insert(expensesTable).values({
-      expenseNumber,
-      expenseDate: transactionDate,
-      amount: parsedAmount,
-      taxAmount: 0,
-      totalAmount: parsedAmount,
-      paymentMode: "Petty Cash",
-      paidBy: counterpartyName || null,
-      description: description || category || "Petty Cash Expense",
-      costType: "variable",
-      recurring: false,
-      createdBy: userId,
-    }).returning();
-    expenseId = expense.id;
-  }
+      if (transactionType === "expense" && balance + 0.01 < parsedAmount) {
+        throw Object.assign(
+          new Error(`Insufficient petty cash balance. Available: ${balance.toFixed(2)}`),
+          { httpStatus: 400 },
+        );
+      }
 
-  const [txn] = await db.insert(pettyCashLedgerTable).values({
-    transactionDate,
-    transactionType,
-    amount: parsedAmount,
-    method: method || null,
-    counterpartyName: counterpartyName || null,
-    category: category || null,
-    linkedExpenseId: expenseId,
-    description: description || null,
-    runningBalance: newBalance,
-    approvalStatus: "approved",
-    createdBy: userId,
-  }).returning();
+      let newBalance = balance;
+      if (transactionType === "receipt") newBalance += parsedAmount;
+      else if (transactionType === "expense") newBalance -= parsedAmount;
+      else if (transactionType === "adjustment") newBalance += parsedAmount;
 
-  if (transactionType === "expense" && expenseId && !linkedExpenseId) {
-    await db.update(expensesTable).set({ linkedPettyCashId: txn.id }).where(eq(expensesTable.id, expenseId));
+      let expenseId: number | null = linkedExpenseId || null;
+      if (transactionType === "expense" && !linkedExpenseId) {
+        const expenseNumber = await generateCode("EXP", "expenses");
+        const [expense] = await tx.insert(expensesTable).values({
+          expenseNumber,
+          expenseDate: transactionDate,
+          amount: parsedAmount,
+          taxAmount: 0,
+          totalAmount: parsedAmount,
+          paymentMode: "Petty Cash",
+          paidBy: counterpartyName || null,
+          description: description || category || "Petty Cash Expense",
+          costType: "variable",
+          recurring: false,
+          createdBy: userId,
+        }).returning();
+        expenseId = expense.id;
+      }
+
+      const [created] = await tx.insert(pettyCashLedgerTable).values({
+        transactionDate,
+        transactionType,
+        amount: parsedAmount,
+        method: method || null,
+        counterpartyName: counterpartyName || null,
+        category: category || null,
+        linkedExpenseId: expenseId,
+        description: description || null,
+        runningBalance: newBalance,
+        approvalStatus: "approved",
+        createdBy: userId,
+      }).returning();
+
+      if (transactionType === "expense" && expenseId && !linkedExpenseId) {
+        await tx.update(expensesTable).set({ linkedPettyCashId: created.id }).where(eq(expensesTable.id, expenseId));
+      }
+
+      return created;
+    });
+  } catch (e: any) {
+    const status = e?.httpStatus ?? 500;
+    res.status(status).json({ error: e?.message || "Failed to record petty cash transaction" });
+    return;
   }
 
   await createAuditLog("petty_cash", txn.id, "create", null, txn);

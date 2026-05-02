@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql, desc, asc } from "drizzle-orm";
 import {
   db, vendorPaymentsTable, vendorPaymentAllocationsTable, vendorLedgerTable,
-  purchasesTable, vendorsTable, expensesTable
+  purchasesTable, vendorsTable, expensesTable, pettyCashLedgerTable, systemConfigTable
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -286,6 +286,55 @@ router.post("/vendor-payments", authMiddleware, async (req, res): Promise<void> 
         description: `Payment ${paymentNo} - ${paymentMethod}`,
       });
 
+      // When a vendor payment is paid out of petty cash, the cash physically
+      // leaves the petty-cash drawer — so we MUST mirror it as an expense in
+      // the petty_cash_ledger. Without this the petty-cash balance silently
+      // disagrees with reality.
+      // Concurrency: a postgres transaction-scoped advisory lock serialises
+      // every petty-cash insert (this route + the direct /api/petty-cash POST
+      // both take the same lock) so two simultaneous requests can't both
+      // observe the same balance and overdraw.
+      if (paymentMethod === "petty_cash") {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(91234567)`);
+
+        const [vendorRow] = await tx.select({ name: vendorsTable.name })
+          .from(vendorsTable)
+          .where(eq(vendorsTable.id, vendorId))
+          .limit(1);
+        const vendorName = vendorRow?.name || `vendor #${vendorId}`;
+
+        const [config] = await tx.select().from(systemConfigTable);
+        const opening = Number(config?.pettyCashOpeningBalance || 0);
+        const [agg] = await tx.select({
+          sum: sql<number>`COALESCE(
+            SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END) -
+            SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) +
+            SUM(CASE WHEN transaction_type = 'adjustment' THEN amount ELSE 0 END), 0)`
+        }).from(pettyCashLedgerTable);
+        const pcBalance = round2(opening + Number(agg?.sum || 0));
+
+        if (pcBalance + 0.01 < totalAmount) {
+          throw Object.assign(
+            new Error(`Insufficient petty cash balance. Available: ₹${pcBalance.toFixed(2)}, requested: ₹${Number(totalAmount).toFixed(2)}`),
+            { httpStatus: 400 },
+          );
+        }
+
+        await tx.insert(pettyCashLedgerTable).values({
+          transactionDate: paymentDate,
+          transactionType: "expense",
+          amount: round2(totalAmount),
+          method: "cash",
+          counterpartyName: vendorName,
+          category: "vendor_payment",
+          linkedExpenseId: null,
+          description: `Vendor payment ${paymentNo} to ${vendorName}`,
+          runningBalance: round2(pcBalance - totalAmount),
+          approvalStatus: "approved",
+          createdBy: (req as any).userId || null,
+        });
+      }
+
       return created;
     });
   } catch (e: any) {
@@ -382,6 +431,38 @@ router.delete("/vendor-payments/:id", authMiddleware, adminOnly, async (req, res
         runningBalance: round2(prevBalance + payment.totalAmount),
         description: `Reversal of payment ${payment.paymentNo}`,
       });
+
+      // If the original payment was funded from petty cash we MUST also
+      // reverse the petty-cash ledger expense — otherwise deleting a payment
+      // restores the vendor's outstanding balance but leaves petty cash
+      // permanently short, silently drifting the cash count from reality.
+      // Same advisory lock as the create path so the running balance is
+      // computed against a stable view of the petty-cash ledger.
+      if (payment.paymentMethod === "petty_cash") {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(91234567)`);
+        const [config] = await tx.select().from(systemConfigTable);
+        const opening = Number(config?.pettyCashOpeningBalance || 0);
+        const [agg] = await tx.select({
+          sum: sql<number>`COALESCE(
+            SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END) -
+            SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) +
+            SUM(CASE WHEN transaction_type = 'adjustment' THEN amount ELSE 0 END), 0)`
+        }).from(pettyCashLedgerTable);
+        const pcBalance = round2(opening + Number(agg?.sum || 0));
+        await tx.insert(pettyCashLedgerTable).values({
+          transactionDate: new Date().toISOString().split('T')[0],
+          transactionType: "receipt",
+          amount: round2(payment.totalAmount),
+          method: "cash",
+          counterpartyName: null,
+          category: "vendor_payment_reversal",
+          linkedExpenseId: null,
+          description: `Reversal of vendor payment ${payment.paymentNo}`,
+          runningBalance: round2(pcBalance + payment.totalAmount),
+          approvalStatus: "approved",
+          createdBy: (req as any).userId || null,
+        });
+      }
 
       return payment;
     });

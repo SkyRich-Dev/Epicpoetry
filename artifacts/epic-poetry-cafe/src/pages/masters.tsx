@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, formatDate, useFormDirty } from '../components/ui-extras';
 import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, AlertTriangle, CheckCircle2, Trash, Bell, Mail, Send, Play, Power, Tag } from 'lucide-react';
@@ -2290,13 +2290,15 @@ function NotificationsTab() {
       )}
 
       {showRuleModal && editing && (
-        <Modal isOpen={showRuleModal} onClose={() => { setShowRuleModal(false); setEditing(null); }} title={editing.id === 0 ? 'New alert rule' : 'Edit alert rule'}>
-          <RuleEditor editing={editing} setEditing={setEditing} types={types} schedules={schedules} />
-          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
-            <Button onClick={() => { setShowRuleModal(false); setEditing(null); }} variant="outline">Cancel</Button>
-            <Button onClick={saveRule}>Save rule</Button>
-          </div>
-        </Modal>
+        <RuleEditorModal
+          isOpen={showRuleModal}
+          editing={editing}
+          setEditing={setEditing}
+          types={types}
+          schedules={schedules}
+          onClose={() => { setShowRuleModal(false); setEditing(null); }}
+          onSave={saveRule}
+        />
       )}
 
       {deleteRule && (
@@ -2309,6 +2311,31 @@ function NotificationsTab() {
         </Modal>
       )}
     </div>
+  );
+}
+
+// Wrapper around the rule editor that owns the dirty-guard. Extracted so the
+// useFormDirty hook only mounts when the modal is open and tracks `editing`
+// snapshot reliably without polluting the parent NotificationsTab.
+function RuleEditorModal({ isOpen, editing, setEditing, types, schedules, onClose, onSave }: {
+  isOpen: boolean;
+  editing: NotificationRule;
+  setEditing: (r: NotificationRule) => void;
+  types: AlertTypeDef[];
+  schedules: ScheduleDef[];
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const dirty = useFormDirty(isOpen, editing);
+  const closeRef = useRef<(() => void) | null>(null);
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} dirty={dirty} closeRef={closeRef} title={editing.id === 0 ? 'New alert rule' : 'Edit alert rule'}>
+      <RuleEditor editing={editing} setEditing={setEditing} types={types} schedules={schedules} />
+      <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+        <Button onClick={() => closeRef.current?.()} variant="outline">Cancel</Button>
+        <Button onClick={onSave}>Save rule</Button>
+      </div>
+    </Modal>
   );
 }
 

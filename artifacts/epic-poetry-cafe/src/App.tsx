@@ -30,6 +30,7 @@ import VendorDetailPage from "./pages/vendor-detail";
 import CustomersPage from "./pages/customers";
 import InsightsPage from "./pages/insights";
 import DecisionPage from "./pages/decision";
+import Celebrations from "./pages/celebrations";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -95,6 +96,7 @@ function Router() {
       <Route path="/customers" component={() => <ProtectedRoute component={CustomersPage} />} />
       <Route path="/insights" component={() => <ProtectedRoute component={InsightsPage} />} />
       <Route path="/decision" component={() => <ProtectedRoute component={DecisionPage} />} />
+      <Route path="/celebrations" component={() => <ProtectedRoute component={Celebrations} />} />
       <Route component={NotFound} />
     </Switch>
   );
