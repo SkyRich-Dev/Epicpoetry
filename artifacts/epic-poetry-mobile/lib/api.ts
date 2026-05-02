@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN;
 const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
+const APP_ORIGIN = DOMAIN ? `https://${DOMAIN}` : undefined;
 
 export const TOKEN_KEY = "epc:auth-token";
 
@@ -51,6 +52,10 @@ export async function apiFetch<T = unknown>(
     "X-Requested-With": "XMLHttpRequest",
     ...((options.headers as Record<string, string>) ?? {}),
   };
+  if (APP_ORIGIN) {
+    headers["Origin"] = APP_ORIGIN;
+    headers["Referer"] = `${APP_ORIGIN}/`;
+  }
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const url = `${BASE_URL}${path}`;
