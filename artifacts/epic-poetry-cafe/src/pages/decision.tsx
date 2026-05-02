@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PageHeader, formatCurrency } from '../components/ui-extras';
-import {
 import { getAuthToken } from '../lib/auth-storage';
+import {
   Brain, AlertTriangle, TrendingUp, TrendingDown, IndianRupee, Users,
   ChefHat, Package, Wallet, LineChart as LineIcon, Bell, ArrowRight,
 } from 'lucide-react';
