@@ -46,8 +46,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     ios: {
       supportsTablet: false,
+      bundleIdentifier: "com.skyrich.platr",
     },
-    android: {},
+    android: {
+      package: "com.skyrich.platr",
+    },
     web: {
       favicon: "./assets/images/icon.png",
     },
