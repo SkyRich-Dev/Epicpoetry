@@ -47,6 +47,8 @@ export async function apiFetch<T = unknown>(
   const token = await getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    // Some production gateways/WAF rules require this on app-originated POSTs.
+    "X-Requested-With": "XMLHttpRequest",
     ...((options.headers as Record<string, string>) ?? {}),
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
