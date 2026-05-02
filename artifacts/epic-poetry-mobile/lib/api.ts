@@ -1,8 +1,23 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 
-const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN;
-const BASE_URL = DOMAIN ? `https://${DOMAIN}/api` : "/api";
-const APP_ORIGIN = DOMAIN ? `https://${DOMAIN}` : undefined;
+function normalizeDomain(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return trimmed
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/g, "")
+    .replace(/\/api$/i, "");
+}
+
+const EXTRA_DOMAIN = normalizeDomain(
+  (Constants.expoConfig?.extra?.["apiDomain"] as string | undefined) ??
+  (Constants.expoConfig?.extra?.["expoPublicDomain"] as string | undefined),
+);
+const DOMAIN = normalizeDomain(process.env.EXPO_PUBLIC_DOMAIN) ?? EXTRA_DOMAIN;
+const APP_ORIGIN = DOMAIN ? `https://${DOMAIN}` : null;
+const BASE_URL = APP_ORIGIN ? `${APP_ORIGIN}/api` : "/api";
 
 export const TOKEN_KEY = "epc:auth-token";
 
@@ -45,6 +60,12 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (!APP_ORIGIN) {
+    throw new ApiError(
+      500,
+      "Mobile API domain is not configured. Set EXPO_PUBLIC_DOMAIN for the mobile build.",
+    );
+  }
   const token = await getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
