@@ -62,6 +62,38 @@ router.get("/sales-invoices/:id", authMiddleware, async (req, res): Promise<void
   res.json({ ...invoice, lines });
 });
 
+router.get("/sales-invoices-summary", authMiddleware, async (req, res): Promise<void> => {
+  const conditions: any[] = [];
+  if (req.query.fromDate) conditions.push(gte(salesInvoicesTable.salesDate, req.query.fromDate as string));
+  if (req.query.toDate) conditions.push(lte(salesInvoicesTable.salesDate, req.query.toDate as string));
+  if (req.query.sourceType) conditions.push(eq(salesInvoicesTable.sourceType, req.query.sourceType as string));
+  if (req.query.orderType) conditions.push(eq(salesInvoicesTable.orderType, req.query.orderType as string));
+  if (req.query.matchStatus) conditions.push(eq(salesInvoicesTable.matchStatus, req.query.matchStatus as string));
+  if (req.query.date) conditions.push(eq(salesInvoicesTable.salesDate, req.query.date as string));
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const query = db.select().from(salesInvoicesTable);
+  const invoices = whereClause ? await query.where(whereClause) : await query;
+
+  const summary = invoices.reduce((acc, inv) => ({
+    count: acc.count + 1,
+    gross: acc.gross + inv.grossAmount,
+    discount: acc.discount + inv.totalDiscount,
+    gst: acc.gst + inv.gstAmount,
+    final: acc.final + inv.finalAmount,
+    mismatched: acc.mismatched + (inv.matchStatus === "mismatched" ? 1 : 0),
+  }), { count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0 });
+
+  res.json({
+    count: summary.count,
+    gross: Math.round(summary.gross * 100) / 100,
+    discount: Math.round(summary.discount * 100) / 100,
+    gst: Math.round(summary.gst * 100) / 100,
+    final: Math.round(summary.final * 100) / 100,
+    mismatched: summary.mismatched,
+  });
+});
+
 router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> => {
   const {
     salesDate, invoiceNo, invoiceTime, sourceType, orderType, customerName, customerPhone,
