@@ -4,6 +4,7 @@ import { db, usersTable } from "@workspace/db";
 import { LoginBody, LoginResponse, GetMeResponse } from "@workspace/api-zod";
 import { hashPassword, verifyPassword, createToken, authMiddleware } from "../lib/auth";
 import { getEffectivePermissionsForRole } from "./roles";
+import { findTenantBySelector, getSaasAccessState, runWithTenantSchema } from "../lib/saas";
 
 const router: IRouter = Router();
 
@@ -14,7 +15,20 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.username, parsed.data.username));
+  const body = req.body as Record<string, unknown>;
+  const selector =
+    typeof body.tenantSchemaName === "string" ? body.tenantSchemaName
+    : typeof body.tenant === "string" ? body.tenant
+    : typeof req.headers["x-epicpoetry-tenant"] === "string" ? req.headers["x-epicpoetry-tenant"]
+    : typeof req.headers["x-platr-tenant"] === "string" ? req.headers["x-platr-tenant"]
+    : parsed.data.username.includes("@") ? parsed.data.username
+    : null;
+  const tenant = await findTenantBySelector(selector);
+  const tenantSchemaName = tenant?.tenantSchemaName ?? null;
+
+  const [user] = await runWithTenantSchema(tenantSchemaName, async () => (
+    await db.select().from(usersTable).where(eq(usersTable.username, parsed.data.username))
+  ));
   if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
@@ -25,7 +39,19 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  const token = createToken({ userId: user.id, role: user.role });
+  const saasState = await getSaasAccessState(tenantSchemaName);
+  if (!saasState.allowed) {
+    const messageByReason: Record<string, string> = {
+      not_provisioned: "This Epicpoetry instance is not linked to a Platr subscription yet.",
+      customer_disabled: "This customer account is disabled in Platr-Link.",
+      subscription_inactive: "Your subscription is not active. Please renew or reactivate it in Platr-Link.",
+      subscription_expired: "Your subscription has expired. Please renew it in Platr-Link.",
+    };
+    res.status(402).json({ error: messageByReason[saasState.reason] || "Subscription inactive", reason: saasState.reason });
+    return;
+  }
+
+  const token = createToken({ userId: user.id, role: user.role, tenantSchemaName });
   res.json(LoginResponse.parse({
     token,
     user: {

@@ -22,3 +22,4 @@ export * from "./posIntegrations";
 export * from "./customers";
 export * from "./roles";
 export * from "./notifications";
+export * from "./saas";
