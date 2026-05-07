@@ -283,8 +283,9 @@ async function upsertLink(input: SyncInput) {
   return row;
 }
 
-router.get("/internal/saas/status", requirePlatrInternalSecret, async (_req, res): Promise<void> => {
-  const state = await getSaasAccessState(input.tenantSchemaName);
+router.get("/internal/saas/status", requirePlatrInternalSecret, async (req, res): Promise<void> => {
+  const schemaName = typeof req.query.tenantSchemaName === "string" ? req.query.tenantSchemaName : null;
+  const state = await getSaasAccessState(schemaName);
   res.json(state);
 });
 
