@@ -127,11 +127,12 @@ function ComparisonBadge({ current, previous, label }: { current: number; previo
   const diff = previous > 0 ? ((current - previous) / previous) * 100 : current > 0 ? 100 : 0;
   const isUp = diff > 0;
   const isFlat = diff === 0;
+  const diffDisplay = Math.round(diff);
   return (
     <div className="flex items-center gap-1.5">
       {isFlat ? <Minus size={12} className="text-muted-foreground" /> : isUp ? <ArrowUpRight size={12} className="text-emerald-600" /> : <ArrowDownRight size={12} className="text-rose-600" />}
       <span className={cn("text-xs font-medium", isFlat ? "text-muted-foreground" : isUp ? "text-emerald-600" : "text-rose-600")}>
-        {isFlat ? "0%" : `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`}
+        {isFlat ? "0%" : `${diffDisplay > 0 ? '+' : ''}${diffDisplay}%`}
       </span>
       <span className="text-xs text-muted-foreground">{label} ({formatCurrency(previous)})</span>
     </div>

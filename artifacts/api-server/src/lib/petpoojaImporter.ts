@@ -215,7 +215,7 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
       let totalTaxable = 0;
       let totalFinal = 0;
       const hasDiscount = totalDiscount > 0 || lineData.some((line) => line.ppItemDiscount > 0);
-      const useOrderLevelTax = hasDiscount && orderTaxTotal > 0;
+      const useOrderLevelTax = orderTaxTotal > 0;
       const discountRatio = hasDiscount && grossAmount > 0 ? totalDiscount / grossAmount : 0;
 
       const finalLines = lineData.map(l => {
@@ -224,18 +224,16 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
             ? l.ppItemDiscount
             : Math.round(l.grossLineAmount * discountRatio * 100) / 100)
           : 0;
-        const taxable = hasDiscount ? (l.grossLineAmount - lineDiscount) : l.grossLineAmount;
+        const taxable = l.grossLineAmount - lineDiscount;
         let gst = 0;
-        if (hasDiscount) {
-          if (useOrderLevelTax && grossAmount > 0) {
-            gst = Math.round((l.grossLineAmount / grossAmount) * orderTaxTotal * 100) / 100;
-          } else if (l.ppItemTax > 0) {
-            gst = l.ppItemTax;
-          } else {
-            gst = Math.round(taxable * l.gstPercent / 100 * 100) / 100;
-          }
+        if (useOrderLevelTax && grossAmount > 0) {
+          gst = Math.round((l.grossLineAmount / grossAmount) * orderTaxTotal * 100) / 100;
+        } else if (l.ppItemTax > 0) {
+          gst = l.ppItemTax;
+        } else if (l.gstPercent > 0) {
+          gst = Math.round(taxable * l.gstPercent / 100 * 100) / 100;
         }
-        const finalAmt = hasDiscount ? (taxable + gst) : l.grossLineAmount;
+        const finalAmt = taxable + gst;
         totalGst += gst;
         totalTaxable += taxable;
         totalFinal += finalAmt;
@@ -257,7 +255,7 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
         };
       });
 
-      const invoiceFinal = hasDiscount && ppTotal > 0 ? ppTotal : Math.round(totalFinal * 100) / 100;
+      const invoiceFinal = ppTotal > 0 ? ppTotal : Math.round(totalFinal * 100) / 100;
 
       // Customer linkage — upsert by phone INSIDE the import tx so that
       // (1) the invoice is linked atomically (no need for a later "Recompute")

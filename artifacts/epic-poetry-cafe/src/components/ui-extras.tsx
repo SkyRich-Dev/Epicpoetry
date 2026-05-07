@@ -43,6 +43,8 @@ export function PageHeader({ title, description, children }: { title: string, de
 }
 
 export function StatCard({ title, value, icon: Icon, trend, trendLabel, colorClass = "text-primary" }: any) {
+  const hasTrend = typeof trend === 'number' && Number.isFinite(trend);
+  const trendDisplay = hasTrend ? Math.round(trend) : 0;
   return (
     <div className="bg-card rounded-2xl p-5 border border-border shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
       <div className="absolute -right-4 -top-4 opacity-[0.04] group-hover:opacity-[0.07] transition-opacity duration-500">
@@ -56,10 +58,10 @@ export function StatCard({ title, value, icon: Icon, trend, trendLabel, colorCla
       </div>
       <div className="relative z-10">
         <h3 className="text-2xl font-numbers font-bold text-foreground tracking-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</h3>
-        {trend && (
+        {hasTrend && (
           <p className="text-xs mt-2 flex items-center gap-1.5">
-            <span className={cn("font-semibold px-1.5 py-0.5 rounded-md", trend > 0 ? "text-emerald-700 bg-emerald-50" : "text-rose-700 bg-rose-50")}>
-              {trend > 0 ? '+' : ''}{trend}%
+            <span className={cn("font-semibold px-1.5 py-0.5 rounded-md", trendDisplay > 0 ? "text-emerald-700 bg-emerald-50" : trendDisplay < 0 ? "text-rose-700 bg-rose-50" : "text-muted-foreground bg-muted/60")}>
+              {trendDisplay > 0 ? '+' : ''}{trendDisplay}%
             </span>
             <span className="text-muted-foreground">{trendLabel}</span>
           </p>

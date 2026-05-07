@@ -148,20 +148,14 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
     let taxableAmount: number;
     let gstAmt: number;
     let finalAmount: number;
-    if (hasDiscount) {
-      if (gstInclusive) {
-        finalAmount = discountedGross;
-        taxableAmount = pl.gstPercent > 0 ? finalAmount / (1 + pl.gstPercent / 100) : finalAmount;
-        gstAmt = finalAmount - taxableAmount;
-      } else {
-        taxableAmount = discountedGross;
-        gstAmt = taxableAmount * (pl.gstPercent / 100);
-        finalAmount = taxableAmount + gstAmt;
-      }
+    if (gstInclusive) {
+      finalAmount = discountedGross;
+      taxableAmount = pl.gstPercent > 0 ? finalAmount / (1 + pl.gstPercent / 100) : finalAmount;
+      gstAmt = finalAmount - taxableAmount;
     } else {
-      taxableAmount = pl.lineGross;
-      gstAmt = 0;
-      finalAmount = pl.lineGross;
+      taxableAmount = discountedGross;
+      gstAmt = taxableAmount * (pl.gstPercent / 100);
+      finalAmount = taxableAmount + gstAmt;
     }
 
     totalGst += gstAmt;
