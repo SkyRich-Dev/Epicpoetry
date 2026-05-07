@@ -187,6 +187,7 @@ async function createTenantSchema(schemaName: string): Promise<void> {
       select table_name, column_name, column_default
       from information_schema.columns
       where table_schema = 'public'
+        and table_name <> 'saas_subscription_link'
         and column_default like 'nextval(%'
     `);
 
