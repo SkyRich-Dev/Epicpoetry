@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '../lib/auth';
 import { useLogin } from '@workspace/api-client-react';
 import { Input, Button, Label } from '../components/ui-extras';
 import { Lock, User as UserIcon } from 'lucide-react';
+
+const AUTH_MESSAGE_KEY = 'epicpoetry.authMessage';
 
 export default function Login() {
   const { login } = useAuth();
@@ -13,6 +15,16 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    try {
+      const message = window.sessionStorage.getItem(AUTH_MESSAGE_KEY);
+      if (message) {
+        setError(message);
+        window.sessionStorage.removeItem(AUTH_MESSAGE_KEY);
+      }
+    } catch {}
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -21,7 +33,7 @@ export default function Login() {
       login(res.token, res.user);
       setLocation('/');
     } catch (err: any) {
-      setError(err?.data?.message || 'Invalid credentials. Please try again.');
+      setError(err?.data?.error || 'Invalid credentials. Please try again.');
     }
   };
 
@@ -91,3 +103,4 @@ export default function Login() {
     </div>
   );
 }
+

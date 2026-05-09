@@ -17,6 +17,8 @@ export const saasSubscriptionLinkTable = pgTable("saas_subscription_link", {
   customerStatus: text("customer_status").notNull().default("active"),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  graceEndsAt: timestamp("grace_ends_at", { withTimezone: true }),
+  paymentFailedAt: timestamp("payment_failed_at", { withTimezone: true }),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   epicpoetryInstanceKey: text("epicpoetry_instance_key"),
@@ -39,3 +41,4 @@ export const insertSaasSubscriptionLinkSchema = createInsertSchema(saasSubscript
 
 export type InsertSaasSubscriptionLink = z.infer<typeof insertSaasSubscriptionLinkSchema>;
 export type SaasSubscriptionLink = typeof saasSubscriptionLinkTable.$inferSelect;
+

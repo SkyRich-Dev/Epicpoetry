@@ -46,6 +46,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       customer_disabled: "This customer account is disabled in Platr-Link.",
       subscription_inactive: "Your subscription is not active. Please renew or reactivate it in Platr-Link.",
       subscription_expired: "Your subscription has expired. Please renew it in Platr-Link.",
+      subscription_canceled: "Your subscription has been canceled in Platr-Link.",
+      payment_failed: "Your payment grace period has ended. Please renew in Platr-Link.",
     };
     res.status(402).json({ error: messageByReason[saasState.reason] || "Subscription inactive", reason: saasState.reason });
     return;
@@ -118,3 +120,4 @@ router.post("/auth/change-password", authMiddleware, async (req, res): Promise<v
 });
 
 export default router;
+

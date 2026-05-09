@@ -4,6 +4,8 @@ import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react/cust
 import { useQueryClient } from '@tanstack/react-query';
 import { clearAuthToken, getAuthToken, setAuthToken } from './auth-storage';
 
+const AUTH_MESSAGE_KEY = 'epicpoetry.authMessage';
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
@@ -44,6 +46,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [token]);
 
+  useEffect(() => {
+    const onAuthExpired = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: number; data?: { reason?: string; error?: string } }>).detail;
+      const message = detail?.data?.error || 'Your session ended. Please sign in again.';
+      try {
+        window.sessionStorage.setItem(AUTH_MESSAGE_KEY, message);
+      } catch {}
+      clearAuthToken();
+      setSessionUser(null);
+      setToken(null);
+      queryClient.clear();
+    };
+
+    window.addEventListener('epicpoetry:auth-expired', onAuthExpired as EventListener);
+    return () => window.removeEventListener('epicpoetry:auth-expired', onAuthExpired as EventListener);
+  }, [queryClient]);
+
   const login = (newToken: string, newUser: User) => {
     setAuthToken(newToken);
     setSessionUser(newUser);
@@ -75,3 +94,5 @@ export function useAuth() {
   }
   return context;
 }
+
+

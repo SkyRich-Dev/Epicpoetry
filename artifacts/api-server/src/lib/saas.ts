@@ -18,11 +18,14 @@ export type SaasAccessState = {
   reason:
     | "disabled"
     | "active"
+    | "grace_period"
     | "trial"
     | "not_provisioned"
     | "customer_disabled"
     | "subscription_inactive"
-    | "subscription_expired";
+    | "subscription_expired"
+    | "subscription_canceled"
+    | "payment_failed";
   link: SaasSubscriptionLink | null;
 };
 
@@ -73,12 +76,28 @@ export async function getSaasAccessState(schemaName?: string | null): Promise<Sa
   const now = Date.now();
   const trialEndsAt = link.trialEndsAt ? new Date(link.trialEndsAt).getTime() : null;
   const periodEndsAt = link.currentPeriodEnd ? new Date(link.currentPeriodEnd).getTime() : null;
+  const graceEndsAt = link.graceEndsAt ? new Date(link.graceEndsAt).getTime() : null;
 
   if (status === "active" || status === "trialing") {
     if (periodEndsAt && periodEndsAt < now) {
       return { enabled: true, allowed: false, reason: "subscription_expired", link };
     }
     return { enabled: true, allowed: true, reason: "active", link };
+  }
+
+  if (status === "past_due") {
+    if (graceEndsAt && graceEndsAt >= now) {
+      return { enabled: true, allowed: true, reason: "grace_period", link };
+    }
+    return { enabled: true, allowed: false, reason: "payment_failed", link };
+  }
+
+  if (status === "canceled") {
+    return { enabled: true, allowed: false, reason: "subscription_canceled", link };
+  }
+
+  if (status === "expired") {
+    return { enabled: true, allowed: false, reason: "subscription_expired", link };
   }
 
   if (status === "pending" && trialEndsAt && trialEndsAt >= now) {
@@ -112,11 +131,13 @@ export async function enforceSaasAccess(req: Request, res: Response, next: NextF
     return;
   }
 
-  const descriptionByReason: Record<Exclude<SaasAccessState["reason"], "disabled" | "active" | "trial">, string> = {
+  const descriptionByReason: Record<Exclude<SaasAccessState["reason"], "disabled" | "active" | "trial" | "grace_period">, string> = {
     not_provisioned: "This Epicpoetry instance is not linked to a Platr subscription yet.",
     customer_disabled: "This customer account is disabled in Platr-Link.",
     subscription_inactive: "Your subscription is not active. Please renew or reactivate it in Platr-Link.",
     subscription_expired: "Your subscription has expired. Please renew it in Platr-Link.",
+    subscription_canceled: "Your subscription has been canceled in Platr-Link.",
+    payment_failed: "Your payment grace period has ended. Please renew in Platr-Link.",
   };
 
   res.status(402).json({
@@ -143,3 +164,7 @@ export function requirePlatrInternalSecret(req: Request, res: Response, next: Ne
 
   next();
 }
+
+
+
+

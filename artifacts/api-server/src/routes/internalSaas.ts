@@ -22,6 +22,8 @@ const SyncBody = z.object({
   customerStatus: z.string().trim().min(1).default("active"),
   currentPeriodStart: z.string().datetime().nullable().optional(),
   currentPeriodEnd: z.string().datetime().nullable().optional(),
+  graceEndsAt: z.string().datetime().nullable().optional(),
+  paymentFailedAt: z.string().datetime().nullable().optional(),
   trialEndsAt: z.string().datetime().nullable().optional(),
   cancelAtPeriodEnd: z.boolean().optional().default(false),
   epicpoetryInstanceKey: z.string().trim().min(1).nullable().optional(),
@@ -60,6 +62,8 @@ const PlatrNestedBody = z.object({
     status: z.string().trim().min(1).default("pending"),
     currentPeriodStart: z.string().datetime().nullable().optional(),
     currentPeriodEnd: z.string().datetime().nullable().optional(),
+    graceEndsAt: z.string().datetime().nullable().optional(),
+    paymentFailedAt: z.string().datetime().nullable().optional(),
     cancelAtPeriodEnd: z.boolean().optional().default(false),
   }).passthrough(),
   payment: z.record(z.any()).nullable().optional(),
@@ -119,6 +123,8 @@ function normalizePayload(body: unknown): SyncInput | null {
       customerStatus: input.customer.status,
       currentPeriodStart: input.subscription.currentPeriodStart ?? null,
       currentPeriodEnd: input.subscription.currentPeriodEnd ?? null,
+      graceEndsAt: input.subscription.graceEndsAt ?? null,
+      paymentFailedAt: input.subscription.paymentFailedAt ?? null,
       trialEndsAt: null,
       cancelAtPeriodEnd: input.subscription.cancelAtPeriodEnd ?? false,
       epicpoetryInstanceKey: input.tenant.externalId ?? null,
@@ -261,6 +267,8 @@ async function upsertLink(input: SyncInput) {
     customerStatus: input.customerStatus,
     currentPeriodStart: parseDate(input.currentPeriodStart),
     currentPeriodEnd: parseDate(input.currentPeriodEnd),
+    graceEndsAt: parseDate(input.graceEndsAt),
+    paymentFailedAt: parseDate(input.paymentFailedAt),
     trialEndsAt: parseDate(input.trialEndsAt),
     cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
     epicpoetryInstanceKey: input.epicpoetryInstanceKey ?? null,
@@ -322,3 +330,7 @@ router.post("/internal/saas/subscription-sync", requirePlatrInternalSecret, asyn
 });
 
 export default router;
+
+
+
+
