@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { db, saasSubscriptionLinkTable, tenantSchemaContext, type SaasSubscriptionLink } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { Request, Response, NextFunction } from "express";
 
 function readBool(value: string | undefined): boolean {
@@ -54,7 +54,10 @@ export async function getSaasLink(schemaName?: string | null) {
     return rows[0] ?? null;
   }
 
-  const rows = await db.select().from(saasSubscriptionLinkTable);
+  const rows = await db.select()
+    .from(saasSubscriptionLinkTable)
+    .orderBy(desc(saasSubscriptionLinkTable.updatedAt))
+    .limit(1);
   return rows[0] ?? null;
 }
 
@@ -115,7 +118,13 @@ export function runWithTenantSchema<T>(schemaName: string | null | undefined, fn
 
 export async function findTenantBySelector(selector: string | null | undefined) {
   const value = selector?.trim();
-  if (!value) return null;
+  if (!value) {
+    const rows = await db.select()
+      .from(saasSubscriptionLinkTable)
+      .orderBy(desc(saasSubscriptionLinkTable.updatedAt))
+      .limit(2);
+    return rows.length === 1 ? rows[0] ?? null : null;
+  }
   const normalizedSchema = normalizeSchemaName(value);
 
   const rows = normalizedSchema

@@ -325,7 +325,7 @@ router.post("/internal/saas/subscription-sync", requirePlatrInternalSecret, asyn
     await createTenantSchema(input.tenantSchemaName);
   }
   const row = await upsertLink(input);
-  const state = await getSaasAccessState();
+  const state = await getSaasAccessState(input.tenantSchemaName ?? row.tenantSchemaName ?? null);
   res.json({ ok: true, mode: "sync", link: row, access: state });
 });
 
