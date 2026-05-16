@@ -16,27 +16,17 @@ function generateInvoiceNo(source: string): string {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
 }
 
-router.get("/sales-invoices", authMiddleware, async (req, res): Promise<void> => {
-  const conditions: any[] = [];
-  if (req.query.fromDate) conditions.push(gte(salesInvoicesTable.salesDate, req.query.fromDate as string));
-  if (req.query.toDate) conditions.push(lte(salesInvoicesTable.salesDate, req.query.toDate as string));
-  if (req.query.sourceType) conditions.push(eq(salesInvoicesTable.sourceType, req.query.sourceType as string));
-  if (req.query.orderType) conditions.push(eq(salesInvoicesTable.orderType, req.query.orderType as string));
-  if (req.query.matchStatus) conditions.push(eq(salesInvoicesTable.matchStatus, req.query.matchStatus as string));
-  if (req.query.date) conditions.push(eq(salesInvoicesTable.salesDate, req.query.date as string));
+function normalizeTenantSchemaName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(normalized)) return null;
+  if (normalized === "public" || normalized.startsWith("pg_") || normalized === "information_schema") return null;
+  return normalized;
+}
 
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-  const query = db.select().from(salesInvoicesTable);
-  const invoices = whereClause
-    ? await query.where(whereClause).orderBy(desc(salesInvoicesTable.createdAt))
-    : await query.orderBy(desc(salesInvoicesTable.createdAt));
-  res.json(invoices);
-});
-
-router.get("/sales-invoices/:id", authMiddleware, async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
+async function getInvoiceWithLines(id: number) {
   const [invoice] = await db.select().from(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
-  if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
+  if (!invoice) return null;
 
   const lines = await db.select({
     id: salesInvoiceLinesTable.id,
@@ -59,7 +49,31 @@ router.get("/sales-invoices/:id", authMiddleware, async (req, res): Promise<void
     .leftJoin(menuItemsTable, eq(salesInvoiceLinesTable.menuItemId, menuItemsTable.id))
     .where(eq(salesInvoiceLinesTable.invoiceId, id));
 
-  res.json({ ...invoice, lines });
+  return { ...invoice, lines };
+}
+
+router.get("/sales-invoices", authMiddleware, async (req, res): Promise<void> => {
+  const conditions: any[] = [];
+  if (req.query.fromDate) conditions.push(gte(salesInvoicesTable.salesDate, req.query.fromDate as string));
+  if (req.query.toDate) conditions.push(lte(salesInvoicesTable.salesDate, req.query.toDate as string));
+  if (req.query.sourceType) conditions.push(eq(salesInvoicesTable.sourceType, req.query.sourceType as string));
+  if (req.query.orderType) conditions.push(eq(salesInvoicesTable.orderType, req.query.orderType as string));
+  if (req.query.matchStatus) conditions.push(eq(salesInvoicesTable.matchStatus, req.query.matchStatus as string));
+  if (req.query.date) conditions.push(eq(salesInvoicesTable.salesDate, req.query.date as string));
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const query = db.select().from(salesInvoicesTable);
+  const invoices = whereClause
+    ? await query.where(whereClause).orderBy(desc(salesInvoicesTable.createdAt))
+    : await query.orderBy(desc(salesInvoicesTable.createdAt));
+  res.json(invoices);
+});
+
+router.get("/sales-invoices/:id", authMiddleware, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const detail = await getInvoiceWithLines(id);
+  if (!detail) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(detail);
 });
 
 router.get("/sales-invoices-summary", authMiddleware, async (req, res): Promise<void> => {
@@ -270,6 +284,119 @@ router.patch("/sales-invoices/:id", authMiddleware, async (req, res): Promise<vo
   if (updated.customerId) await recomputeCustomerStats(updated.customerId);
   await createAuditLog("sales_invoices", id, "update", existing, updated);
   res.json(updated);
+});
+
+router.patch("/sales-invoices/:id/pricing", authMiddleware, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [existing] = await db.select().from(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") {
+    res.status(403).json({ error: "Verified. Admin only." }); return;
+  }
+
+  const inputLines = Array.isArray(req.body?.lines) ? req.body.lines : null;
+  if (!inputLines || inputLines.length === 0) {
+    res.status(400).json({ error: "Updated line prices are required" }); return;
+  }
+
+  const existingLines = await db.select().from(salesInvoiceLinesTable).where(eq(salesInvoiceLinesTable.invoiceId, id));
+  if (existingLines.length === 0) {
+    res.status(400).json({ error: "Invoice has no line items" }); return;
+  }
+
+  const priceByLineId = new Map<number, number>();
+  for (const line of inputLines) {
+    const lineId = Number(line?.id);
+    const fixedPrice = Number(line?.fixedPrice);
+    if (!Number.isFinite(lineId) || !Number.isFinite(fixedPrice) || fixedPrice < 0) {
+      res.status(400).json({ error: "Each updated line needs a valid id and non-negative fixedPrice" }); return;
+    }
+    priceByLineId.set(lineId, fixedPrice);
+  }
+
+  const beforeSnapshot = { invoice: existing, lines: existingLines };
+  let grossTotal = 0;
+  let discountTotal = 0;
+  let taxableTotal = 0;
+  let gstTotal = 0;
+  let finalTotal = 0;
+  const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
+
+  await db.transaction(async (tx) => {
+    if (tenantSchemaName) {
+      await tx.execute(sql`select set_config('search_path', ${`"${tenantSchemaName}", public`}, false)`);
+    }
+    for (const line of existingLines) {
+      if (!priceByLineId.has(line.id)) continue;
+      const nextPrice = priceByLineId.get(line.id)!;
+      const grossLineAmount = Math.round(nextPrice * line.quantity * 100) / 100;
+      const lineDiscountAmount = Math.min(Math.max(line.lineDiscountAmount || 0, 0), grossLineAmount);
+      const discountedGross = Math.max(grossLineAmount - lineDiscountAmount, 0);
+      const wasInclusive = Math.abs((line.finalLineAmount || 0) - ((line.grossLineAmount || 0) - (line.lineDiscountAmount || 0))) < 0.01;
+      const gstPercent = line.gstPercent || 0;
+
+      let taxableLineAmount = discountedGross;
+      let gstAmount = 0;
+      let finalLineAmount = discountedGross;
+
+      if (wasInclusive) {
+        taxableLineAmount = gstPercent > 0 ? discountedGross / (1 + gstPercent / 100) : discountedGross;
+        gstAmount = discountedGross - taxableLineAmount;
+        finalLineAmount = discountedGross;
+      } else {
+        taxableLineAmount = discountedGross;
+        gstAmount = taxableLineAmount * (gstPercent / 100);
+        finalLineAmount = taxableLineAmount + gstAmount;
+      }
+
+      const discountedUnitPrice = line.quantity > 0 ? discountedGross / line.quantity : 0;
+
+      const roundedLine = {
+        fixedPrice: Math.round(nextPrice * 100) / 100,
+        grossLineAmount: Math.round(grossLineAmount * 100) / 100,
+        lineDiscountAmount: Math.round(lineDiscountAmount * 100) / 100,
+        discountedUnitPrice: Math.round(discountedUnitPrice * 100) / 100,
+        taxableLineAmount: Math.round(taxableLineAmount * 100) / 100,
+        gstAmount: Math.round(gstAmount * 100) / 100,
+        finalLineAmount: Math.round(finalLineAmount * 100) / 100,
+      };
+
+      grossTotal += roundedLine.grossLineAmount;
+      discountTotal += roundedLine.lineDiscountAmount;
+      taxableTotal += roundedLine.taxableLineAmount;
+      gstTotal += roundedLine.gstAmount;
+      finalTotal += roundedLine.finalLineAmount;
+
+      await tx.update(salesInvoiceLinesTable)
+        .set(roundedLine)
+        .where(eq(salesInvoiceLinesTable.id, line.id));
+    }
+
+    for (const line of existingLines) {
+      if (priceByLineId.has(line.id)) continue;
+      grossTotal += line.grossLineAmount;
+      discountTotal += line.lineDiscountAmount;
+      taxableTotal += line.taxableLineAmount;
+      gstTotal += line.gstAmount;
+      finalTotal += line.finalLineAmount;
+    }
+
+    await tx.update(salesInvoicesTable).set({
+      grossAmount: Math.round(grossTotal * 100) / 100,
+      totalDiscount: Math.round(discountTotal * 100) / 100,
+      taxableAmount: Math.round(taxableTotal * 100) / 100,
+      gstAmount: Math.round(gstTotal * 100) / 100,
+      finalAmount: Math.round(finalTotal * 100) / 100,
+      matchStatus: "matched",
+      matchDifference: 0,
+      updatedBy: (req as any).userId,
+    }).where(eq(salesInvoicesTable.id, id));
+  });
+
+  if (existing.customerId) await recomputeCustomerStats(existing.customerId);
+  const afterSnapshot = await getInvoiceWithLines(id);
+  await createAuditLog("sales_invoices", id, "update_pricing", beforeSnapshot, afterSnapshot);
+  res.json(afterSnapshot);
 });
 
 router.delete("/sales-invoices/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
