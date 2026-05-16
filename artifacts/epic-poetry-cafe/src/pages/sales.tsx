@@ -460,10 +460,13 @@ export default function Sales() {
       </Modal>
 
       {detailModal && (
-        <Modal isOpen={!!detailModal} onClose={closeDetailModal} title={`Invoice ${detailModal.invoiceNo}`} maxWidth="max-w-2xl">
-          <div className="relative space-y-5 py-2">
-            {!isViewer && (
-              <div className="absolute right-0 -top-1 flex justify-end gap-2">
+        <Modal
+          isOpen={!!detailModal}
+          onClose={closeDetailModal}
+          title={`Invoice ${detailModal.invoiceNo}`}
+          maxWidth="max-w-2xl"
+          titleActions={!isViewer ? (
+            <div className="flex justify-end gap-2">
                 {detailEditMode ? (
                   <>
                     <Button variant="ghost" onClick={() => { setDetailEditMode(false); setDetailPriceDraft(Object.fromEntries((detailModal.lines || []).map((line: any) => [line.id, String(line.fixedPrice ?? '')]))); }}>
@@ -480,9 +483,11 @@ export default function Sales() {
                     Edit Prices
                   </Button>
                 )}
-              </div>
-            )}
-            <div className={detailEditMode || !isViewer ? "pt-14" : ""}>
+            </div>
+          ) : null}
+        >
+          <div className="space-y-5 py-2">
+            <div>
               <div className="grid grid-cols-3 gap-x-4 gap-y-5 text-sm">
                 <div><span className="text-muted-foreground">Date:</span> {formatDate(detailModal.salesDate)}</div>
                 <div><span className="text-muted-foreground">Type:</span> <span className="capitalize">{detailModal.orderType}</span></div>

@@ -98,6 +98,7 @@ export function Modal({
   isOpen,
   onClose,
   title,
+  titleActions,
   children,
   maxWidth = "max-w-md",
   footer,
@@ -155,15 +156,18 @@ export function Modal({
         data-testid="modal-overlay"
       />
       <div className={cn("bg-card text-card-foreground w-full rounded-2xl shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[90vh] animate-in zoom-in-95 fade-in duration-200", maxWidth)}>
-        <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <button
-            onClick={attemptClose}
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-150"
-            data-testid="modal-close-x"
-          >
-            <X size={18}/>
-          </button>
+        <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-foreground min-w-0">{title}</h2>
+          <div className="flex items-center gap-2 shrink-0">
+            {titleActions}
+            <button
+              onClick={attemptClose}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-150"
+              data-testid="modal-close-x"
+            >
+              <X size={18}/>
+            </button>
+          </div>
         </div>
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
           {children}
