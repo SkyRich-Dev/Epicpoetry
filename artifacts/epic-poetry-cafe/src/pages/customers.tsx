@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Search, Cake, Heart, Edit2, Trash2, Eye, Phone, RefreshCw } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -47,6 +47,7 @@ export default function CustomersPage() {
   const [form, setForm] = useState({ name: '', phone: '', email: '', birthday: '', anniversary: '', notes: '' });
   const customerFormDirty = useFormDirty(modal, form);
   const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
+  const customersPagination = useClientPagination(list, 10);
 
   const load = async () => {
     setLoading(true);
@@ -220,7 +221,7 @@ export default function CustomersPage() {
             <tbody>
               {loading && <tr><td colSpan={8} className="py-8 text-center text-muted-foreground">Loading…</td></tr>}
               {!loading && list.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-muted-foreground">No customers yet. Add a customer or capture a phone number on a sales invoice.</td></tr>}
-              {list.map(c => (
+              {customersPagination.paginatedRows.map(c => (
                 <tr key={c.id} className="border-b hover:bg-muted/30">
                   <td className="py-2 pr-4 font-medium">{c.name}</td>
                   <td className="py-2 pr-4 text-muted-foreground">{c.phone}</td>
@@ -241,6 +242,7 @@ export default function CustomersPage() {
             </tbody>
           </table>
         </div>
+        <TablePagination {...customersPagination} onPageChange={customersPagination.setPage} />
       </div>
 
       <Modal isOpen={modal} onClose={() => setModal(false)} dirty={customerFormDirty} title={editing ? 'Edit Customer' : 'New Customer'} maxWidth="max-w-lg"

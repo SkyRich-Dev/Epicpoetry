@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useListExpenses, useCreateExpense, useListVendors } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
@@ -64,6 +64,7 @@ export default function Expenses() {
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState<ExpenseFormState>(blankExpenseForm());
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; desc: string } | null>(null);
+  const expensesPagination = useClientPagination(expenses || [], 10);
 
   const formDirty = useFormDirty(isModalOpen, formData);
 
@@ -173,7 +174,7 @@ export default function Expenses() {
               <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">Loading expenses...</td></tr>
             ) : expenses?.length === 0 ? (
               <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No expenses recorded.</td></tr>
-            ) : expenses?.map((e: any) => (
+            ) : expensesPagination.paginatedRows.map((e: any) => (
               <tr key={e.id} className="table-row-hover" data-testid={`row-expense-${e.id}`}>
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(e.expenseDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{e.description || 'Generic Expense'}</td>
@@ -205,6 +206,7 @@ export default function Expenses() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...expensesPagination} onPageChange={expensesPagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={formDirty} title={editId ? "Edit Expense" : "Log Expense"} maxWidth="max-w-lg"

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useListIngredients, useCreateIngredient, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -60,6 +60,7 @@ export default function Ingredients() {
     });
     return rows;
   }, [ingredients, search, filterCategoryId, sortBy]);
+  const ingredientsPagination = useClientPagination(filteredSorted, 10);
 
   const openCreate = () => {
     setEditId(null);
@@ -216,7 +217,7 @@ export default function Ingredients() {
               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : filteredSorted.length === 0 ? (
               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No ingredients match your filters.</td></tr>
-            ) : filteredSorted.map((item: any) => (
+            ) : ingredientsPagination.paginatedRows.map((item: any) => (
               <tr key={item.id} className="table-row-hover">
                 <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{item.code}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
@@ -237,6 +238,7 @@ export default function Ingredients() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...ingredientsPagination} onPageChange={ingredientsPagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={ingFormDirty} title={editId ? "Edit Ingredient" : "Add Ingredient"} maxWidth="max-w-2xl"

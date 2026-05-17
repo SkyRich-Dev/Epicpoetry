@@ -343,3 +343,67 @@ export function Badge({ children, variant = 'default', className }: any) {
     </span>
   );
 }
+
+export function useClientPagination<T>(rows: T[] | null | undefined, pageSize = 5) {
+  const [page, setPage] = useState(1);
+  const totalItems = rows?.length || 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize]);
+
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const paginatedRows = (rows || []).slice(startIndex, endIndex);
+
+  return {
+    page,
+    setPage,
+    pageSize,
+    totalItems,
+    totalPages,
+    startIndex,
+    endIndex,
+    paginatedRows,
+  };
+}
+
+export function TablePagination({
+  page,
+  totalPages,
+  totalItems,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border/60 bg-card">
+      <p className="text-xs text-muted-foreground">
+        {totalItems === 0
+          ? 'Showing 0 of 0'
+          : `Showing ${Math.min((page - 1) * pageSize + 1, totalItems)}-${Math.min(page * pageSize, totalItems)} of ${totalItems}`}
+      </p>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" className="h-9 px-3" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+          Previous
+        </Button>
+        <span className="text-sm text-muted-foreground min-w-[72px] text-center">
+          Page {page} / {totalPages}
+        </span>
+        <Button variant="outline" className="h-9 px-3" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}

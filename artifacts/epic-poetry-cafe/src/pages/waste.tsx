@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListWasteEntries, useCreateWasteEntry, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -25,6 +25,7 @@ export default function Waste() {
   const { toast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const wasteFormDirty = useFormDirty(isModalOpen, formData);
+  const wastePagination = useClientPagination(waste || [], 10);
 
   const openCreate = () => { setEditId(null); setFormData({ wasteDate: new Date().toISOString().split('T')[0], wasteType: 'INGREDIENT', ingredientId: 0, quantity: 1, uom: 'g', reason: '' }); setIsModalOpen(true); };
   const openEdit = (w: any) => { setEditId(w.id); setFormData({ wasteDate: w.wasteDate, wasteType: w.wasteType, ingredientId: w.ingredientId || 0, quantity: Number(w.quantity), uom: w.uom, reason: w.reason || '' }); setIsModalOpen(true); };
@@ -89,7 +90,7 @@ export default function Waste() {
               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : waste?.length === 0 ? (
               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No waste entries.</td></tr>
-            ) : waste?.map((w: any) => (
+            ) : wastePagination.paginatedRows.map((w: any) => (
               <tr key={w.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(w.wasteDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{w.ingredientName || w.menuItemName} <Badge variant="neutral" className="ml-2 px-1">{w.wasteType}</Badge></td>
@@ -109,6 +110,7 @@ export default function Waste() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...wastePagination} onPageChange={wastePagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={wasteFormDirty} title={editId ? "Edit Waste Entry" : "Log Waste"} maxWidth="max-w-lg"

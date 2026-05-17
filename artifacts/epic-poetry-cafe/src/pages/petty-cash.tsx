@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListPettyCash, useCreatePettyCash, useGetPettyCashSummary, useDeletePettyCash } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -30,6 +30,7 @@ export default function PettyCash() {
   const createMut = useCreatePettyCash();
   const deleteMut = useDeletePettyCash();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const pettyCashPagination = useClientPagination(transactions || [], 10);
 
   const [obModal, setObModal] = useState(false);
   const [obAmount, setObAmount] = useState('');
@@ -189,7 +190,7 @@ export default function PettyCash() {
               <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : transactions?.length === 0 ? (
               <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">No transactions recorded.</td></tr>
-            ) : transactions?.map(t => (
+            ) : pettyCashPagination.paginatedRows.map(t => (
               <tr key={t.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(t.transactionDate)}</td>
                 <td className="px-6 py-4"><TypeBadge type={t.transactionType} /></td>
@@ -218,6 +219,7 @@ export default function PettyCash() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...pettyCashPagination} onPageChange={pettyCashPagination.setPage} />
       </div>
 
       <Modal isOpen={obModal} onClose={() => setObModal(false)} dirty={obFormDirty} title="Set Opening Balance"

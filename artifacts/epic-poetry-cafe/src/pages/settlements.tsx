@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListSettlements, useCreateSettlement, useGetSettlementSalesSummary, useVerifySettlement, useDeleteSettlement, useGetSettlement, useUpdateSettlement } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode, Trash2, Eye, ShieldCheck, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -30,6 +30,7 @@ export default function Settlements() {
   const updateMut = useUpdateSettlement();
   const verifyMut = useVerifySettlement();
   const deleteMut = useDeleteSettlement();
+  const settlementsPagination = useClientPagination(settlements || [], 10);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -185,7 +186,7 @@ export default function Settlements() {
               <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : settlements?.length === 0 ? (
               <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No settlements recorded.</td></tr>
-            ) : settlements?.map(s => (
+            ) : settlementsPagination.paginatedRows.map(s => (
               <tr key={s.id} className="table-row-hover">
                 <td className="px-6 py-4 font-medium">{formatDate(s.settlementDate)}</td>
                 <td className="px-6 py-4 text-right">{formatCurrency(s.netSalesAmount)}</td>
@@ -214,6 +215,7 @@ export default function Settlements() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...settlementsPagination} onPageChange={settlementsPagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); }} dirty={settlementFormDirty} title={editingId ? "Edit Settlement" : "New Daily Settlement"} maxWidth="max-w-2xl"

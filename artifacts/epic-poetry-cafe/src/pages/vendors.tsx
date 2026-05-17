@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useListVendors } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, Badge, formatCurrency, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, Badge, formatCurrency, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Phone, Mail, Pencil, Trash2, Eye, AlertTriangle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -129,6 +129,7 @@ export default function Vendors() {
     if (filter === 'overdue') return s.overdueBillsCount > 0;
     return true;
   });
+  const vendorsPagination = useClientPagination(filteredVendors || [], 10);
 
   return (
     <div className="space-y-6">
@@ -159,7 +160,7 @@ export default function Vendors() {
           <tbody>
             {isLoading ? (
               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-            ) : filteredVendors?.map(v => {
+            ) : vendorsPagination.paginatedRows.map(v => {
               const s = vendorSummaries.get(v.id);
               return (
                 <tr key={v.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150 cursor-pointer" onClick={() => setLocation(`/vendors/${v.id}`)}>
@@ -194,6 +195,7 @@ export default function Vendors() {
             })}
           </tbody>
         </table>
+        <TablePagination {...vendorsPagination} onPageChange={vendorsPagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={vendorFormDirty} title={editId ? "Edit Vendor" : "Add Vendor"} maxWidth="max-w-lg"

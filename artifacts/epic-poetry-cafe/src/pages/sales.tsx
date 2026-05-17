@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useListMenuItems } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, useFormDirty } from '../components/ui-extras';
-import { Plus, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, TrendingUp, IndianRupee, ArrowRight, Pencil, Save } from 'lucide-react';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
+import { Plus, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getAuthToken } from '../lib/auth-storage';
@@ -43,11 +43,13 @@ export default function Sales() {
   const [invoiceSummary, setInvoiceSummary] = useState({
     count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0,
   });
+  const invoicesPagination = useClientPagination(invoices, 10);
+  const itemSummaryPagination = useClientPagination(itemSummary, 10);
+  const dailySummaryPagination = useClientPagination(dailySummary, 10);
+  const consumptionPagination = useClientPagination(consumption, 10);
 
   const [invoiceModal, setInvoiceModal] = useState(false);
   const [detailModal, setDetailModal] = useState<any>(null);
-  const [detailEditMode, setDetailEditMode] = useState(false);
-  const [detailPriceDraft, setDetailPriceDraft] = useState<Record<number, string>>({});
   const [deleteConfirmInv, setDeleteConfirmInv] = useState<any>(null);
   // Snapshot the entire invoice form (header + line items) so adding /
   // removing rows or editing quantities both trigger the discard prompt.
@@ -134,49 +136,11 @@ export default function Sales() {
     try {
       const data = await apiFetch(`sales-invoices/${id}`);
       setDetailModal(data);
-      setDetailEditMode(false);
-      setDetailPriceDraft(Object.fromEntries((data.lines || []).map((line: any) => [line.id, String(line.fixedPrice ?? '')])));
     } catch {}
   };
 
   const closeDetailModal = () => {
     setDetailModal(null);
-    setDetailEditMode(false);
-    setDetailPriceDraft({});
-  };
-
-  const handleDetailPriceChange = (lineId: number, value: string) => {
-    setDetailPriceDraft((draft) => ({ ...draft, [lineId]: value }));
-  };
-
-  const handleDetailPriceSave = async () => {
-    if (!detailModal) return;
-    const payloadLines = (detailModal.lines || []).map((line: any) => ({
-      id: line.id,
-      fixedPrice: Number(detailPriceDraft[line.id]),
-    }));
-
-    if (payloadLines.some((line: any) => !Number.isFinite(line.fixedPrice) || line.fixedPrice < 0)) {
-      toast({ title: 'Invalid price', description: 'Enter a valid non-negative price for each line.', variant: 'destructive' });
-      return;
-    }
-
-    try {
-      const updated = await apiFetch(`sales-invoices/${detailModal.id}/pricing`, {
-        method: 'PATCH',
-        body: JSON.stringify({ lines: payloadLines }),
-      });
-      setDetailModal(updated);
-      setDetailPriceDraft(Object.fromEntries((updated.lines || []).map((line: any) => [line.id, String(line.fixedPrice ?? '')])));
-      setDetailEditMode(false);
-      toast({ title: 'Invoice prices updated' });
-      loadInvoices();
-      loadInvoiceSummary();
-      if (tab === 'items') loadItemSummary();
-      if (tab === 'daily') loadDailySummary();
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
-    }
   };
 
   const handleVerifyInv = async (id: number) => {
@@ -265,7 +229,7 @@ export default function Sales() {
                 <tr><td colSpan={11} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
               ) : invoices.length === 0 ? (
                 <tr><td colSpan={11} className="px-6 py-8 text-center text-muted-foreground">No invoices found</td></tr>
-              ) : invoices.map(inv => (
+              ) : invoicesPagination.paginatedRows.map(inv => (
                 <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
                   <td className="px-4 py-3"><div className="font-medium">{inv.invoiceNo}</div><div className="text-xs text-muted-foreground capitalize">{inv.sourceType}</div></td>
                   <td className="px-4 py-3">{formatDate(inv.salesDate)}{inv.invoiceTime && <div className="text-xs text-muted-foreground">{inv.invoiceTime}</div>}</td>
@@ -292,6 +256,7 @@ export default function Sales() {
               ))}
             </tbody>
           </table>
+          <TablePagination {...invoicesPagination} onPageChange={invoicesPagination.setPage} />
         </div>
       )}
 
@@ -312,7 +277,7 @@ export default function Sales() {
             <tbody>
               {itemSummary.length === 0 ? (
                 <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No data</td></tr>
-              ) : itemSummary.map((item: any) => (
+              ) : itemSummaryPagination.paginatedRows.map((item: any) => (
                 <tr key={item.menuItemId} className="border-b hover:bg-muted/30">
                   <td className="px-4 py-3"><div className="font-medium">{item.itemName}</div><div className="text-xs text-muted-foreground">{item.itemCode}</div></td>
                   <td className="px-4 py-3 text-right font-numbers">{item.totalQty}</td>
@@ -327,6 +292,7 @@ export default function Sales() {
               ))}
             </tbody>
           </table>
+          <TablePagination {...itemSummaryPagination} onPageChange={itemSummaryPagination.setPage} />
         </div>
       )}
 
@@ -345,7 +311,7 @@ export default function Sales() {
             <tbody>
               {dailySummary.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No data</td></tr>
-              ) : dailySummary.map((day: any) => (
+              ) : dailySummaryPagination.paginatedRows.map((day: any) => (
                 <tr key={day.date} className="border-b hover:bg-muted/30 cursor-pointer group" onClick={() => drillToDate(day.date)} title="Click to view invoices for this date">
                   <td className="px-4 py-3 font-medium text-primary group-hover:underline flex items-center gap-1">{formatDate(day.date)} <ArrowRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" /></td>
                   <td className="px-4 py-3 text-right font-numbers">{day.totalInvoices}</td>
@@ -358,6 +324,7 @@ export default function Sales() {
               ))}
             </tbody>
           </table>
+          <TablePagination {...dailySummaryPagination} onPageChange={dailySummaryPagination.setPage} />
         </div>
       )}
 
@@ -374,7 +341,7 @@ export default function Sales() {
             <tbody>
               {consumption.length === 0 ? (
                 <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No consumption data</td></tr>
-              ) : consumption.map((c: any) => (
+              ) : consumptionPagination.paginatedRows.map((c: any) => (
                 <tr key={c.ingredientId} className="border-b hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium">{c.ingredientName}</td>
                   <td className="px-4 py-3 text-right font-numbers">{c.totalQty}</td>
@@ -391,6 +358,7 @@ export default function Sales() {
               )}
             </tbody>
           </table>
+          <TablePagination {...consumptionPagination} onPageChange={consumptionPagination.setPage} />
         </div>
       )}
 
@@ -465,26 +433,6 @@ export default function Sales() {
           onClose={closeDetailModal}
           title={`Invoice ${detailModal.invoiceNo}`}
           maxWidth="max-w-2xl"
-          titleActions={!isViewer ? (
-            <div className="flex justify-end gap-2">
-                {detailEditMode ? (
-                  <>
-                    <Button variant="ghost" onClick={() => { setDetailEditMode(false); setDetailPriceDraft(Object.fromEntries((detailModal.lines || []).map((line: any) => [line.id, String(line.fixedPrice ?? '')]))); }}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleDetailPriceSave}>
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Prices
-                    </Button>
-                  </>
-                ) : (
-                  <Button variant="outline" onClick={() => setDetailEditMode(true)} disabled={detailModal.verified && !isAdmin}>
-                    <Pencil className="w-4 h-4 mr-2" />
-                    Edit Prices
-                  </Button>
-                )}
-            </div>
-          ) : null}
         >
           <div className="space-y-5 py-2">
             <div>
@@ -513,18 +461,7 @@ export default function Sales() {
                     <tr key={l.id} className="border-b">
                       <td className="px-3 py-2 font-medium">{l.itemNameSnapshot || l.menuItemName}</td>
                       <td className="px-3 py-2 text-right font-numbers">{l.quantity}</td>
-                      <td className="px-3 py-2 text-right font-numbers">
-                        {detailEditMode ? (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="h-9 min-w-[110px] text-right"
-                            value={detailPriceDraft[l.id] ?? String(l.fixedPrice ?? '')}
-                            onChange={(e: any) => handleDetailPriceChange(l.id, e.target.value)}
-                          />
-                        ) : formatCurrency(l.fixedPrice)}
-                      </td>
+                      <td className="px-3 py-2 text-right font-numbers">{formatCurrency(l.fixedPrice)}</td>
                       <td className="px-3 py-2 text-right font-numbers">{formatCurrency(l.grossLineAmount)}</td>
                       <td className="px-3 py-2 text-right font-numbers text-orange-600">{l.lineDiscountAmount > 0 ? formatCurrency(l.lineDiscountAmount) : '-'}</td>
                       <td className="px-3 py-2 text-right font-numbers text-blue-600">{l.gstAmount > 0 ? `${formatCurrency(l.gstAmount)} (${l.gstPercent}%)` : '-'}</td>

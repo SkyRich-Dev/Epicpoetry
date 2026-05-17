@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useGetStockOverview, useSaveStockSnapshot, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, useClientPagination, TablePagination } from '../components/ui-extras';
 import { PackageSearch, AlertCircle, Save, Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -44,6 +44,7 @@ export default function Inventory() {
     });
     return rows;
   }, [stock, search, filterCategoryId, sortBy]);
+  const inventoryPagination = useClientPagination(filteredStock, 10);
 
   // ----- End of Day Physical Count modal -----
   const [isSnapshotOpen, setIsSnapshotOpen] = useState(false);
@@ -244,7 +245,7 @@ export default function Inventory() {
               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading stock...</td></tr>
             ) : filteredStock.length === 0 ? (
                <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No ingredients match your filters.</td></tr>
-            ) : filteredStock.map((s: any) => (
+            ) : inventoryPagination.paginatedRows.map((s: any) => (
               <tr key={s.ingredientId} className="table-row-hover">
                 <td className="px-6 py-4 font-medium text-foreground">{s.ingredientName}</td>
                 <td className="px-6 py-4 text-muted-foreground">{s.categoryName || '-'}</td>
@@ -263,6 +264,7 @@ export default function Inventory() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...inventoryPagination} onPageChange={inventoryPagination.setPage} />
       </div>
 
       <Modal

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListMenuItems, useCreateMenuItem, useUpdateMenuItem, useGetRecipe, useSaveRecipe, useGetMenuItemCosting, useListIngredients, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2, Pencil, Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -48,6 +48,7 @@ export default function MenuItems() {
     }
     return true;
   });
+  const menuItemsPagination = useClientPagination(filteredMenuItems, 10);
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -287,7 +288,7 @@ export default function MenuItems() {
                <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
             ) : filteredMenuItems.length === 0 ? (
                <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground" data-testid="menu-no-results">No menu items match your search or filter.</td></tr>
-            ) : filteredMenuItems.map((item: any) => (
+            ) : menuItemsPagination.paginatedRows.map((item: any) => (
               <tr
                 key={item.id}
                 className="table-row-hover"
@@ -339,6 +340,7 @@ export default function MenuItems() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...menuItemsPagination} onPageChange={menuItemsPagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Menu Item" : "Add Menu Item"} maxWidth="max-w-lg"
