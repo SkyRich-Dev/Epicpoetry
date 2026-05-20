@@ -145,7 +145,7 @@ export default function AttendancePage() {
               <Label>Date</Label>
               <Input type="date" max={new Date().toISOString().split('T')[0]} value={date} onChange={e => setDate(e.target.value)} className="w-44" />
             </div>
-            {!isViewer && <Button onClick={saveAttendance}><Check size={16} className="mr-2" /> Save Attendance</Button>}
+            {hasPerm('attendance.edit') && <Button onClick={saveAttendance}><Check size={16} className="mr-2" /> Save Attendance</Button>}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
@@ -208,7 +208,7 @@ export default function AttendancePage() {
       {tab === 'leaves' && (
         <div>
           <div className="flex justify-end mb-4">
-            {!isViewer && <Button onClick={() => setLeaveModal(true)}><Plus size={16} className="mr-2" /> Record Leave</Button>}
+            {hasPerm('leaves.approve') && <Button onClick={() => setLeaveModal(true)}><Plus size={16} className="mr-2" /> Record Leave</Button>}
           </div>
 
           <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">

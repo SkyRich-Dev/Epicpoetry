@@ -146,7 +146,7 @@ export default function PettyCash() {
   return (
     <div className="space-y-6">
       <PageHeader title="Petty Cash Ledger" description="Track petty cash receipts, expenses, and adjustments">
-        {!isViewer && <Button onClick={() => { setEditingId(null); resetForm(); setIsModalOpen(true); }}><Plus size={18} /> New Entry</Button>}
+        {hasPerm('petty_cash.create') && <Button onClick={() => { setEditingId(null); resetForm(); setIsModalOpen(true); }}><Plus size={18} /> New Entry</Button>}
       </PageHeader>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -208,10 +208,10 @@ export default function PettyCash() {
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(t.runningBalance)}</td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
-                    {!isViewer && (
+                    {hasPerm('petty_cash.edit') && (
                       <button onClick={() => handleEditTxn(t)} className="text-muted-foreground hover:text-primary"><Pencil size={16} /></button>
                     )}
-                    {isAdmin && (
+                    {hasPerm('petty_cash.delete') && (
                       <button onClick={() => handleDelete(t.id)} className="text-muted-foreground hover:text-red-500"><Trash2 size={16} /></button>
                     )}
                   </div>

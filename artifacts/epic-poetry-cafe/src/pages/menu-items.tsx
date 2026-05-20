@@ -194,7 +194,7 @@ export default function MenuItems() {
   return (
     <div className="space-y-6">
       <PageHeader title="Menu & Recipes" description="Manage your offerings, prices, and complex recipes">
-        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> Add Menu Item</Button>}
+        {hasPerm('menu_items.create') && <Button onClick={openCreate}><Plus size={18}/> Add Menu Item</Button>}
       </PageHeader>
 
       {!isLoading && totalCount > 0 && (
@@ -331,12 +331,8 @@ export default function MenuItems() {
                     <Button variant="outline" className="px-3 py-1.5 h-auto text-xs" onClick={() => openRecipe(item)}>
                       <ChefHat size={14} className="mr-1"/> Recipe
                     </Button>
-                    {!isViewer && (
-                      <>
-                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
-                        {canEdit && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
-                      </>
-                    )}
+                    {canEdit && <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>}
+                    {hasPerm('menu_items.delete') && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                   </div>
                 </td>
               </tr>
@@ -424,13 +420,14 @@ export default function MenuItems() {
       </Modal>
 
       {recipeModalOpen && activeItem && (
-        <RecipeBuilderModal item={activeItem} onClose={() => setRecipeModalOpen(false)} isViewer={isViewer} canViewMargin={canViewMargin} />
+        <RecipeBuilderModal item={activeItem} onClose={() => setRecipeModalOpen(false)} canEditRecipe={canEdit} canViewMargin={canViewMargin} />
       )}
     </div>
   );
 }
 
-function RecipeBuilderModal({ item, onClose, isViewer, canViewMargin }: { item: any, onClose: () => void, isViewer: boolean, canViewMargin: boolean }) {
+function RecipeBuilderModal({ item, onClose, canEditRecipe, canViewMargin }: { item: any, onClose: () => void, canEditRecipe: boolean, canViewMargin: boolean }) {
+  const isViewer = !canEditRecipe;
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: initialRecipe, isLoading } = useGetRecipe(item.id);

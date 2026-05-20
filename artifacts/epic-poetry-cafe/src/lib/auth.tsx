@@ -116,6 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const effectiveUser = token ? (sessionUser || user || null) : null;
 
+  // NOTE: per task spec, `owner` and `admin` are treated as having all permissions
+  // (mirrors backend `requirePermission`). Other roles must be granted permissions
+  // explicitly via the Roles editor.
   const hasPerm = useCallback(
     (key: string): boolean => {
       const role = effectiveUser?.role;

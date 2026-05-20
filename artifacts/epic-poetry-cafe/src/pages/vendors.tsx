@@ -135,7 +135,7 @@ export default function Vendors() {
   return (
     <div className="space-y-6">
       <PageHeader title="Vendors" description="Manage suppliers, purchases, and payments">
-        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> Add Vendor</Button>}
+        {hasPerm('vendors.create') && <Button onClick={openCreate}><Plus size={18}/> Add Vendor</Button>}
       </PageHeader>
 
       <div className="flex gap-2 flex-wrap">
@@ -187,8 +187,8 @@ export default function Vendors() {
                   <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-end gap-1">
                       <button onClick={() => setLocation(`/vendors/${v.id}`)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="View"><Eye size={14}/></button>
-                      {!isViewer && <button onClick={() => openEdit(v)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>}
-                      {isAdmin && <button onClick={() => setDeleteConfirm({ id: v.id, name: v.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                      {hasPerm('vendors.edit') && <button onClick={() => openEdit(v)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>}
+                      {hasPerm('vendors.delete') && <button onClick={() => setDeleteConfirm({ id: v.id, name: v.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                     </div>
                   </td>
                 </tr>

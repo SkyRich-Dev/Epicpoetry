@@ -23,7 +23,6 @@ export default function VendorDetailPage() {
   const vendorId = Number(params.id);
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin' || user?.role === 'owner';
   const { toast } = useToast();
 
   const [detail, setDetail] = useState<any>(null);

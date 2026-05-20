@@ -156,7 +156,7 @@ export default function Ingredients() {
   return (
     <div className="space-y-6">
       <PageHeader title="Ingredients Master" description="Manage raw materials and their measurement units">
-        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> Add Ingredient</Button>}
+        {hasPerm('ingredients.create') && <Button onClick={openCreate}><Plus size={18}/> Add Ingredient</Button>}
       </PageHeader>
 
       <div className="flex flex-wrap items-end gap-3" data-testid="ingredients-filters">
@@ -211,7 +211,7 @@ export default function Ingredients() {
               <th className="px-6 py-4 text-right">Avg Cost</th>
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-center">Verified</th>
-              {!isViewer && <th className="px-6 py-4 text-right">Actions</th>}
+              {(canEdit || hasPerm('ingredients.delete')) && <th className="px-6 py-4 text-right">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border" data-testid="ingredients-table-body">
@@ -228,11 +228,11 @@ export default function Ingredients() {
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(item.weightedAvgCost)}</td>
                 <td className="px-6 py-4 text-center"><Badge variant={item.active ? "success" : "neutral"}>{item.active ? 'Active' : 'Inactive'}</Badge></td>
                 <td className="px-6 py-4 text-center"><VerifyButton verified={!!item.verified} isAdmin={isAdmin} onVerify={() => handleVerify(item.id)} onUnverify={() => handleUnverify(item.id)} /></td>
-                {!isViewer && (
+                {(canEdit || hasPerm('ingredients.delete')) && (
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1">
-                      <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
-                      {canEdit && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                      {canEdit && <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>}
+                      {hasPerm('ingredients.delete') && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                     </div>
                   </td>
                 )}

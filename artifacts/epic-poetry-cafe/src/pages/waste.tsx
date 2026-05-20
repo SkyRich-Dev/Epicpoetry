@@ -69,7 +69,7 @@ export default function Waste() {
   return (
     <div className="space-y-6">
       <PageHeader title="Waste Log" description="Track spoiled, expired, or damaged items">
-        {!isViewer && <Button onClick={openCreate} variant="danger"><Trash2 size={18} className="mr-1"/> Log Waste</Button>}
+        {hasPerm('waste.create') && <Button onClick={openCreate} variant="danger"><Trash2 size={18} className="mr-1"/> Log Waste</Button>}
       </PageHeader>
 
       <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
@@ -84,7 +84,7 @@ export default function Waste() {
               <th className="px-6 py-4 text-right">Quantity</th>
               <th className="px-6 py-4 text-right">Cost Value</th>
               <th className="px-6 py-4 text-center">Verified</th>
-              {!isViewer && <th className="px-6 py-4 text-right">Actions</th>}
+              {(hasPerm('waste.edit') || hasPerm('waste.delete')) && <th className="px-6 py-4 text-right">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -100,11 +100,11 @@ export default function Waste() {
                 <td className="px-6 py-4 text-right">{Number(w.quantity).toFixed(2)} {w.uom}</td>
                 <td className="px-6 py-4 text-right font-medium text-rose-600">{formatCurrency(w.costValue)}</td>
                 <td className="px-6 py-4 text-center"><VerifyButton verified={!!w.verified} isAdmin={isAdmin} onVerify={() => handleVerify(w.id)} onUnverify={() => handleUnverify(w.id)} /></td>
-                {!isViewer && (
+                {(hasPerm('waste.edit') || hasPerm('waste.delete')) && (
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1">
-                      <button onClick={() => openEdit(w)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
-                      {canEdit && <button onClick={() => setDeleteConfirm({ id: w.id, name: w.ingredientName || w.menuItemName })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                      {hasPerm('waste.edit') && <button onClick={() => openEdit(w)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>}
+                      {hasPerm('waste.delete') && <button onClick={() => setDeleteConfirm({ id: w.id, name: w.ingredientName || w.menuItemName })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                     </div>
                   </td>
                 )}

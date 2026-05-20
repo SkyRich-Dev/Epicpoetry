@@ -173,7 +173,7 @@ export default function Sales() {
   return (
     <div className="space-y-6">
       <PageHeader title="Sales" description="Sales invoices with GST, item analytics, and consumption tracking">
-        {!isViewer && tab === 'invoices' && <Button onClick={openInvoiceCreate}><Plus size={18}/> New Invoice</Button>}
+        {hasPerm('sales.create') && tab === 'invoices' && <Button onClick={openInvoiceCreate}><Plus size={18}/> New Invoice</Button>}
       </PageHeader>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
