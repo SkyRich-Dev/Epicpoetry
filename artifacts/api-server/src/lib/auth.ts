@@ -1,5 +1,7 @@
 import { type Request, type Response, type NextFunction } from "express";
 import crypto from "crypto";
+import { db, rolesTable, rolePermissionsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
@@ -73,4 +75,61 @@ export function managerOrAdmin(req: Request, res: Response, next: NextFunction):
     return;
   }
   next();
+}
+
+// ------------------------------------------------------------------
+// Permission-based middleware
+// ------------------------------------------------------------------
+//
+// In-process cache of role-name -> Set<permissionKey>. Invalidated by
+// bumpRolePermissionCache() from roles.ts on any role mutation.
+// owner & admin bypass the lookup and are treated as having every
+// permission.
+const rolePermCache = new Map<string, Set<string>>();
+
+export function bumpRolePermissionCache(roleName?: string): void {
+  if (roleName) rolePermCache.delete(roleName);
+  else rolePermCache.clear();
+}
+
+async function loadRolePerms(roleName: string): Promise<Set<string>> {
+  const cached = rolePermCache.get(roleName);
+  if (cached) return cached;
+  const [role] = await db.select().from(rolesTable).where(eq(rolesTable.name, roleName));
+  if (!role) {
+    const empty = new Set<string>();
+    rolePermCache.set(roleName, empty);
+    return empty;
+  }
+  const rows = await db
+    .select({ permissionKey: rolePermissionsTable.permissionKey })
+    .from(rolePermissionsTable)
+    .where(eq(rolePermissionsTable.roleId, role.id));
+  const set = new Set(rows.map((r) => r.permissionKey));
+  rolePermCache.set(roleName, set);
+  return set;
+}
+
+export function requirePermission(key: string) {
+  return async function (req: Request, res: Response, next: NextFunction): Promise<void> {
+    const role = (req as any).userRole as string | undefined;
+    if (!role) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if (role === "owner" || role === "admin") {
+      next();
+      return;
+    }
+    try {
+      const perms = await loadRolePerms(role);
+      if (!perms.has(key)) {
+        res.status(403).json({ error: `Permission required: ${key}` });
+        return;
+      }
+      next();
+    } catch (err) {
+      res.status(500).json({ error: "Permission check failed" });
+    }
+  };
 }

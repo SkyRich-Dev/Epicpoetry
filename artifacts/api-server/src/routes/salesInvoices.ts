@@ -4,7 +4,7 @@ import {
   db, salesInvoicesTable, salesInvoiceLinesTable, menuItemsTable,
   salesImportBatchesTable, recipeLinesTable, ingredientsTable
 } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateNotFutureDate } from "../lib/dateValidation";
 import { upsertCustomerFromInvoice, recomputeCustomerStats } from "../lib/customers";
@@ -108,7 +108,7 @@ router.get("/sales-invoices-summary", authMiddleware, async (req, res): Promise<
   });
 });
 
-router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> => {
+router.post("/sales-invoices", authMiddleware, requirePermission("sales.create"), async (req, res): Promise<void> => {
   const {
     salesDate, invoiceNo, invoiceTime, sourceType, orderType, customerName, customerPhone,
     totalDiscount, paymentMode, paymentReference, lines, gstInclusive
@@ -254,7 +254,7 @@ router.post("/sales-invoices", authMiddleware, async (req, res): Promise<void> =
   res.status(201).json({ ...invoice, lines: finalLines });
 });
 
-router.patch("/sales-invoices/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/sales-invoices/:id", authMiddleware, requirePermission("sales.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -286,7 +286,7 @@ router.patch("/sales-invoices/:id", authMiddleware, async (req, res): Promise<vo
   res.json(updated);
 });
 
-router.patch("/sales-invoices/:id/pricing", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/sales-invoices/:id/pricing", authMiddleware, requirePermission("sales.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -399,7 +399,7 @@ router.patch("/sales-invoices/:id/pricing", authMiddleware, async (req, res): Pr
   res.json(afterSnapshot);
 });
 
-router.delete("/sales-invoices/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/sales-invoices/:id", authMiddleware, requirePermission("sales.delete"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(salesInvoicesTable).where(eq(salesInvoicesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }

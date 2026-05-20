@@ -3,7 +3,7 @@ import { eq, and, gte, lte, desc, sql, ilike, or, isNotNull } from "drizzle-orm"
 import {
   db, customersTable, salesInvoicesTable, salesInvoiceLinesTable, menuItemsTable,
 } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { recomputeCustomerStats, normalizePhone } from "../lib/customers";
 import { normalizePaymentMode } from "../lib/paymentMode";
@@ -121,7 +121,7 @@ router.get("/customers/:id", authMiddleware, async (req, res): Promise<void> => 
   });
 });
 
-router.post("/customers", authMiddleware, async (req, res): Promise<void> => {
+router.post("/customers", authMiddleware, requirePermission("customers.edit"), async (req, res): Promise<void> => {
   const { name, phone, email, birthday, anniversary, notes } = req.body;
   const normPhone = normalizePhone(phone);
   if (!name || !normPhone) { res.status(400).json({ error: "Name and valid 10-digit phone required" }); return; }
@@ -144,7 +144,7 @@ router.post("/customers", authMiddleware, async (req, res): Promise<void> => {
   res.status(201).json(created);
 });
 
-router.patch("/customers/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/customers/:id", authMiddleware, requirePermission("customers.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(customersTable).where(eq(customersTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -176,7 +176,7 @@ router.patch("/customers/:id", authMiddleware, async (req, res): Promise<void> =
   res.json(updated);
 });
 
-router.delete("/customers/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/customers/:id", authMiddleware, requirePermission("customers.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(customersTable).where(eq(customersTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -186,7 +186,7 @@ router.delete("/customers/:id", authMiddleware, adminOnly, async (req, res): Pro
   res.json({ success: true });
 });
 
-router.post("/customers/recompute-all", authMiddleware, adminOnly, async (_req, res): Promise<void> => {
+router.post("/customers/recompute-all", authMiddleware, requirePermission("customers.edit"), async (_req, res): Promise<void> => {
   const linkRows = await db.select({
     phone: salesInvoicesTable.customerPhone,
     name: salesInvoicesTable.customerName,

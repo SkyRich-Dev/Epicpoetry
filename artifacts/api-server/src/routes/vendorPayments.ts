@@ -4,7 +4,7 @@ import {
   db, vendorPaymentsTable, vendorPaymentAllocationsTable, vendorLedgerTable,
   purchasesTable, vendorsTable, expensesTable, pettyCashLedgerTable, systemConfigTable
 } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
@@ -129,7 +129,7 @@ async function lockVendor(tx: any, vendorId: number): Promise<void> {
     .for("update");
 }
 
-router.post("/vendor-payments", authMiddleware, async (req, res): Promise<void> => {
+router.post("/vendor-payments", authMiddleware, requirePermission("vendor_payments.create"), async (req, res): Promise<void> => {
   const { vendorId, paymentDate, paymentMethod, transactionReference, totalAmount, remarks, allocations } = req.body;
   if (!vendorId || !paymentDate || !paymentMethod) {
     res.status(400).json({ error: "vendorId, paymentDate, paymentMethod required" }); return;
@@ -347,7 +347,7 @@ router.post("/vendor-payments", authMiddleware, async (req, res): Promise<void> 
   res.status(201).json(payment);
 });
 
-router.post("/vendor-payments/:id/upload-proof", authMiddleware, proofUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/vendor-payments/:id/upload-proof", authMiddleware, requirePermission("vendor_payments.create"), proofUpload.single("file"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(vendorPaymentsTable).where(eq(vendorPaymentsTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -358,7 +358,7 @@ router.post("/vendor-payments/:id/upload-proof", authMiddleware, proofUpload.sin
   res.json(updated);
 });
 
-router.delete("/vendor-payments/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/vendor-payments/:id", authMiddleware, requirePermission("vendor_payments.delete"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
 
   // Pull and lock the payment INSIDE the tx so two concurrent deletes can't

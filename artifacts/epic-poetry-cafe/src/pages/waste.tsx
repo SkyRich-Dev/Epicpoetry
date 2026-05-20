@@ -10,7 +10,9 @@ import { getAuthToken } from '../lib/auth-storage';
 export default function Waste() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'owner';
+  const canEdit = hasPerm('waste.create');
   const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -102,7 +104,7 @@ export default function Waste() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1">
                       <button onClick={() => openEdit(w)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
-                      {isAdmin && <button onClick={() => setDeleteConfirm({ id: w.id, name: w.ingredientName || w.menuItemName })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                      {canEdit && <button onClick={() => setDeleteConfirm({ id: w.id, name: w.ingredientName || w.menuItemName })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                     </div>
                   </td>
                 )}

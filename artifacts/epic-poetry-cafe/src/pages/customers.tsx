@@ -34,7 +34,8 @@ const SEG_COLOR: Record<string, string> = {
 
 export default function CustomersPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = hasPerm('customers.edit');
   const { toast } = useToast();
   const [list, setList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);

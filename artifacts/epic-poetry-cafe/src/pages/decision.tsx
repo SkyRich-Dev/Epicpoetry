@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PageHeader, formatCurrency } from '../components/ui-extras';
 import { getAuthToken } from '../lib/auth-storage';
+import { useAuth } from '../lib/auth';
 import {
   Brain, AlertTriangle, TrendingUp, TrendingDown, IndianRupee, Users,
   ChefHat, Package, Wallet, LineChart as LineIcon, Bell, ArrowRight,
@@ -147,11 +148,12 @@ function EmptyState({ message }: { message: string }) {
   return <div className="text-sm text-zinc-500 dark:text-zinc-400 py-8 text-center">{message}</div>;
 }
 
-function useApi<T = any>(path: string): { data: T | null; loading: boolean; error: string | null } {
+function useApi<T = any>(path: string | null): { data: T | null; loading: boolean; error: string | null } {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!path);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
+    if (!path) { setLoading(false); setData(null); setError(null); return; }
     setLoading(true);
     apiFetch(path).then(d => { setData(d); setError(null); })
       .catch(e => setError(e.message || 'Failed'))
@@ -163,7 +165,9 @@ function useApi<T = any>(path: string): { data: T | null; loading: boolean; erro
 // ============================ TABS ============================
 
 function OverviewTab() {
-  const profit = useApi<any>('decision/revenue/profit-comparison');
+  const { hasPerm } = useAuth();
+  const canFinancial = hasPerm('decision_engine.financial');
+  const profit = useApi<any>(canFinancial ? 'decision/revenue/profit-comparison' : null);
   const sales = useApi<any>('decision/predictive/sales');
   const alerts = useApi<any>('decision/alerts');
   const churn = useApi<any>('decision/customer/churn');
@@ -258,9 +262,11 @@ function OverviewTab() {
 
 // --- REVENUE ---
 function RevenueTab() {
+  const { hasPerm } = useAuth();
+  const canFinancial = hasPerm('decision_engine.financial');
   const leak = useApi<any>('decision/revenue/leakage');
-  const profit = useApi<any>('decision/revenue/profit-comparison');
-  const matrix = useApi<any>('decision/revenue/item-matrix');
+  const profit = useApi<any>(canFinancial ? 'decision/revenue/profit-comparison' : null);
+  const matrix = useApi<any>(canFinancial ? 'decision/revenue/item-matrix' : null);
 
   return (
     <div className="space-y-6">

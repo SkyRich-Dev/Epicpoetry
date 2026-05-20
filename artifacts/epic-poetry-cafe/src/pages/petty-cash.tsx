@@ -20,7 +20,8 @@ export default function PettyCash() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = hasPerm('petty_cash.create');
   const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, ingredientsTable, categoriesTable, ingredientVendorMappingTable, vendorsTable, recipeLinesTable, purchaseLinesTable } from "@workspace/db";
 import { ListIngredientsResponse, CreateIngredientBody, GetIngredientParams, GetIngredientResponse, UpdateIngredientParams, UpdateIngredientBody, ListIngredientVendorMappingsParams, ListIngredientVendorMappingsResponse, CreateIngredientVendorMappingParams, CreateIngredientVendorMappingBody } from "@workspace/api-zod";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { findDuplicates, describeMatch, type IngredientLite, type DuplicateMatch } from "../lib/ingredientDedupe";
@@ -74,7 +74,7 @@ router.get("/ingredients", async (_req, res): Promise<void> => {
   res.json(ingredients);
 });
 
-router.post("/ingredients", authMiddleware, async (req, res): Promise<void> => {
+router.post("/ingredients", authMiddleware, requirePermission("ingredients.edit"), async (req, res): Promise<void> => {
   const parsed = CreateIngredientBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   if (!parsed.data.categoryId || parsed.data.categoryId <= 0) {
@@ -133,7 +133,7 @@ router.get("/ingredients/:id", async (req, res): Promise<void> => {
   res.json(GetIngredientResponse.parse(ing));
 });
 
-router.patch("/ingredients/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/ingredients/:id", authMiddleware, requirePermission("ingredients.edit"), async (req, res): Promise<void> => {
   const params = UpdateIngredientParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateIngredientBody.partial().safeParse(req.body);
@@ -167,7 +167,7 @@ router.patch("/ingredients/:id", authMiddleware, async (req, res): Promise<void>
   res.json({ ...ing, categoryName: null });
 });
 
-router.delete("/ingredients/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/ingredients/:id", authMiddleware, requirePermission("ingredients.edit"), async (req, res): Promise<void> => {
   const params = UpdateIngredientParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [existing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, params.data.id));
@@ -232,7 +232,7 @@ router.get("/ingredients/:id/vendor-mappings", async (req, res): Promise<void> =
   res.json(ListIngredientVendorMappingsResponse.parse(mappings));
 });
 
-router.post("/ingredients/:id/vendor-mappings", authMiddleware, async (req, res): Promise<void> => {
+router.post("/ingredients/:id/vendor-mappings", authMiddleware, requirePermission("ingredients.edit"), async (req, res): Promise<void> => {
   const params = CreateIngredientVendorMappingParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = CreateIngredientVendorMappingBody.safeParse(req.body);

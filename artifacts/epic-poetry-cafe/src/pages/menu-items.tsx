@@ -10,7 +10,10 @@ import { getAuthToken } from '../lib/auth-storage';
 export default function MenuItems() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'owner';
+  const canViewMargin = hasPerm('menu_items.view_margin');
+  const canEdit = hasPerm('menu_items.edit');
   const isViewer = user?.role === 'viewer';
   const { data: menuItems, isLoading } = useListMenuItems();
   const { data: categories } = useListCategories({ type: 'menu' });
@@ -274,8 +277,8 @@ export default function MenuItems() {
               <th className="px-6 py-4">Item Name</th>
               <th className="px-6 py-4">Category</th>
               <th className="px-6 py-4 text-right">Selling Price</th>
-              {isAdmin && <th className="px-6 py-4 text-right">Prod. Cost</th>}
-              {isAdmin && <th className="px-6 py-4 text-right">Margin</th>}
+              {canViewMargin && <th className="px-6 py-4 text-right">Prod. Cost</th>}
+              {canViewMargin && <th className="px-6 py-4 text-right">Margin</th>}
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-center">Verified</th>
               <th className="px-6 py-4 text-right">Actions</th>
@@ -283,11 +286,11 @@ export default function MenuItems() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">Loading menu items...</td></tr>
+              <tr><td colSpan={canViewMargin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">Loading menu items...</td></tr>
             ) : menuItems?.length === 0 ? (
-               <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
+               <tr><td colSpan={canViewMargin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
             ) : filteredMenuItems.length === 0 ? (
-               <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground" data-testid="menu-no-results">No menu items match your search or filter.</td></tr>
+               <tr><td colSpan={canViewMargin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground" data-testid="menu-no-results">No menu items match your search or filter.</td></tr>
             ) : menuItemsPagination.paginatedRows.map((item: any) => (
               <tr
                 key={item.id}
@@ -313,8 +316,8 @@ export default function MenuItems() {
                 </td>
                 <td className="px-6 py-4 text-muted-foreground">{item.categoryName || '-'}</td>
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(item.sellingPrice)}</td>
-                {isAdmin && <td className="px-6 py-4 text-right text-muted-foreground">{formatCurrency(item.productionCost)}</td>}
-                {isAdmin && (
+                {canViewMargin && <td className="px-6 py-4 text-right text-muted-foreground">{formatCurrency(item.productionCost)}</td>}
+                {canViewMargin && (
                   <td className="px-6 py-4 text-right">
                     <Badge variant={item.marginPercent < 30 ? "danger" : item.marginPercent > 60 ? "success" : "warning"}>
                       {formatCurrency(item.sellingPrice - item.productionCost)}
@@ -331,7 +334,7 @@ export default function MenuItems() {
                     {!isViewer && (
                       <>
                         <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
-                        {isAdmin && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                        {canEdit && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                       </>
                     )}
                   </div>
@@ -421,13 +424,13 @@ export default function MenuItems() {
       </Modal>
 
       {recipeModalOpen && activeItem && (
-        <RecipeBuilderModal item={activeItem} onClose={() => setRecipeModalOpen(false)} isViewer={isViewer} />
+        <RecipeBuilderModal item={activeItem} onClose={() => setRecipeModalOpen(false)} isViewer={isViewer} canViewMargin={canViewMargin} />
       )}
     </div>
   );
 }
 
-function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: () => void, isViewer: boolean }) {
+function RecipeBuilderModal({ item, onClose, isViewer, canViewMargin }: { item: any, onClose: () => void, isViewer: boolean, canViewMargin: boolean }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: initialRecipe, isLoading } = useGetRecipe(item.id);
@@ -485,16 +488,20 @@ function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: (
                 <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Selling Price</p>
                 <p className="text-xl font-display font-bold text-foreground">{formatCurrency(item.sellingPrice)}</p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Prod. Cost</p>
-                <p className="text-xl font-display font-bold text-rose-600">{formatCurrency(costing?.totalProductionCost || 0)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Est. Margin</p>
-                <p className={cn("text-xl font-display font-bold", (costing?.margin || 0) > 0 ? "text-emerald-600" : "text-rose-600")}>
-                  {formatCurrency(costing?.margin || 0)}
-                </p>
-              </div>
+              {canViewMargin && (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Prod. Cost</p>
+                    <p className="text-xl font-display font-bold text-rose-600">{formatCurrency(costing?.totalProductionCost || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Est. Margin</p>
+                    <p className={cn("text-xl font-display font-bold", (costing?.margin || 0) > 0 ? "text-emerald-600" : "text-rose-600")}>
+                      {formatCurrency(costing?.margin || 0)}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
             <Calculator className="text-primary/30" size={48} />
           </div>

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { db, wasteEntriesTable, ingredientsTable, menuItemsTable, categoriesTable, recipeLinesTable } from "@workspace/db";
 import { ListWasteEntriesResponse, CreateWasteEntryBody, UpdateWasteEntryParams, UpdateWasteEntryBody, GetWasteSummaryResponse } from "@workspace/api-zod";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
@@ -53,7 +53,7 @@ router.get("/waste", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.post("/waste", authMiddleware, async (req, res): Promise<void> => {
+router.post("/waste", authMiddleware, requirePermission("waste.create"), async (req, res): Promise<void> => {
   const parsed = CreateWasteEntryBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const dateErr = validateNotFutureDate(parsed.data.wasteDate, "Waste date");
@@ -110,7 +110,7 @@ router.post("/waste", authMiddleware, async (req, res): Promise<void> => {
   });
 });
 
-router.patch("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/waste/:id", authMiddleware, requirePermission("waste.create"), async (req, res): Promise<void> => {
   const params = UpdateWasteEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateWasteEntryBody.partial().safeParse(req.body);
@@ -123,7 +123,7 @@ router.patch("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
   res.json({ ...entry, ingredientName: null, menuItemName: null, categoryName: null });
 });
 
-router.delete("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/waste/:id", authMiddleware, requirePermission("waste.create"), async (req, res): Promise<void> => {
   const params = UpdateWasteEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [existing] = await db.select().from(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id));

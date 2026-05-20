@@ -18,7 +18,7 @@ import {
   settlementLinesTable,
   usersTable,
 } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -76,7 +76,7 @@ async function getRecipeCostMap(): Promise<Map<number, number>> {
 // ============================ REVENUE ==============================
 
 // 5.1 Revenue Leakage Detection
-router.get("/decision/revenue/leakage", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/revenue/leakage", authMiddleware, requirePermission("decision_engine.view"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
   const HIGH_DISCOUNT_PCT = Number(req.query.highDiscountPct) || 15;
 
@@ -172,7 +172,7 @@ router.get("/decision/revenue/leakage", authMiddleware, async (req, res): Promis
 });
 
 // 5.2 Real Profit vs Theoretical Profit
-router.get("/decision/revenue/profit-comparison", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.get("/decision/revenue/profit-comparison", authMiddleware, requirePermission("decision_engine.financial"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
   const invoices = await db.select().from(salesInvoicesTable)
     .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
@@ -256,7 +256,7 @@ router.get("/decision/revenue/profit-comparison", authMiddleware, adminOnly, asy
 });
 
 // 5.3 High Margin vs High Volume Items (BCG-style matrix)
-router.get("/decision/revenue/item-matrix", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/revenue/item-matrix", authMiddleware, requirePermission("decision_engine.view"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
   const invoices = await db.select({ id: salesInvoicesTable.id })
     .from(salesInvoicesTable)
@@ -323,7 +323,7 @@ router.get("/decision/revenue/item-matrix", authMiddleware, async (req, res): Pr
 // ============================ CUSTOMER =============================
 
 // 6.1 CLV
-router.get("/decision/customer/clv", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/decision/customer/clv", authMiddleware, requirePermission("decision_engine.view"), async (_req, res): Promise<void> => {
   const customers = await db.select().from(customersTable);
   if (customers.length === 0) {
     res.json({ totalCustomers: 0, totalCLV: 0, top: [], concentration: { top10Pct: 0, top20Pct: 0 } });
@@ -362,7 +362,7 @@ router.get("/decision/customer/clv", authMiddleware, async (_req, res): Promise<
 });
 
 // 6.2 + 6.3 Visit Prediction & Churn
-router.get("/decision/customer/churn", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/decision/customer/churn", authMiddleware, requirePermission("decision_engine.view"), async (_req, res): Promise<void> => {
   const customers = await db.select().from(customersTable);
   const today = new Date();
   const buckets = { hot: 0, watch: 0, at_risk: 0, churned: 0 };
@@ -421,7 +421,7 @@ router.get("/decision/customer/churn", authMiddleware, async (_req, res): Promis
 // =========================== OPERATIONAL ===========================
 
 // 7.1 Staff Efficiency (uses createdBy on invoice)
-router.get("/decision/operational/staff-efficiency", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/operational/staff-efficiency", authMiddleware, requirePermission("decision_engine.view"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
   const invoices = await db.select().from(salesInvoicesTable)
     .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
@@ -462,7 +462,7 @@ router.get("/decision/operational/staff-efficiency", authMiddleware, async (req,
 });
 
 // 7.4 Kitchen Load Analysis (uses invoiceTime + line counts)
-router.get("/decision/operational/kitchen-load", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/operational/kitchen-load", authMiddleware, requirePermission("decision_engine.view"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 14);
   const invoices = await db.select().from(salesInvoicesTable)
     .where(and(
@@ -532,7 +532,7 @@ router.get("/decision/operational/kitchen-load", authMiddleware, async (req, res
 // =========================== INVENTORY =============================
 
 // 8.1 Real vs Expected Consumption
-router.get("/decision/inventory/consumption-variance", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/inventory/consumption-variance", authMiddleware, requirePermission("decision_engine.view"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
 
   // Theoretical consumption per ingredient from sold lines × recipes
@@ -627,7 +627,7 @@ router.get("/decision/inventory/consumption-variance", authMiddleware, async (re
 });
 
 // 8.3 Dead Stock Detection
-router.get("/decision/inventory/dead-stock", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/inventory/dead-stock", authMiddleware, requirePermission("decision_engine.view"), async (req, res): Promise<void> => {
   const days = Math.max(7, Number(req.query.days) || 30);
   const fromDate = fmtDate(addDays(new Date(), -days));
   const toDate = fmtDate(new Date());
@@ -674,7 +674,7 @@ router.get("/decision/inventory/dead-stock", authMiddleware, async (req, res): P
 });
 
 // 8.4 Cost Increase Impact
-router.get("/decision/inventory/cost-impact", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/inventory/cost-impact", authMiddleware, requirePermission("decision_engine.view"), async (req, res): Promise<void> => {
   const days = Math.max(14, Number(req.query.days) || 60);
   const cutoff = fmtDate(addDays(new Date(), -days));
 
@@ -772,7 +772,7 @@ router.get("/decision/inventory/cost-impact", authMiddleware, async (req, res): 
 // =========================== FINANCIAL =============================
 
 // 9.1 Cash vs Digital Trend
-router.get("/decision/financial/payment-trend", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.get("/decision/financial/payment-trend", authMiddleware, requirePermission("decision_engine.financial"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
   const invoices = await db.select().from(salesInvoicesTable)
     .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
@@ -799,7 +799,7 @@ router.get("/decision/financial/payment-trend", authMiddleware, adminOnly, async
 });
 
 // 9.2 Settlement Mismatch Intelligence
-router.get("/decision/financial/settlement-mismatch", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.get("/decision/financial/settlement-mismatch", authMiddleware, requirePermission("decision_engine.financial"), async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 60);
   const settlements = await db.select().from(dailySalesSettlementsTable)
     .where(and(gte(dailySalesSettlementsTable.settlementDate, fromDate), lte(dailySalesSettlementsTable.settlementDate, toDate)))
@@ -828,7 +828,7 @@ router.get("/decision/financial/settlement-mismatch", authMiddleware, adminOnly,
 });
 
 // 9.3 Vendor Risk Insight
-router.get("/decision/financial/vendor-risk", authMiddleware, adminOnly, async (_req, res): Promise<void> => {
+router.get("/decision/financial/vendor-risk", authMiddleware, requirePermission("decision_engine.financial"), async (_req, res): Promise<void> => {
   const today = fmtDate(new Date());
   const vendors = await db.select().from(vendorsTable);
 
@@ -908,7 +908,7 @@ router.get("/decision/financial/vendor-risk", authMiddleware, adminOnly, async (
 });
 
 // 9.4 Expense Efficiency
-router.get("/decision/financial/expense-efficiency", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.get("/decision/financial/expense-efficiency", authMiddleware, requirePermission("decision_engine.financial"), async (req, res): Promise<void> => {
   const days = Math.max(14, Number(req.query.days) || 30);
   const toDate = fmtDate(new Date());
   const fromDate = fmtDate(addDays(new Date(), -(days - 1)));
@@ -970,7 +970,7 @@ router.get("/decision/financial/expense-efficiency", authMiddleware, adminOnly, 
 // =========================== PREDICTIVE ============================
 
 // 11.1 Predictive Sales — moving avg + same-weekday adjustment
-router.get("/decision/predictive/sales", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/decision/predictive/sales", authMiddleware, requirePermission("decision_engine.view"), async (_req, res): Promise<void> => {
   const today = new Date();
   const fromDate = fmtDate(addDays(today, -28));
   const toDate = fmtDate(today);
@@ -1040,7 +1040,7 @@ router.get("/decision/predictive/sales", authMiddleware, async (_req, res): Prom
 });
 
 // 11.2 Demand Forecasting (ingredient requirement based on predictive sales)
-router.get("/decision/predictive/demand", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/decision/predictive/demand", authMiddleware, requirePermission("decision_engine.view"), async (_req, res): Promise<void> => {
   const today = new Date();
   const fromDate = fmtDate(addDays(today, -14));
   const toDate = fmtDate(today);
@@ -1104,7 +1104,7 @@ router.get("/decision/predictive/demand", authMiddleware, async (_req, res): Pro
 
 // ============================== ALERTS =============================
 
-router.get("/decision/alerts", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/decision/alerts", authMiddleware, requirePermission("decision_engine.view"), async (_req, res): Promise<void> => {
   const today = fmtDate(new Date());
   const last30 = fmtDate(addDays(new Date(), -30));
   const last7 = fmtDate(addDays(new Date(), -7));

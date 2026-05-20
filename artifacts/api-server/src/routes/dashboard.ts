@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable, dailySalesSettlementsTable, pettyCashLedgerTable, purchasesTable, salesInvoicesTable, salesInvoiceLinesTable } from "@workspace/db";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -45,7 +45,7 @@ async function getItemRevenueFromInvoices(from: string, to: string) {
   return itemMap;
 }
 
-router.get("/dashboard/summary", async (req, res): Promise<void> => {
+router.get("/dashboard/summary", authMiddleware, requirePermission("dashboard.view"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || (req.query.date as string) || getToday();
   const toDate = (req.query.toDate as string) || (req.query.date as string) || getToday();
   const isSingleDay = fromDate === toDate;
@@ -231,7 +231,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   });
 });
 
-router.get("/dashboard/profitability", async (req, res): Promise<void> => {
+router.get("/dashboard/profitability", authMiddleware, requirePermission("dashboard.view_pnl"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
 
@@ -273,7 +273,7 @@ router.get("/dashboard/profitability", async (req, res): Promise<void> => {
   res.json(result.sort((a, b) => b.grossProfit - a.grossProfit));
 });
 
-router.get("/dashboard/daily-pl", async (req, res): Promise<void> => {
+router.get("/dashboard/daily-pl", authMiddleware, requirePermission("dashboard.view_pnl"), async (req, res): Promise<void> => {
   const date = req.query.date as string;
   if (!date) { res.status(400).json({ error: "date is required" }); return; }
 
@@ -316,7 +316,7 @@ router.get("/dashboard/daily-pl", async (req, res): Promise<void> => {
   });
 });
 
-router.get("/dashboard/consumption-variance", async (req, res): Promise<void> => {
+router.get("/dashboard/consumption-variance", authMiddleware, requirePermission("dashboard.view_pnl"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
 
@@ -363,7 +363,7 @@ router.get("/dashboard/consumption-variance", async (req, res): Promise<void> =>
   res.json(result);
 });
 
-router.get("/dashboard/sales-trend", async (req, res): Promise<void> => {
+router.get("/dashboard/sales-trend", authMiddleware, requirePermission("dashboard.view_pnl"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
 
@@ -381,7 +381,7 @@ router.get("/dashboard/sales-trend", async (req, res): Promise<void> => {
   res.json(Array.from(byDate.entries()).map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date)));
 });
 
-router.get("/dashboard/expense-breakdown", async (req, res): Promise<void> => {
+router.get("/dashboard/expense-breakdown", authMiddleware, requirePermission("dashboard.view_pnl"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
 
@@ -399,7 +399,7 @@ router.get("/dashboard/expense-breakdown", async (req, res): Promise<void> => {
   res.json(Array.from(byCategory.values()));
 });
 
-router.get("/dashboard/vendor-spend", async (req, res): Promise<void> => {
+router.get("/dashboard/vendor-spend", authMiddleware, requirePermission("dashboard.view_pnl"), async (req, res): Promise<void> => {
   const { purchasesTable, vendorsTable } = await import("@workspace/db");
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
@@ -425,7 +425,7 @@ router.get("/dashboard/vendor-spend", async (req, res): Promise<void> => {
   res.json(Array.from(byVendor.values()));
 });
 
-router.get("/dashboard/trend", authMiddleware, async (req, res): Promise<void> => {
+router.get("/dashboard/trend", authMiddleware, requirePermission("dashboard.view_pnl"), async (req, res): Promise<void> => {
   const days = Number(req.query.days) || 7;
   const endDate = new Date();
   const startDate = new Date();

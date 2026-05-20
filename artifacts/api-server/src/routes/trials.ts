@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, trialsTable, trialVersionsTable, trialIngredientLinesTable, categoriesTable, ingredientsTable, menuItemsTable, recipeLinesTable } from "@workspace/db";
 import { ListTrialsResponse, CreateTrialBody, GetTrialParams, UpdateTrialParams, UpdateTrialBody, CreateTrialVersionParams, CreateTrialVersionBody, ConvertTrialToMenuItemParams } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 
@@ -27,7 +27,7 @@ router.get("/trials", async (_req, res): Promise<void> => {
   res.json(ListTrialsResponse.parse(trials));
 });
 
-router.post("/trials", authMiddleware, async (req, res): Promise<void> => {
+router.post("/trials", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const parsed = CreateTrialBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const trialCode = await generateCode("TRL", "trials");
@@ -83,7 +83,7 @@ router.get("/trials/:id", async (req, res): Promise<void> => {
   res.json({ trial, versions: enrichedVersions });
 });
 
-router.patch("/trials/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/trials/:id", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const params = UpdateTrialParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateTrialBody.partial().safeParse(req.body);
@@ -94,7 +94,7 @@ router.patch("/trials/:id", authMiddleware, async (req, res): Promise<void> => {
   res.json({ ...trial, categoryName: null });
 });
 
-router.delete("/trials/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/trials/:id", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const params = UpdateTrialParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [trial] = await db.delete(trialsTable).where(eq(trialsTable.id, params.data.id)).returning();
@@ -103,7 +103,7 @@ router.delete("/trials/:id", authMiddleware, async (req, res): Promise<void> => 
   res.json({ success: true });
 });
 
-router.post("/trials/:id/versions", authMiddleware, async (req, res): Promise<void> => {
+router.post("/trials/:id/versions", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const params = CreateTrialVersionParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = CreateTrialVersionBody.safeParse(req.body);
@@ -186,7 +186,7 @@ router.post("/trials/:id/versions", authMiddleware, async (req, res): Promise<vo
   res.status(201).json({ ...result, ingredients: ingredientData });
 });
 
-router.post("/trials/:trialId/versions/:versionId/convert", authMiddleware, async (req, res): Promise<void> => {
+router.post("/trials/:trialId/versions/:versionId/convert", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const trialId = Number(Array.isArray(req.params.trialId) ? req.params.trialId[0] : req.params.trialId);
   const versionId = Number(Array.isArray(req.params.versionId) ? req.params.versionId[0] : req.params.versionId);
 

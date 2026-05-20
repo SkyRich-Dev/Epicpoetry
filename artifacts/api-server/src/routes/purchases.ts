@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, asc, sql } from "drizzle-orm";
 import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable, vendorLedgerTable, pettyCashLedgerTable, systemConfigTable } from "@workspace/db";
 import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurchaseResponse } from "@workspace/api-zod";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
@@ -293,7 +293,7 @@ router.get("/purchases", async (req, res): Promise<void> => {
   res.json(purchases);
 });
 
-router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
+router.post("/purchases", authMiddleware, requirePermission("purchases.create"), async (req, res): Promise<void> => {
   const parsed = CreatePurchaseBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
@@ -492,7 +492,7 @@ router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
   });
 });
 
-router.patch("/purchases/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit"), async (req, res): Promise<void> => {
   const params = GetPurchaseParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
@@ -695,7 +695,7 @@ router.patch("/purchases/:id/unverify", authMiddleware, adminOnly, async (req, r
   res.json({ ...purchase, vendorName: vendor?.name ?? "" });
 });
 
-router.delete("/purchases/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/purchases/:id", authMiddleware, requirePermission("purchases.delete"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }

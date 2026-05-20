@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { db, pettyCashLedgerTable, expensesTable, systemConfigTable } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
@@ -84,7 +84,7 @@ router.get("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
   res.json(transactions);
 });
 
-router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
+router.post("/petty-cash", authMiddleware, requirePermission("petty_cash.create"), async (req, res): Promise<void> => {
   const { transactionDate, transactionType, amount, method, counterpartyName, category, linkedExpenseId, description } = req.body;
   if (!transactionDate || !transactionType || amount === undefined) {
     res.status(400).json({ error: "transactionDate, transactionType and amount are required" });
@@ -177,7 +177,7 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
   res.status(201).json(txn);
 });
 
-router.patch("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/petty-cash/:id", authMiddleware, requirePermission("petty_cash.create"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -221,7 +221,7 @@ router.patch("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> 
   res.json(updated);
 });
 
-router.delete("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/petty-cash/:id", authMiddleware, requirePermission("petty_cash.delete"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 

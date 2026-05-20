@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { db, expensesTable, categoriesTable, vendorsTable, pettyCashLedgerTable, vendorLedgerTable, vendorPaymentAllocationsTable } from "@workspace/db";
 import { ListExpensesResponse, CreateExpenseBody, GetExpenseParams, GetExpenseResponse, UpdateExpenseParams, UpdateExpenseBody } from "@workspace/api-zod";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
@@ -66,7 +66,7 @@ router.get("/expenses", async (req, res): Promise<void> => {
   res.json(expenses);
 });
 
-router.post("/expenses", authMiddleware, async (req, res): Promise<void> => {
+router.post("/expenses", authMiddleware, requirePermission("expenses.create"), async (req, res): Promise<void> => {
   const parsed = CreateExpenseBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const dateErr = validateNotFutureDate(parsed.data.expenseDate, "Expense date");
@@ -200,7 +200,7 @@ router.get("/expenses/:id", async (req, res): Promise<void> => {
   res.json(GetExpenseResponse.parse(expense));
 });
 
-router.patch("/expenses/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/expenses/:id", authMiddleware, requirePermission("expenses.edit"), async (req, res): Promise<void> => {
   const params = UpdateExpenseParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateExpenseBody.partial().safeParse(req.body);
@@ -244,7 +244,7 @@ router.patch("/expenses/:id", authMiddleware, async (req, res): Promise<void> =>
   res.json({ ...expense, categoryName: null, vendorName: null });
 });
 
-router.delete("/expenses/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/expenses/:id", authMiddleware, requirePermission("expenses.delete"), async (req, res): Promise<void> => {
   const params = UpdateExpenseParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 

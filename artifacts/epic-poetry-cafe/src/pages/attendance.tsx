@@ -26,7 +26,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AttendancePage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = hasPerm('leaves.approve');
   const isViewer = user?.role === 'viewer';
   const [tab, setTab] = useState<'attendance' | 'leaves' | 'monthly'>('attendance');
 

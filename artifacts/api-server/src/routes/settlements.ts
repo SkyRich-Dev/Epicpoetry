@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { db, dailySalesSettlementsTable, settlementLinesTable, salesInvoicesTable } from "@workspace/db";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateNotFutureDate } from "../lib/dateValidation";
 
@@ -43,7 +43,7 @@ router.get("/settlements", authMiddleware, async (req, res): Promise<void> => {
   res.json(settlements);
 });
 
-router.post("/settlements", authMiddleware, async (req, res): Promise<void> => {
+router.post("/settlements", authMiddleware, requirePermission("settlements.create"), async (req, res): Promise<void> => {
   const { settlementDate, remarks, lines } = req.body;
   if (!settlementDate || !lines || !Array.isArray(lines) || lines.length === 0) {
     res.status(400).json({ error: "settlementDate and lines are required" });
@@ -130,7 +130,7 @@ router.get("/settlements/:id", authMiddleware, async (req, res): Promise<void> =
   res.json({ settlement, lines });
 });
 
-router.patch("/settlements/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/settlements/:id", authMiddleware, requirePermission("settlements.create"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -202,7 +202,7 @@ router.patch("/settlements/:id", authMiddleware, async (req, res): Promise<void>
   res.json(settlement);
 });
 
-router.delete("/settlements/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/settlements/:id", authMiddleware, requirePermission("settlements.create"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -213,7 +213,7 @@ router.delete("/settlements/:id", authMiddleware, async (req, res): Promise<void
   res.json({ success: true });
 });
 
-router.post("/settlements/:id/verify", authMiddleware, async (req, res): Promise<void> => {
+router.post("/settlements/:id/verify", authMiddleware, requirePermission("settlements.verify"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 

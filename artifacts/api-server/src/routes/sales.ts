@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, salesEntriesTable, menuItemsTable } from "@workspace/db";
 import { ListSalesResponse, CreateSalesEntryBody, UpdateSalesEntryParams, UpdateSalesEntryBody, DeleteSalesEntryParams, GetDailySalesSummaryQueryParams } from "@workspace/api-zod";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { validateNotFutureDate } from "../lib/dateValidation";
 import { createAuditLog } from "../lib/audit";
 
@@ -40,7 +40,7 @@ router.get("/sales", async (req, res): Promise<void> => {
   res.json(sales);
 });
 
-router.post("/sales", authMiddleware, async (req, res): Promise<void> => {
+router.post("/sales", authMiddleware, requirePermission("sales.create"), async (req, res): Promise<void> => {
   const parsed = CreateSalesEntryBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const dateErr = validateNotFutureDate(parsed.data.salesDate, "Sales date");
@@ -65,7 +65,7 @@ router.post("/sales", authMiddleware, async (req, res): Promise<void> => {
   res.status(201).json({ ...entry, menuItemName: menuItem?.name ?? "" });
 });
 
-router.patch("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/sales/:id", authMiddleware, requirePermission("sales.edit"), async (req, res): Promise<void> => {
   const params = UpdateSalesEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateSalesEntryBody.partial().safeParse(req.body);
@@ -93,7 +93,7 @@ router.patch("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
   res.json({ ...entry, menuItemName: menuItem?.name ?? "" });
 });
 
-router.delete("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/sales/:id", authMiddleware, requirePermission("sales.delete"), async (req, res): Promise<void> => {
   const params = DeleteSalesEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [existing] = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.id, params.data.id));

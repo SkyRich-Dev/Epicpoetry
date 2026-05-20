@@ -20,7 +20,8 @@ const emptyForm = { name: '', contactPerson: '', mobile: '', email: '', gstNumbe
 export default function Vendors() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = hasPerm('vendors.delete');
   const isViewer = user?.role === 'viewer';
   const { data: vendors, isLoading } = useListVendors();
   const [, setLocation] = useLocation();

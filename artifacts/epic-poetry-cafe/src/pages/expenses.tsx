@@ -35,7 +35,9 @@ const blankExpenseForm = (): ExpenseFormState => ({
 export default function Expenses() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'owner';
+  const canDelete = hasPerm('expenses.delete');
   const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -198,7 +200,7 @@ export default function Expenses() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1">
                       <button onClick={() => openEdit(e)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
-                      {isAdmin && <button onClick={() => setDeleteConfirm({ id: e.id, desc: e.description || 'this expense' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                      {canDelete && <button onClick={() => setDeleteConfirm({ id: e.id, desc: e.description || 'this expense' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                     </div>
                   </td>
                 )}

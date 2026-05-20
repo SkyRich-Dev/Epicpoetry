@@ -3,7 +3,7 @@ import { eq, and, gte, lte, sql, isNotNull, desc } from "drizzle-orm";
 import {
   db, salesInvoicesTable, salesInvoiceLinesTable, menuItemsTable, customersTable, categoriesTable,
 } from "@workspace/db";
-import { authMiddleware, managerOrAdmin } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -35,14 +35,14 @@ async function summaryForRange(fromDate: string, toDate: string) {
   };
 }
 
-router.get("/insights/summary", authMiddleware, async (req, res): Promise<void> => {
+router.get("/insights/summary", authMiddleware, requirePermission("insights.view"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -30));
   const toDate = (req.query.toDate as string) || fmtDate(new Date());
   const data = await summaryForRange(fromDate, toDate);
   res.json(data);
 });
 
-router.get("/insights/comparisons", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/insights/comparisons", authMiddleware, requirePermission("insights.view"), async (_req, res): Promise<void> => {
   const today = new Date();
   const tStr = fmtDate(today);
   const ystr = fmtDate(addDays(today, -1));
@@ -92,7 +92,7 @@ router.get("/insights/comparisons", authMiddleware, async (_req, res): Promise<v
   });
 });
 
-router.get("/insights/peak-hours", authMiddleware, async (req, res): Promise<void> => {
+router.get("/insights/peak-hours", authMiddleware, requirePermission("insights.view"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -30));
   const toDate = (req.query.toDate as string) || fmtDate(new Date());
   const invoices = await db.select().from(salesInvoicesTable)
@@ -116,7 +116,7 @@ router.get("/insights/peak-hours", authMiddleware, async (req, res): Promise<voi
   res.json({ hours: arr, peakHour: peak?.hour ?? null, leastHour: least?.hour ?? null });
 });
 
-router.get("/insights/daily-trend", authMiddleware, async (req, res): Promise<void> => {
+router.get("/insights/daily-trend", authMiddleware, requirePermission("insights.view"), async (req, res): Promise<void> => {
   const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 180);
   const fromDate = fmtDate(addDays(new Date(), -(days - 1)));
   const toDate = fmtDate(new Date());
@@ -142,7 +142,7 @@ router.get("/insights/daily-trend", authMiddleware, async (req, res): Promise<vo
   res.json(series);
 });
 
-router.get("/insights/repeat-vs-new", authMiddleware, async (req, res): Promise<void> => {
+router.get("/insights/repeat-vs-new", authMiddleware, requirePermission("insights.view"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -30));
   const toDate = (req.query.toDate as string) || fmtDate(new Date());
 
@@ -171,7 +171,7 @@ router.get("/insights/repeat-vs-new", authMiddleware, async (req, res): Promise<
   });
 });
 
-router.get("/insights/top-items", authMiddleware, async (req, res): Promise<void> => {
+router.get("/insights/top-items", authMiddleware, requirePermission("insights.view"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -30));
   const toDate = (req.query.toDate as string) || fmtDate(new Date());
   const limit = Math.min(Number(req.query.limit) || 10, 50);
@@ -202,7 +202,7 @@ router.get("/insights/top-items", authMiddleware, async (req, res): Promise<void
   res.json({ top, bottom });
 });
 
-router.get("/insights/segmentation", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/insights/segmentation", authMiddleware, requirePermission("insights.view"), async (_req, res): Promise<void> => {
   const all = await db.select().from(customersTable);
   const today = new Date();
   const counts = { high_value: 0, frequent: 0, regular: 0, new: 0, inactive: 0 };
@@ -219,7 +219,7 @@ router.get("/insights/segmentation", authMiddleware, async (_req, res): Promise<
   res.json({ total: all.length, ...counts });
 });
 
-router.get("/insights/category-mix", authMiddleware, managerOrAdmin, async (req, res): Promise<void> => {
+router.get("/insights/category-mix", authMiddleware, requirePermission("insights.view"), async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -30));
   const toDate = (req.query.toDate as string) || fmtDate(new Date());
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -269,7 +269,7 @@ router.get("/insights/category-mix", authMiddleware, managerOrAdmin, async (req,
   res.json(result);
 });
 
-router.get("/insights/day-of-week", authMiddleware, managerOrAdmin, async (req, res): Promise<void> => {
+router.get("/insights/day-of-week", authMiddleware, requirePermission("insights.view"), async (req, res): Promise<void> => {
   const days = Math.min(Math.max(Number(req.query.days) || 90, 7), 365);
   const fromDate = (req.query.fromDate as string) || fmtDate(addDays(new Date(), -(days - 1)));
   const toDate = (req.query.toDate as string) || fmtDate(new Date());

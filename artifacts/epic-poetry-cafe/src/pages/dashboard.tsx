@@ -539,8 +539,9 @@ function CelebrationsCard() {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { user, hasPerm } = useAuth();
+  const isAdmin = hasPerm('dashboard.view_pnl');
+  void user;
   const today = getToday();
 
   const [fromDate, setFromDate] = useState(today);

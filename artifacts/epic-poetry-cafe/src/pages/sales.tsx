@@ -21,7 +21,9 @@ const PAYMENT_MODES = ['cash', 'card', 'upi', 'wallet', 'mixed'];
 
 export default function Sales() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { hasPerm } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'owner';
+  const canDelete = hasPerm('sales.delete');
   const isViewer = user?.role === 'viewer';
   const { toast } = useToast();
   const { data: menuItems } = useListMenuItems({ active: true });
@@ -249,7 +251,7 @@ export default function Sales() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
                       <button onClick={() => viewInvoiceDetail(inv.id)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="View"><Eye size={14}/></button>
-                      {isAdmin && <button onClick={() => setDeleteConfirmInv(inv)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                      {canDelete && <button onClick={() => setDeleteConfirmInv(inv)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                     </div>
                   </td>
                 </tr>

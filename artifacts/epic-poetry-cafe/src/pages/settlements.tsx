@@ -19,7 +19,7 @@ function StatusBadge({ type, status }: { type: string; status: string }) {
 
 export default function Settlements() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, hasPerm } = useAuth();
   const { toast } = useToast();
   const isViewer = user?.role === 'viewer';
   const [filterFrom, setFilterFrom] = useState('');
@@ -203,7 +203,7 @@ export default function Settlements() {
                     {!isViewer && s.status !== 'verified' && (
                       <button onClick={() => handleEdit(s)} className="text-muted-foreground hover:text-primary"><Pencil size={16} /></button>
                     )}
-                    {user?.role === 'admin' && s.status !== 'verified' && (
+                    {hasPerm('settlements.verify') && s.status !== 'verified' && (
                       <button onClick={() => handleVerify(s.id)} className="text-muted-foreground hover:text-emerald-600"><ShieldCheck size={16} /></button>
                     )}
                     {user?.role === 'admin' && s.status !== 'verified' && (

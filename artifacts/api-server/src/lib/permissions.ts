@@ -81,6 +81,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "ingredients.edit", label: "Edit ingredients" },
       { key: "menu_items.view", label: "View menu items" },
       { key: "menu_items.edit", label: "Edit menu items / recipes" },
+      { key: "menu_items.view_margin", label: "View menu item cost & margin", description: "Reveals production cost, margin %, and recipe cost on menu items." },
       { key: "inventory.view", label: "View inventory" },
       { key: "inventory.edit", label: "Adjust inventory" },
     ],
@@ -114,6 +115,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "decision_engine.financial", label: "View Decision Engine financial tabs" },
       { key: "insights.view", label: "View insights" },
       { key: "dashboard.view", label: "View dashboard" },
+      { key: "dashboard.view_pnl", label: "View Owner's P&L dashboard", description: "Reveals P&L tiles, settlement totals, vendor payables, and trend charts on the dashboard." },
     ],
   },
   {
@@ -200,6 +202,7 @@ export const BUILT_IN_ROLES: BuiltInRoleDef[] = [
       "reports.view", "reports.financial",
       "decision_engine.view", "decision_engine.financial",
       "audit_logs.view",
+      "menu_items.view_margin", "dashboard.view_pnl",
     ],
   },
   {

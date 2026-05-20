@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, ilike, sql } from "drizzle-orm";
 import { db, vendorsTable, categoriesTable, purchasesTable, purchaseLinesTable, ingredientVendorMappingTable } from "@workspace/db";
 import { ListVendorsResponse, CreateVendorBody, GetVendorParams, GetVendorResponse, UpdateVendorParams, UpdateVendorBody, GetVendorSpendSummaryParams, GetVendorSpendSummaryResponse } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { findNameDuplicates, shouldBlockNameDuplicates, buildDupeErrorPayload, type NameRecord } from "../lib/nameDedupe";
@@ -43,7 +43,7 @@ router.get("/vendors", async (req, res): Promise<void> => {
   res.json(ListVendorsResponse.parse(vendors));
 });
 
-router.post("/vendors", authMiddleware, async (req, res): Promise<void> => {
+router.post("/vendors", authMiddleware, requirePermission("vendors.create"), async (req, res): Promise<void> => {
   const parsed = CreateVendorBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
@@ -91,7 +91,7 @@ router.get("/vendors/:id", async (req, res): Promise<void> => {
   res.json(GetVendorResponse.parse(vendor));
 });
 
-router.patch("/vendors/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/vendors/:id", authMiddleware, requirePermission("vendors.edit"), async (req, res): Promise<void> => {
   const params = UpdateVendorParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateVendorBody.partial().safeParse(req.body);
@@ -117,7 +117,7 @@ router.patch("/vendors/:id", authMiddleware, async (req, res): Promise<void> => 
   res.json({ ...vendor, categoryName: null });
 });
 
-router.delete("/vendors/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/vendors/:id", authMiddleware, requirePermission("vendors.delete"), async (req, res): Promise<void> => {
   const params = UpdateVendorParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [existing] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, params.data.id));

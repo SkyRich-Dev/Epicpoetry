@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getGetMeQueryKey, useGetMe, User } from '@workspace/api-client-react';
 import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react/custom-fetch';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,15 +10,34 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   token: string | null;
+  permissions: Set<string>;
+  hasPerm: (key: string) => boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const ADMIN_ROLES = new Set(['admin', 'owner']);
+
+async function fetchMyPermissions(token: string): Promise<string[]> {
+  try {
+    const base = import.meta.env.BASE_URL || '/';
+    const res = await fetch(`${base}api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.permissions) ? data.permissions : [];
+  } catch {
+    return [];
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(getAuthToken());
   const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -40,6 +59,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
+  // Fetch permissions whenever the token changes (login / boot).
+  useEffect(() => {
+    let cancelled = false;
+    if (!token) {
+      setPermissions(new Set());
+      return;
+    }
+    fetchMyPermissions(token).then((perms) => {
+      if (!cancelled) setPermissions(new Set(perms));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   useEffect(() => {
     if (!token) {
       setSessionUser(null);
@@ -55,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       clearAuthToken();
       setSessionUser(null);
+      setPermissions(new Set());
       setToken(null);
       queryClient.clear();
     };
@@ -74,14 +109,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     clearAuthToken();
     setSessionUser(null);
+    setPermissions(new Set());
     setToken(null);
     queryClient.clear();
   };
 
   const effectiveUser = token ? (sessionUser || user || null) : null;
 
+  const hasPerm = useCallback(
+    (key: string): boolean => {
+      const role = effectiveUser?.role;
+      if (role && ADMIN_ROLES.has(role)) return true;
+      return permissions.has(key);
+    },
+    [effectiveUser, permissions]
+  );
+
   return (
-    <AuthContext.Provider value={{ user: effectiveUser, isLoading: token ? isLoading : false, token, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user: effectiveUser,
+        isLoading: token ? isLoading : false,
+        token,
+        permissions,
+        hasPerm,
+        login,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -94,5 +149,3 @@ export function useAuth() {
   }
   return context;
 }
-
-

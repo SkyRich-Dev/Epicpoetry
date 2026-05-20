@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { cn, Modal, Button, Input, Label } from './ui-extras';
 
-type NavItem = { name: string; path: string; icon: any; adminOnly?: boolean };
+type NavItem = { name: string; path: string; icon: any; requires?: string };
 type NavGroup = { title: string; items: NavItem[] };
 
 const navGroups: NavGroup[] = [
@@ -19,62 +19,62 @@ const navGroups: NavGroup[] = [
     title: 'Overview',
     items: [
       { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-      { name: 'Insights', path: '/insights', icon: Sparkles },
-      { name: 'Decision Engine', path: '/decision', icon: Brain },
+      { name: 'Insights', path: '/insights', icon: Sparkles, requires: 'insights.view' },
+      { name: 'Decision Engine', path: '/decision', icon: Brain, requires: 'decision_engine.view' },
     ]
   },
   {
     title: 'Operations',
     items: [
-      { name: 'Sales', path: '/sales', icon: Receipt },
-      { name: 'Settlements', path: '/settlements', icon: Banknote },
-      { name: 'Purchases', path: '/purchases', icon: ShoppingCart },
-      { name: 'Expenses', path: '/expenses', icon: FileText },
-      { name: 'Petty Cash', path: '/petty-cash', icon: Wallet },
-      { name: 'Waste Management', path: '/waste', icon: Trash2 },
+      { name: 'Sales', path: '/sales', icon: Receipt, requires: 'sales.view' },
+      { name: 'Settlements', path: '/settlements', icon: Banknote, requires: 'settlements.view' },
+      { name: 'Purchases', path: '/purchases', icon: ShoppingCart, requires: 'purchases.view' },
+      { name: 'Expenses', path: '/expenses', icon: FileText, requires: 'expenses.view' },
+      { name: 'Petty Cash', path: '/petty-cash', icon: Wallet, requires: 'petty_cash.view' },
+      { name: 'Waste Management', path: '/waste', icon: Trash2, requires: 'waste.view' },
     ]
   },
   {
     title: 'Cafe Core',
     items: [
-      { name: 'Menu & Recipes', path: '/menu', icon: Coffee },
-      { name: 'Ingredients', path: '/ingredients', icon: Package },
-      { name: 'Inventory', path: '/inventory', icon: PackageSearch },
-      { name: 'Vendors', path: '/vendors', icon: Store },
-      { name: 'Trials & R&D', path: '/trials', icon: FlaskConical, adminOnly: true },
+      { name: 'Menu & Recipes', path: '/menu', icon: Coffee, requires: 'menu_items.view' },
+      { name: 'Ingredients', path: '/ingredients', icon: Package, requires: 'ingredients.view' },
+      { name: 'Inventory', path: '/inventory', icon: PackageSearch, requires: 'inventory.view' },
+      { name: 'Vendors', path: '/vendors', icon: Store, requires: 'vendors.view' },
+      { name: 'Trials & R&D', path: '/trials', icon: FlaskConical, requires: 'menu_items.edit' },
     ]
   },
   {
     title: 'Team',
     items: [
-      { name: 'Employees', path: '/employees', icon: Users },
-      { name: 'Attendance', path: '/attendance', icon: UserCheck },
+      { name: 'Employees', path: '/employees', icon: Users, requires: 'employees.view' },
+      { name: 'Attendance', path: '/attendance', icon: UserCheck, requires: 'attendance.view' },
     ]
   },
   {
     title: 'Admin',
     items: [
-      { name: 'Customers', path: '/customers', icon: UserCircle2 },
-      { name: 'Analytics', path: '/analytics', icon: BarChart3, adminOnly: true },
+      { name: 'Customers', path: '/customers', icon: UserCircle2, requires: 'customers.view' },
+      { name: 'Analytics', path: '/analytics', icon: BarChart3, requires: 'reports.view' },
       { name: 'Excel Upload', path: '/upload', icon: Upload },
-      { name: 'Reports', path: '/reports', icon: ClipboardList, adminOnly: true },
-      { name: 'Masters & Config', path: '/masters', icon: Settings, adminOnly: true },
+      { name: 'Reports', path: '/reports', icon: ClipboardList, requires: 'reports.view' },
+      { name: 'Masters & Config', path: '/masters', icon: Settings, requires: 'roles.view' },
     ]
   }
 ];
 
-function getNavForRole(role: string): NavGroup[] {
+function getNavForUser(hasPerm: (key: string) => boolean): NavGroup[] {
   return navGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => !item.adminOnly || role === 'admin'),
+      items: group.items.filter(item => !item.requires || hasPerm(item.requires)),
     }))
     .filter(group => group.items.length > 0);
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, hasPerm } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pwModal, setPwModal] = useState(false);
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -127,7 +127,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-4 md:py-2 custom-scrollbar">
-          {getNavForRole(user?.role || 'viewer').map((group, idx) => (
+          {getNavForUser(hasPerm).map((group, idx) => (
             <div key={idx} className="mb-6">
               <h3 className="px-3 text-[11px] font-semibold text-sidebar-foreground/40 uppercase tracking-[0.12em] mb-2">
                 {group.title}

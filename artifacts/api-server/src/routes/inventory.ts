@@ -2,13 +2,13 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, ingredientsTable, stockSnapshotsTable, stockAdjustmentsTable, purchaseLinesTable, purchasesTable, wasteEntriesTable, categoriesTable } from "@workspace/db";
 import { SaveStockSnapshotBody, CreateStockAdjustmentBody, ListStockSnapshotsQueryParams } from "@workspace/api-zod";
-import { authMiddleware, adminOnly, managerOrAdmin } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
-router.get("/inventory/low-stock", authMiddleware, managerOrAdmin, async (req, res): Promise<void> => {
+router.get("/inventory/low-stock", authMiddleware, requirePermission("inventory.view"), async (req, res): Promise<void> => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
   const ingredients = await db.select().from(ingredientsTable).where(eq(ingredientsTable.active, true));
   const low = ingredients
@@ -101,7 +101,7 @@ router.get("/inventory/stock-snapshots", async (req, res): Promise<void> => {
   res.json(snapshots);
 });
 
-router.post("/inventory/stock-snapshots", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/inventory/stock-snapshots", authMiddleware, requirePermission("inventory.edit"), async (req, res): Promise<void> => {
   const parsed = SaveStockSnapshotBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
@@ -136,7 +136,7 @@ router.post("/inventory/stock-snapshots", authMiddleware, adminOnly, async (req,
   res.json(results);
 });
 
-router.post("/inventory/adjustments", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/inventory/adjustments", authMiddleware, requirePermission("inventory.edit"), async (req, res): Promise<void> => {
   const parsed = CreateStockAdjustmentBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 

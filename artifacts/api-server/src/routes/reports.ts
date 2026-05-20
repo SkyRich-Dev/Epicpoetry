@@ -20,7 +20,8 @@ import {
   categoriesTable,
   systemConfigTable,
 } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
+import { getEffectivePermissionsForRole } from "./roles";
 import { normalizePaymentMode } from "../lib/paymentMode";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
@@ -1844,18 +1845,35 @@ R({ key: "customer-clv", title: "Customer Visit & Spend (CLV)", category: "Opera
 });
 
 // ---------- DISPATCH ENDPOINTS ----------
-router.get("/reports/registry", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const userRole = (req as any).userRole;
+async function userCanViewReport(req: Request, def: { adminOnly?: boolean; category: string }): Promise<boolean> {
+  const role = (req as any).userRole as string | undefined;
+  if (!role) return false;
+  if (role === "admin" || role === "owner") return true;
+  const perms = await getEffectivePermissionsForRole(role);
+  const baseOk = perms.includes("reports.view");
+  const isFinancial = !!def.adminOnly || def.category === "Financial";
+  if (isFinancial) return baseOk && perms.includes("reports.financial");
+  return baseOk;
+}
+
+router.get("/reports/registry", authMiddleware, requirePermission("reports.view"), async (req: Request, res: Response): Promise<void> => {
+  const role = (req as any).userRole as string | undefined;
+  const isAdmin = role === "admin" || role === "owner";
+  const perms = isAdmin ? null : await getEffectivePermissionsForRole(role || "");
+  const hasFinancial = isAdmin || (perms || []).includes("reports.financial");
   const list = REPORTS
-    .filter(r => !r.adminOnly || userRole === "admin")
+    .filter(r => {
+      const financialFlagged = !!r.adminOnly || r.category === "Financial";
+      return !financialFlagged || hasFinancial;
+    })
     .map(r => ({ key: r.key, title: r.title, category: r.category, adminOnly: !!r.adminOnly }));
   res.json(list);
 });
 
-router.get("/reports/run/:key", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/run/:key", authMiddleware, requirePermission("reports.view"), async (req: Request, res: Response): Promise<void> => {
   const def = REPORTS.find(r => r.key === req.params.key);
   if (!def) { res.status(404).json({ error: "Report not found" }); return; }
-  if (def.adminOnly && (req as any).userRole !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
+  if (!(await userCanViewReport(req, def))) { res.status(403).json({ error: "Permission required: reports.financial" }); return; }
 
   const today = getToday();
   const from = isValidDate(req.query.from as string) ? (req.query.from as string) : todayMinus(30);
@@ -1906,7 +1924,7 @@ function getDateRange(period: string, fromDate?: string, toDate?: string): { fro
   return { from: ref, to: (toDate && isValidDate(toDate)) ? toDate : today };
 }
 
-router.get("/reports/item-profitability", authMiddleware, async (req, res): Promise<void> => {
+router.get("/reports/item-profitability", authMiddleware, requirePermission("reports.financial"), async (req, res): Promise<void> => {
   const period = (req.query.period as string) || "monthly";
   const { from, to } = getDateRange(period, req.query.fromDate as string, req.query.toDate as string);
   const inv = await db.select({ id: salesInvoicesTable.id }).from(salesInvoicesTable)

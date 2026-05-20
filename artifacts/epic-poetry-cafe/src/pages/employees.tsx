@@ -44,9 +44,10 @@ const POSITIONS = ['Barista', 'Chef', 'Cashier', 'Waiter', 'Manager', 'Helper', 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function EmployeesPage() {
-  const { user } = useAuth();
+  const { user, hasPerm } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = hasPerm('employees.edit');
+  const canViewSalary = hasPerm('salary.view');
   const [tab, setTab] = useState<'employees' | 'shifts' | 'salary'>('employees');
 
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -187,8 +188,8 @@ export default function EmployeesPage() {
   useEffect(() => {
     loadEmployees();
     loadShifts();
-    if (isAdmin) { loadSalary(); loadConfig(); loadAdvances(); loadAdjustments(); }
-  }, [loadEmployees, loadShifts, loadSalary, loadConfig, loadAdvances, loadAdjustments, isAdmin]);
+    if (canViewSalary) { loadSalary(); loadConfig(); loadAdvances(); loadAdjustments(); }
+  }, [loadEmployees, loadShifts, loadSalary, loadConfig, loadAdvances, loadAdjustments, canViewSalary]);
 
   const saveEmployee = async () => {
     if (!empForm.name || !empForm.position) { toast({ title: 'Error', description: 'Name and position required', variant: 'destructive' }); return; }
@@ -300,7 +301,7 @@ export default function EmployeesPage() {
 
   const filteredSalary = salaryRecords.filter(s => s.month === salaryMonth && s.year === salaryYear);
 
-  const tabs = isAdmin
+  const tabs = canViewSalary
     ? [{ key: 'employees' as const, label: 'Employees', icon: Users }, { key: 'shifts' as const, label: 'Shifts', icon: Clock }, { key: 'salary' as const, label: 'Salary', icon: IndianRupee }]
     : [{ key: 'employees' as const, label: 'Employees', icon: Users }, { key: 'shifts' as const, label: 'Shifts', icon: Clock }];
 
@@ -466,7 +467,7 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      {tab === 'salary' && isAdmin && (
+      {tab === 'salary' && canViewSalary && (
         <div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
             <div className="flex items-start gap-3">

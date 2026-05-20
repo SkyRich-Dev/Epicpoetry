@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, rolesTable, rolePermissionsTable, usersTable } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, bumpRolePermissionCache } from "../lib/auth";
 import {
   PERMISSION_CATEGORIES,
   ALL_PERMISSION_KEYS,
@@ -83,6 +83,7 @@ router.post("/roles", authMiddleware, adminOnly, async (req, res): Promise<void>
   if (perms.length > 0) {
     await db.insert(rolePermissionsTable).values(perms.map((p) => ({ roleId: role.id, permissionKey: p })));
   }
+  bumpRolePermissionCache(cleanName);
   res.status(201).json(await loadRoleWithPermissions(role.id));
 });
 
@@ -109,6 +110,7 @@ router.patch("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise<
     }
   }
 
+  bumpRolePermissionCache(role.name);
   res.json(await loadRoleWithPermissions(id));
 });
 
@@ -127,6 +129,7 @@ router.delete("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise
     return;
   }
   await db.delete(rolesTable).where(eq(rolesTable.id, id));
+  bumpRolePermissionCache(role.name);
   res.json({ success: true });
 });
 
@@ -142,13 +145,44 @@ router.delete("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise
  * shipped defaults, they can delete it (or we can add an explicit
  * "reset" button later) and the next seed will recreate it.
  */
+/**
+ * Permissions added AFTER initial seed that we want to back-fill onto
+ * existing built-in roles without wiping owner customisations. Each
+ * entry lists which built-in roles SHOULD have the new key. The seed
+ * adds missing rows only — it never deletes.
+ */
+const ADDITIVE_BACKFILL: { key: string; roles: string[] }[] = [
+  { key: "menu_items.view_margin", roles: ["owner", "admin", "accountant"] },
+  { key: "dashboard.view_pnl",     roles: ["owner", "admin", "accountant"] },
+];
+
 export async function seedBuiltInRoles() {
   for (const def of BUILT_IN_ROLES) {
     const [existing] = await db.select().from(rolesTable).where(eq(rolesTable.name, def.name));
     if (existing) {
-      // Already present — never mutate. Honors any user customization
-      // and avoids accidentally promoting a custom role with a colliding
-      // name to built-in.
+      // Already present — never mutate the existing permission set.
+      // We do, however, back-fill brand-new permission keys onto the
+      // built-ins so that newly-shipped features have a sensible
+      // default without owners needing to manually tick boxes.
+      const existingPerms = await db
+        .select({ permissionKey: rolePermissionsTable.permissionKey })
+        .from(rolePermissionsTable)
+        .where(eq(rolePermissionsTable.roleId, existing.id));
+      const have = new Set(existingPerms.map((p) => p.permissionKey));
+      const toAdd: string[] = [];
+      for (const bf of ADDITIVE_BACKFILL) {
+        if (!bf.roles.includes(def.name)) continue;
+        // Owner/admin defaults are "*" — they should always carry every key.
+        const shouldHave =
+          def.permissions === "*" ? true : (def.permissions as string[]).includes(bf.key);
+        if (shouldHave && !have.has(bf.key)) toAdd.push(bf.key);
+      }
+      if (toAdd.length > 0) {
+        await db.insert(rolePermissionsTable).values(
+          toAdd.map((k) => ({ roleId: existing.id, permissionKey: k }))
+        );
+        bumpRolePermissionCache(def.name);
+      }
       continue;
     }
 

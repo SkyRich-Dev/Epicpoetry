@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, like } from "drizzle-orm";
 import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable, salaryAdvancesTable, salaryAdjustmentsTable, systemConfigTable } from "@workspace/db";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, requirePermission } from "../lib/auth";
 import { generateCode } from "../lib/codeGenerator";
 import { createAuditLog } from "../lib/audit";
 import { validateNotFutureDate } from "../lib/dateValidation";
@@ -35,7 +35,7 @@ router.get("/employees", authMiddleware, async (req, res): Promise<void> => {
   res.json(employees);
 });
 
-router.post("/employees", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/employees", authMiddleware, requirePermission("employees.create"), async (req, res): Promise<void> => {
   const { name, contactNumber, position, salary, employmentType } = req.body;
   if (!name || !position) { res.status(400).json({ error: "Name and position are required" }); return; }
   const code = await generateCode("EMP", "employees");
@@ -47,7 +47,7 @@ router.post("/employees", authMiddleware, adminOnly, async (req, res): Promise<v
   res.json(employee);
 });
 
-router.patch("/employees/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.patch("/employees/:id", authMiddleware, requirePermission("employees.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const { name, contactNumber, position, salary, employmentType, active } = req.body;
   const updates: any = {};
@@ -62,7 +62,7 @@ router.patch("/employees/:id", authMiddleware, adminOnly, async (req, res): Prom
   res.json(employee);
 });
 
-router.delete("/employees/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/employees/:id", authMiddleware, requirePermission("employees.delete"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [employee] = await db.delete(employeesTable).where(eq(employeesTable.id, id)).returning();
   if (!employee) { res.status(404).json({ error: "Not found" }); return; }
@@ -74,14 +74,14 @@ router.get("/shifts", authMiddleware, async (_req, res): Promise<void> => {
   res.json(shifts);
 });
 
-router.post("/shifts", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/shifts", authMiddleware, requirePermission("employees.edit"), async (req, res): Promise<void> => {
   const { name, startTime, endTime } = req.body;
   if (!name || !startTime || !endTime) { res.status(400).json({ error: "Name, startTime, endTime required" }); return; }
   const [shift] = await db.insert(shiftsTable).values({ name, startTime, endTime }).returning();
   res.json(shift);
 });
 
-router.patch("/shifts/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.patch("/shifts/:id", authMiddleware, requirePermission("employees.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const updates: any = {};
   if (req.body.name !== undefined) updates.name = req.body.name;
@@ -93,7 +93,7 @@ router.patch("/shifts/:id", authMiddleware, adminOnly, async (req, res): Promise
   res.json(shift);
 });
 
-router.delete("/shifts/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/shifts/:id", authMiddleware, requirePermission("employees.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [shift] = await db.delete(shiftsTable).where(eq(shiftsTable.id, id)).returning();
   if (!shift) { res.status(404).json({ error: "Not found" }); return; }
@@ -211,7 +211,7 @@ router.get("/leaves", authMiddleware, async (req, res): Promise<void> => {
   res.json(records);
 });
 
-router.post("/leaves", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/leaves", authMiddleware, requirePermission("leaves.approve"), async (req, res): Promise<void> => {
   const { employeeId, leaveDate, leaveType, reason } = req.body;
   if (!employeeId || !leaveDate || !leaveType) { res.status(400).json({ error: "employeeId, leaveDate, leaveType required" }); return; }
   const existing = await db.select().from(leavesTable).where(
@@ -234,7 +234,7 @@ router.delete("/leaves/:id", authMiddleware, async (req, res): Promise<void> => 
   res.json({ success: true });
 });
 
-router.get("/salary", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.get("/salary", authMiddleware, requirePermission("salary.view"), async (req, res): Promise<void> => {
   const records = await db.select({
     id: salaryRecordsTable.id,
     employeeId: salaryRecordsTable.employeeId,
@@ -271,7 +271,7 @@ router.get("/salary", authMiddleware, adminOnly, async (req, res): Promise<void>
   res.json(records);
 });
 
-router.post("/salary/generate", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/salary/generate", authMiddleware, requirePermission("salary.create"), async (req, res): Promise<void> => {
   const { month, year } = req.body;
   if (!month || !year) { res.status(400).json({ error: "month and year required" }); return; }
 
@@ -369,7 +369,7 @@ router.post("/salary/generate", authMiddleware, adminOnly, async (req, res): Pro
   res.json(results);
 });
 
-router.get("/salary-advances", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.get("/salary-advances", authMiddleware, requirePermission("salary_advances.view"), async (req, res): Promise<void> => {
   const { employeeId, status } = req.query;
   let query = db.select({
     id: salaryAdvancesTable.id,
@@ -393,7 +393,7 @@ router.get("/salary-advances", authMiddleware, adminOnly, async (req, res): Prom
   res.json(records);
 });
 
-router.post("/salary-advances", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/salary-advances", authMiddleware, requirePermission("salary_advances.create"), async (req, res): Promise<void> => {
   const { employeeId, advanceDate, amount, reason } = req.body;
   if (!employeeId || !advanceDate || !amount) { res.status(400).json({ error: "employeeId, advanceDate, amount required" }); return; }
   const advDateErr = validateNotFutureDate(advanceDate, "Advance date");
@@ -407,7 +407,7 @@ router.post("/salary-advances", authMiddleware, adminOnly, async (req, res): Pro
   res.json(advance);
 });
 
-router.patch("/salary-advances/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.patch("/salary-advances/:id", authMiddleware, requirePermission("salary_advances.create"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(salaryAdvancesTable).where(eq(salaryAdvancesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -428,7 +428,7 @@ router.patch("/salary-advances/:id", authMiddleware, adminOnly, async (req, res)
   res.json(updated);
 });
 
-router.delete("/salary-advances/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/salary-advances/:id", authMiddleware, requirePermission("salary_advances.create"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(salaryAdvancesTable).where(eq(salaryAdvancesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -437,7 +437,7 @@ router.delete("/salary-advances/:id", authMiddleware, adminOnly, async (req, res
   res.json({ success: true });
 });
 
-router.get("/salary-adjustments", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.get("/salary-adjustments", authMiddleware, requirePermission("salary.view"), async (req, res): Promise<void> => {
   const { employeeId, month, year, type } = req.query;
   let query = db.select({
     id: salaryAdjustmentsTable.id,
@@ -464,7 +464,7 @@ router.get("/salary-adjustments", authMiddleware, adminOnly, async (req, res): P
   res.json(records);
 });
 
-router.post("/salary-adjustments", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.post("/salary-adjustments", authMiddleware, requirePermission("salary.edit"), async (req, res): Promise<void> => {
   const { employeeId, month, year, type, amount, reason } = req.body;
   if (!employeeId || !month || !year || !type || amount === undefined) { res.status(400).json({ error: "employeeId, month, year, type, amount required" }); return; }
   if (!["bonus", "incentive", "penalty"].includes(type)) { res.status(400).json({ error: "type must be bonus, incentive, or penalty" }); return; }
@@ -477,7 +477,7 @@ router.post("/salary-adjustments", authMiddleware, adminOnly, async (req, res): 
   res.json(adjustment);
 });
 
-router.delete("/salary-adjustments/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/salary-adjustments/:id", authMiddleware, requirePermission("salary.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(salaryAdjustmentsTable).where(eq(salaryAdjustmentsTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
@@ -486,7 +486,7 @@ router.delete("/salary-adjustments/:id", authMiddleware, adminOnly, async (req, 
   res.json({ success: true });
 });
 
-router.patch("/salary/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.patch("/salary/:id", authMiddleware, requirePermission("salary.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [existing] = await db.select().from(salaryRecordsTable).where(eq(salaryRecordsTable.id, id));
@@ -518,7 +518,7 @@ router.get("/uploads/salary-proofs/:filename", authMiddleware, async (req, res):
   res.sendFile(filePath);
 });
 
-router.post("/salary/:id/upload-proof", authMiddleware, adminOnly, proofUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/salary/:id/upload-proof", authMiddleware, requirePermission("salary.edit"), proofUpload.single("file"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [existing] = await db.select().from(salaryRecordsTable).where(eq(salaryRecordsTable.id, id));
@@ -529,7 +529,7 @@ router.post("/salary/:id/upload-proof", authMiddleware, adminOnly, proofUpload.s
   res.json(updated);
 });
 
-router.delete("/salary/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+router.delete("/salary/:id", authMiddleware, requirePermission("salary.edit"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   await db.transaction(async (tx) => {
     const [existing] = await tx.select().from(salaryRecordsTable).where(eq(salaryRecordsTable.id, id));

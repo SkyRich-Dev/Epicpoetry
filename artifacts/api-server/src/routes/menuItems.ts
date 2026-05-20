@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, menuItemsTable, recipeLinesTable, categoriesTable, ingredientsTable, systemConfigTable, salesInvoiceLinesTable } from "@workspace/db";
 import { ListMenuItemsResponse, CreateMenuItemBody, GetMenuItemParams, UpdateMenuItemParams, UpdateMenuItemBody, GetRecipeParams, SaveRecipeParams, SaveRecipeBody, GetMenuItemCostingParams } from "@workspace/api-zod";
-import { authMiddleware, adminOnly } from "../lib/auth";
+import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { findNameDuplicates, shouldBlockNameDuplicates, buildDupeErrorPayload, type NameRecord } from "../lib/nameDedupe";
@@ -87,7 +87,7 @@ router.get("/menu-items", async (_req, res): Promise<void> => {
   res.json(result);
 });
 
-router.post("/menu-items", authMiddleware, async (req, res): Promise<void> => {
+router.post("/menu-items", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const parsed = CreateMenuItemBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   if (!parsed.data.categoryId || parsed.data.categoryId <= 0) {
@@ -179,7 +179,7 @@ router.get("/menu-items/:id", async (req, res): Promise<void> => {
   });
 });
 
-router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> => {
+router.patch("/menu-items/:id", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const params = UpdateMenuItemParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateMenuItemBody.partial().safeParse(req.body);
@@ -216,7 +216,7 @@ router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> 
   res.json({ ...item, categoryName: null, productionCost: costing.total, margin, marginPercent });
 });
 
-router.delete("/menu-items/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/menu-items/:id", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const params = GetMenuItemParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [existing] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
@@ -282,7 +282,7 @@ router.get("/menu-items/:id/recipe", async (req, res): Promise<void> => {
   res.json(enrichedLines);
 });
 
-router.put("/menu-items/:id/recipe", authMiddleware, async (req, res): Promise<void> => {
+router.put("/menu-items/:id/recipe", authMiddleware, requirePermission("menu_items.edit"), async (req, res): Promise<void> => {
   const params = SaveRecipeParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = SaveRecipeBody.safeParse(req.body);
