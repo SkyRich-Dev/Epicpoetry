@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
+import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import path from "path";
 import * as schema from "./schema";
@@ -15,7 +16,33 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+export const tenantSchemaContext = new AsyncLocalStorage<string>();
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function tenantSearchPath(schemaName: string): string {
+  return `${quoteIdentifier(schemaName)}, public`;
+}
+
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+const originalPoolQuery = pool.query.bind(pool);
+pool.query = (async (...args: Parameters<typeof originalPoolQuery>) => {
+  const schemaName = tenantSchemaContext.getStore();
+  if (!schemaName) return originalPoolQuery(...args);
+
+  const client = await pool.connect();
+  try {
+    await client.query("select set_config('search_path', $1, false)", [tenantSearchPath(schemaName)]);
+    return await client.query(...args);
+  } finally {
+    await client.query("select set_config('search_path', 'public', false)").catch(() => undefined);
+    client.release();
+  }
+}) as typeof pool.query;
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useListMenuItems, useCreateMenuItem, useUpdateMenuItem, useGetRecipe, useSaveRecipe, useGetMenuItemCosting, useListIngredients, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2, Pencil, Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 export default function MenuItems() {
   const queryClient = useQueryClient();
@@ -47,6 +48,7 @@ export default function MenuItems() {
     }
     return true;
   });
+  const menuItemsPagination = useClientPagination(filteredMenuItems, 10);
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -81,7 +83,9 @@ export default function MenuItems() {
   };
 
   const handleSaveItem = async () => {
-    if (!formData.name?.trim()) { toast({ title: 'Item name is required', variant: 'destructive' }); return; }
+      if (!formData.name?.trim()) { toast({ title: 'Item name is required', variant: 'destructive' }); return; }
+    if (!categories || categories.length === 0) { toast({ title: 'Create a menu category first', description: 'Go to Masters and add at least one category with type Menu before creating menu items.', variant: 'destructive' }); return; }
+    if (!formData.categoryId || formData.categoryId <= 0) { toast({ title: 'Please select a menu category', variant: 'destructive' }); return; }
     if (formData.sellingPrice <= 0) { toast({ title: 'Selling price must be greater than 0', variant: 'destructive' }); return; }
     const channels: Array<['dineInPrice' | 'takeawayPrice' | 'deliveryPrice' | 'onlinePrice', string]> = [
       ['dineInPrice', 'Dine-in'], ['takeawayPrice', 'Takeaway'], ['deliveryPrice', 'Delivery'], ['onlinePrice', 'Online'],
@@ -123,7 +127,7 @@ export default function MenuItems() {
 
   const submitSave = async (payload: any, extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
     const base = import.meta.env.BASE_URL || '/';
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     const url = editId ? `${base}api/menu-items/${editId}` : `${base}api/menu-items`;
     const method = editId ? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ ...payload, ...extraFlags }) });
@@ -170,7 +174,7 @@ export default function MenuItems() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${base}api/menu-items/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
@@ -284,7 +288,7 @@ export default function MenuItems() {
                <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
             ) : filteredMenuItems.length === 0 ? (
                <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground" data-testid="menu-no-results">No menu items match your search or filter.</td></tr>
-            ) : filteredMenuItems.map((item: any) => (
+            ) : menuItemsPagination.paginatedRows.map((item: any) => (
               <tr
                 key={item.id}
                 className="table-row-hover"
@@ -336,6 +340,7 @@ export default function MenuItems() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...menuItemsPagination} onPageChange={menuItemsPagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Menu Item" : "Add Menu Item"} maxWidth="max-w-lg"
@@ -347,11 +352,12 @@ export default function MenuItems() {
           </div>
           <div>
             <Label>Category</Label>
-            <Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}>
-              <option value={0}>Select Category</option>
-              {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-          </div>
+              <Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}>
+                <option value={0}>Select Category</option>
+                {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              {(!categories || categories.length === 0) && <p className="text-[11px] text-amber-600 mt-1">No menu categories found. Create one in Masters first.</p>}
+            </div>
           <div className="border-t border-border pt-4">
             <h3 className="text-sm font-semibold text-foreground mb-1">Pricing</h3>
             <p className="text-xs text-muted-foreground mb-3">Selling price is the default. Channel-specific prices override it for that order type. Leave blank to use the selling price.</p>
@@ -456,11 +462,14 @@ function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: (
 
   const handleSave = async () => {
     try {
+      const invalidLine = lines.find((l) => !l.ingredientId || l.ingredientId <= 0 || !l.quantity || l.quantity <= 0);
+      if (invalidLine) { toast({ title: 'Complete every recipe row', description: 'Each row needs an ingredient and quantity greater than 0.', variant: 'destructive' }); return; }
       const validLines = lines.filter(l => l.ingredientId > 0);
       await saveMut.mutateAsync({ id: item.id, data: { lines: validLines } });
       queryClient.invalidateQueries({ queryKey: [`/api/menu-items/${item.id}/recipe`] });
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       refetchCosting();
+      toast({ title: 'Recipe saved' });
     } catch (e: any) { toast({ title: 'Failed to save recipe', description: e.message, variant: 'destructive' }); }
   };
 

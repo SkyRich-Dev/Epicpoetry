@@ -43,6 +43,8 @@ export function PageHeader({ title, description, children }: { title: string, de
 }
 
 export function StatCard({ title, value, icon: Icon, trend, trendLabel, colorClass = "text-primary" }: any) {
+  const hasTrend = typeof trend === 'number' && Number.isFinite(trend);
+  const trendDisplay = hasTrend ? Math.round(trend) : 0;
   return (
     <div className="bg-card rounded-2xl p-5 border border-border shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
       <div className="absolute -right-4 -top-4 opacity-[0.04] group-hover:opacity-[0.07] transition-opacity duration-500">
@@ -56,10 +58,10 @@ export function StatCard({ title, value, icon: Icon, trend, trendLabel, colorCla
       </div>
       <div className="relative z-10">
         <h3 className="text-2xl font-numbers font-bold text-foreground tracking-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</h3>
-        {trend && (
+        {hasTrend && (
           <p className="text-xs mt-2 flex items-center gap-1.5">
-            <span className={cn("font-semibold px-1.5 py-0.5 rounded-md", trend > 0 ? "text-emerald-700 bg-emerald-50" : "text-rose-700 bg-rose-50")}>
-              {trend > 0 ? '+' : ''}{trend}%
+            <span className={cn("font-semibold px-1.5 py-0.5 rounded-md", trendDisplay > 0 ? "text-emerald-700 bg-emerald-50" : trendDisplay < 0 ? "text-rose-700 bg-rose-50" : "text-muted-foreground bg-muted/60")}>
+              {trendDisplay > 0 ? '+' : ''}{trendDisplay}%
             </span>
             <span className="text-muted-foreground">{trendLabel}</span>
           </p>
@@ -96,6 +98,7 @@ export function Modal({
   isOpen,
   onClose,
   title,
+  titleActions,
   children,
   maxWidth = "max-w-md",
   footer,
@@ -153,15 +156,18 @@ export function Modal({
         data-testid="modal-overlay"
       />
       <div className={cn("bg-card text-card-foreground w-full rounded-2xl shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[90vh] animate-in zoom-in-95 fade-in duration-200", maxWidth)}>
-        <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <button
-            onClick={attemptClose}
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-150"
-            data-testid="modal-close-x"
-          >
-            <X size={18}/>
-          </button>
+        <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-foreground min-w-0">{title}</h2>
+          <div className="flex items-center gap-2 shrink-0">
+            {titleActions}
+            <button
+              onClick={attemptClose}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-150"
+              data-testid="modal-close-x"
+            >
+              <X size={18}/>
+            </button>
+          </div>
         </div>
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
           {children}
@@ -335,5 +341,69 @@ export function Badge({ children, variant = 'default', className }: any) {
     <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium", variants[variant as keyof typeof variants], className)}>
       {children}
     </span>
+  );
+}
+
+export function useClientPagination<T>(rows: T[] | null | undefined, pageSize = 5) {
+  const [page, setPage] = useState(1);
+  const totalItems = rows?.length || 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize]);
+
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const paginatedRows = (rows || []).slice(startIndex, endIndex);
+
+  return {
+    page,
+    setPage,
+    pageSize,
+    totalItems,
+    totalPages,
+    startIndex,
+    endIndex,
+    paginatedRows,
+  };
+}
+
+export function TablePagination({
+  page,
+  totalPages,
+  totalItems,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border/60 bg-card">
+      <p className="text-xs text-muted-foreground">
+        {totalItems === 0
+          ? 'Showing 0 of 0'
+          : `Showing ${Math.min((page - 1) * pageSize + 1, totalItems)}-${Math.min(page * pageSize, totalItems)} of ${totalItems}`}
+      </p>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" className="h-9 px-3" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+          Previous
+        </Button>
+        <span className="text-sm text-muted-foreground min-w-[72px] text-center">
+          Page {page} / {totalPages}
+        </span>
+        <Button variant="outline" className="h-9 px-3" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+          Next
+        </Button>
+      </div>
+    </div>
   );
 }

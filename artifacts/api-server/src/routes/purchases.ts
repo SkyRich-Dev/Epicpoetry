@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { eq, and, gte, lte, asc, sql } from "drizzle-orm";
 import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable, vendorLedgerTable, pettyCashLedgerTable, systemConfigTable } from "@workspace/db";
 import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurchaseResponse } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
@@ -9,10 +9,15 @@ import { validateNotFutureDate } from "../lib/dateValidation";
 import PDFDocument from "pdfkit";
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return Math.round((n || 0) * 100) / 100;
 }
 
 const router: IRouter = Router();
+
+function normalizeTenantSchemaName(value: string | null | undefined): string | null {
+  const trimmed = String(value || "").trim();
+  return trimmed ? trimmed : null;
+}
 
 function fmtMoney(n: number): string {
   return `₹${(Math.round((n || 0) * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -23,6 +28,82 @@ function fmtDateLabel(s?: string | null): string {
   const d = new Date(s + (s.length === 10 ? "T00:00:00Z" : ""));
   if (isNaN(d.getTime())) return s;
   return d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" });
+}
+
+async function recalculateVendorLedger(tx: any, vendorId: number): Promise<void> {
+  const entries = await tx
+    .select({
+      id: vendorLedgerTable.id,
+      debit: vendorLedgerTable.debit,
+      credit: vendorLedgerTable.credit,
+    })
+    .from(vendorLedgerTable)
+    .where(eq(vendorLedgerTable.vendorId, vendorId))
+    .orderBy(asc(vendorLedgerTable.transactionDate), asc(vendorLedgerTable.id));
+
+  let runningBalance = 0;
+  for (const entry of entries) {
+    runningBalance = round2(runningBalance + (entry.debit || 0) - (entry.credit || 0));
+    await tx
+      .update(vendorLedgerTable)
+      .set({ runningBalance })
+      .where(eq(vendorLedgerTable.id, entry.id));
+  }
+}
+
+async function removePurchaseStockImpact(tx: any, purchaseId: number): Promise<typeof purchaseLinesTable.$inferSelect[]> {
+  const existingLines = await tx.select().from(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, purchaseId));
+  for (const line of existingLines) {
+    const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+    if (!ing) continue;
+    const newStock = Math.max(0, (ing.currentStock || 0) - (line.quantity || 0));
+    await tx.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, line.ingredientId));
+  }
+  return existingLines;
+}
+
+async function applyPurchaseLines(
+  tx: any,
+  purchaseId: number,
+  lines: Array<{ ingredientId: number; quantity: number; purchaseUom?: string; unitRate: number; taxPercent?: number; expiryDate?: string | null }>,
+): Promise<number> {
+  let totalAmount = 0;
+  for (const line of lines) {
+    const taxPercent = line.taxPercent ?? 0;
+    const quantity = line.quantity;
+    const unitRate = line.unitRate;
+    const lineTotal = round2(quantity * unitRate * (1 + taxPercent / 100));
+    totalAmount = round2(totalAmount + lineTotal);
+
+    await tx.insert(purchaseLinesTable).values({
+      purchaseId,
+      ingredientId: line.ingredientId,
+      quantity,
+      purchaseUom: line.purchaseUom ?? "unit",
+      unitRate,
+      taxPercent,
+      lineTotal,
+      expiryDate: line.expiryDate || null,
+    });
+
+    const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+    if (!ing) continue;
+    const newStock = (ing.currentStock || 0) + quantity;
+    const oldTotal = (ing.weightedAvgCost || 0) * (ing.currentStock || 0);
+    const newTotal = oldTotal + unitRate * quantity;
+    const newAvg = newStock > 0 ? round2(newTotal / newStock) : unitRate;
+    await tx.update(ingredientsTable).set({
+      currentStock: newStock,
+      latestCost: unitRate,
+      weightedAvgCost: newAvg,
+    }).where(eq(ingredientsTable.id, line.ingredientId));
+  }
+  return totalAmount;
+}
+
+function normalizePurchasePaymentStatus(status?: string | null): "fully_paid" | "unpaid" {
+  const value = String(status || "").trim().toLowerCase();
+  return value === "paid" || value === "fully_paid" ? "fully_paid" : "unpaid";
 }
 
 function generateBillPdf(data: {
@@ -387,6 +468,19 @@ router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
     return;
   }
 
+  // Fill in the financial-tracking columns added on origin (gross / paid /
+  // pending / vendor invoice / due date). Local INSERT only sets paymentStatus
+  // and a placeholder totalAmount=0, so without this UPDATE these columns
+  // would stay at default 0 and break payables/aging reports.
+  await db.update(purchasesTable).set({
+    totalAmount: computedTotal,
+    grossAmount: computedTotal,
+    pendingAmount: isPaid ? 0 : computedTotal,
+    paidAmount: isPaid ? computedTotal : 0,
+    vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
+    dueDate: parsed.data.dueDate || undefined,
+  }).where(eq(purchasesTable.id, createdPurchase.id));
+
   await createAuditLog("purchases", createdPurchase.id, "create", null, { purchaseNumber, totalAmount: computedTotal, paymentMode, isPaid });
 
   res.status(201).json({
@@ -396,6 +490,98 @@ router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
     paymentStatus: isPaid ? "fully_paid" : "unpaid",
     vendorName,
   });
+});
+
+router.patch("/purchases/:id", authMiddleware, async (req, res): Promise<void> => {
+  const params = GetPurchaseParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const parsed = CreatePurchaseBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
+
+  const [existing] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can edit." }); return; }
+  if ((existing.paidAmount || 0) > 0) { res.status(403).json({ error: "Paid purchases cannot be edited." }); return; }
+
+  const validLines = parsed.data.lines.filter((line) => line.ingredientId > 0 && line.quantity > 0);
+  if (validLines.length === 0) { res.status(400).json({ error: "At least one purchase line is required." }); return; }
+
+  try {
+    const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
+    const updated = await db.transaction(async (tx) => {
+      if (tenantSchemaName) {
+        await tx.execute(sql`select set_config('search_path', ${`"${tenantSchemaName}", public`}, false)`);
+      }
+      await removePurchaseStockImpact(tx, existing.id);
+      await tx.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, existing.id));
+
+      const totalAmount = await applyPurchaseLines(tx, existing.id, validLines as any);
+      const paymentStatus = normalizePurchasePaymentStatus(parsed.data.paymentStatus);
+
+      const [purchase] = await tx.update(purchasesTable).set({
+        purchaseDate: parsed.data.purchaseDate,
+        vendorId: parsed.data.vendorId,
+        invoiceNumber: parsed.data.invoiceNumber,
+        vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
+        paymentMode: parsed.data.paymentMode,
+        paymentStatus,
+        notes: parsed.data.notes,
+        totalAmount,
+        grossAmount: totalAmount,
+        pendingAmount: paymentStatus === "fully_paid" ? 0 : totalAmount,
+        paidAmount: paymentStatus === "fully_paid" ? totalAmount : 0,
+      }).where(eq(purchasesTable.id, existing.id)).returning();
+
+      const [ledgerEntry] = await tx.select().from(vendorLedgerTable).where(and(
+        eq(vendorLedgerTable.referenceType, "purchase"),
+        eq(vendorLedgerTable.referenceId, existing.id),
+      ));
+
+      if (ledgerEntry) {
+        await tx.update(vendorLedgerTable).set({
+          vendorId: parsed.data.vendorId,
+          transactionDate: parsed.data.purchaseDate,
+          debit: totalAmount,
+          credit: 0,
+          description: `Purchase ${existing.purchaseNumber} - ${parsed.data.invoiceNumber || 'No invoice'}`,
+        }).where(eq(vendorLedgerTable.id, ledgerEntry.id));
+      } else {
+        await tx.insert(vendorLedgerTable).values({
+          vendorId: parsed.data.vendorId,
+          transactionDate: parsed.data.purchaseDate,
+          transactionType: "purchase",
+          referenceType: "purchase",
+          referenceId: existing.id,
+          debit: totalAmount,
+          credit: 0,
+          runningBalance: 0,
+          description: `Purchase ${existing.purchaseNumber} - ${parsed.data.invoiceNumber || 'No invoice'}`,
+        });
+      }
+
+      await recalculateVendorLedger(tx, existing.vendorId);
+      if (parsed.data.vendorId !== existing.vendorId) {
+        await recalculateVendorLedger(tx, parsed.data.vendorId);
+      }
+
+      return purchase;
+    });
+
+    await createAuditLog("purchases", existing.id, "update", existing, {
+      vendorId: parsed.data.vendorId,
+      purchaseDate: parsed.data.purchaseDate,
+      invoiceNumber: parsed.data.invoiceNumber,
+      totalAmount: updated.totalAmount,
+    });
+
+    const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, updated.vendorId));
+    res.json({ ...updated, vendorName: vendor?.name ?? "" });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to update purchase" });
+  }
 });
 
 router.get("/purchases/:id", async (req, res): Promise<void> => {

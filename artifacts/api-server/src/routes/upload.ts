@@ -604,16 +604,19 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
       let grossAmount = 0;
       for (const l of group.lines) { grossAmount += l.quantity * l.fixedPrice; }
       const invoiceDiscount = group.totalDiscount;
+      const hasDiscount = invoiceDiscount > 0;
 
       const finalLines: any[] = [];
       let totalGst = 0;
       for (const pl of group.lines) {
         const lineGross = pl.quantity * pl.fixedPrice;
-        const allocatedDiscount = grossAmount > 0 ? Math.round((lineGross / grossAmount) * invoiceDiscount * 100) / 100 : 0;
+        const allocatedDiscount = hasDiscount && grossAmount > 0 ? Math.round((lineGross / grossAmount) * invoiceDiscount * 100) / 100 : 0;
         const discountedGross = lineGross - allocatedDiscount;
-        const discountedUnitPrice = pl.quantity > 0 ? discountedGross / pl.quantity : 0;
+        const discountedUnitPrice = hasDiscount ? (pl.quantity > 0 ? discountedGross / pl.quantity : 0) : pl.fixedPrice;
 
-        let taxableAmount: number, gstAmt: number, finalAmount: number;
+        let taxableAmount: number;
+        let gstAmt: number;
+        let finalAmount: number;
         if (group.gstInclusive) {
           finalAmount = discountedGross;
           taxableAmount = pl.gstPercent > 0 ? finalAmount / (1 + pl.gstPercent / 100) : finalAmount;
@@ -777,14 +780,15 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
       let grossAmount = 0;
       for (const l of group.lines) { grossAmount += l.quantity * l.fixedPrice; }
       const invoiceDiscount = group.totalDiscount;
+      const hasDiscount = invoiceDiscount > 0;
 
       const finalLines: any[] = [];
       let totalGst = 0;
       for (const pl of group.lines) {
         const lineGross = pl.quantity * pl.fixedPrice;
-        const allocatedDiscount = grossAmount > 0 ? Math.round((lineGross / grossAmount) * invoiceDiscount * 100) / 100 : 0;
+        const allocatedDiscount = hasDiscount && grossAmount > 0 ? Math.round((lineGross / grossAmount) * invoiceDiscount * 100) / 100 : 0;
         const discountedGross = lineGross - allocatedDiscount;
-        const discountedUnitPrice = pl.quantity > 0 ? discountedGross / pl.quantity : 0;
+        const discountedUnitPrice = hasDiscount ? (pl.quantity > 0 ? discountedGross / pl.quantity : 0) : pl.fixedPrice;
         const taxableAmount = discountedGross;
         const gstAmt = taxableAmount * (pl.gstPercent / 100);
         const finalAmount = taxableAmount + gstAmt;

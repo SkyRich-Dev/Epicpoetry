@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
+import { enforceSaasAccess, runWithTenantSchema } from "./lib/saas";
 
 const app: Express = express();
 
@@ -31,8 +32,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const PUBLIC_PATHS = ["/api/healthz", "/api/auth/login"];
-const PUBLIC_PREFIXES = ["/api/webhook/"];
-app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+const PUBLIC_PREFIXES = ["/api/webhook/", "/api/internal/saas/"];
+app.use("/api", async (req: Request, res: Response, next: NextFunction) => {
   const path = req.path.startsWith("/") ? `/api${req.path}` : `/api/${req.path}`;
   if (PUBLIC_PATHS.some(p => path === p) || PUBLIC_PREFIXES.some(p => path.startsWith(p))) {
     return next();
@@ -50,7 +51,10 @@ app.use("/api", (req: Request, res: Response, next: NextFunction) => {
   }
   (req as any).userId = payload.userId;
   (req as any).userRole = payload.role;
-  next();
+  (req as any).tenantSchemaName = payload.tenantSchemaName;
+  runWithTenantSchema(payload.tenantSchemaName, () => {
+    enforceSaasAccess(req, res, next).catch(next);
+  });
 });
 
 app.use("/api", router);

@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useListIngredients, useCreateIngredient, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const COMMON_UOMS = ['g', 'kg', 'ml', 'L', 'pcs', 'nos', 'piece', 'box', 'pack', 'dozen', 'bottle', 'can'];
 
@@ -59,6 +60,7 @@ export default function Ingredients() {
     });
     return rows;
   }, [ingredients, search, filterCategoryId, sortBy]);
+  const ingredientsPagination = useClientPagination(filteredSorted, 10);
 
   const openCreate = () => {
     setEditId(null);
@@ -78,7 +80,7 @@ export default function Ingredients() {
 
   const submitSave = async (extraFlags: { confirmDuplicate?: boolean; confirmSimilar?: boolean } = {}) => {
     const base = import.meta.env.BASE_URL || '/';
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     const payload: any = { ...formData, ...extraFlags };
     const url = editId ? `${base}api/ingredients/${editId}` : `${base}api/ingredients`;
     const method = editId ? 'PATCH' : 'POST';
@@ -100,6 +102,10 @@ export default function Ingredients() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) { toast({ title: 'Ingredient name is required', variant: 'destructive' }); return; }
+    if (!categories || categories.length === 0) { toast({ title: 'Create an ingredient category first', description: 'Go to Masters and add at least one category with type Ingredient before creating ingredients.', variant: 'destructive' }); return; }
+    if (!formData.categoryId || formData.categoryId <= 0) { toast({ title: 'Please select an ingredient category', variant: 'destructive' }); return; }
+    if (!formData.stockUom.trim() || !formData.purchaseUom.trim() || !formData.recipeUom.trim()) { toast({ title: 'All UOM fields are required', variant: 'destructive' }); return; }
+    if (formData.conversionFactor <= 0) { toast({ title: 'Conversion factor must be greater than 0', variant: 'destructive' }); return; }
     try {
       const r = await submitSave();
       if (r.needsConfirm) {
@@ -133,7 +139,7 @@ export default function Ingredients() {
     if (!deleteConfirm) return;
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${base}api/ingredients/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
@@ -211,7 +217,7 @@ export default function Ingredients() {
               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : filteredSorted.length === 0 ? (
               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No ingredients match your filters.</td></tr>
-            ) : filteredSorted.map((item: any) => (
+            ) : ingredientsPagination.paginatedRows.map((item: any) => (
               <tr key={item.id} className="table-row-hover">
                 <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{item.code}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
@@ -232,14 +238,15 @@ export default function Ingredients() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...ingredientsPagination} onPageChange={ingredientsPagination.setPage} />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={ingFormDirty} title={editId ? "Edit Ingredient" : "Add Ingredient"} maxWidth="max-w-2xl"
-        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || !categories || categories.length === 0}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Name</Label><Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Arabica Beans" /></div>
-            <div><Label>Category</Label><Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}><option value={0}>Select Category</option>{categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>
+            <div><Label>Category</Label><Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}><option value={0}>Select Category</option>{categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>{(!categories || categories.length === 0) && <p className="text-[11px] text-amber-600 mt-1">No ingredient categories found. Create one in Masters first.</p>}</div>
           </div>
           <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div>

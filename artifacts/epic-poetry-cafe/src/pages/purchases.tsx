@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useListPurchases, useCreatePurchase, useListVendors, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
-import { Plus, Receipt, Trash2 } from 'lucide-react';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
+import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
+
+const BASE = import.meta.env.BASE_URL || '/';
 
 export default function Purchases() {
   const queryClient = useQueryClient();
@@ -21,6 +24,10 @@ export default function Purchases() {
   const { toast } = useToast();
   const createMut = useCreatePurchase();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<any>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isPurchaseDetailLoading, setIsPurchaseDetailLoading] = useState(false);
   
   const [formData, setFormData] = useState({
     purchaseDate: new Date().toISOString().split('T')[0],
@@ -32,11 +39,55 @@ export default function Purchases() {
 
   const [lines, setLines] = useState<any[]>([]);
   const purchaseFormDirty = useFormDirty(isModalOpen, { formData, lines });
+  const purchasesPagination = useClientPagination(purchases || [], 10);
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingPurchaseId(null);
+  };
 
   const openCreate = () => {
+    setEditingPurchaseId(null);
     setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', isPaid: false, paymentMode: 'cash' });
     setLines([{ ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
     setIsModalOpen(true);
+  };
+
+  const openEdit = (purchaseId: number) => {
+    setEditingPurchaseId(purchaseId);
+    setLines([]);
+    setIsModalOpen(true);
+    const token = getAuthToken();
+    setIsPurchaseDetailLoading(true);
+    fetch(`${BASE}api/purchases/${purchaseId}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })
+      .then((detail) => {
+        setFormData({
+          purchaseDate: detail.purchase.purchaseDate,
+          vendorId: detail.purchase.vendorId,
+          invoiceNumber: detail.purchase.invoiceNumber || '',
+          paymentMode: detail.purchase.paymentMode || 'CASH',
+          paymentStatus: detail.purchase.paymentStatus === 'fully_paid' ? 'PAID' : 'PENDING',
+        });
+        setLines((detail.lines || []).map((line: any) => ({
+          ingredientId: line.ingredientId,
+          quantity: line.quantity,
+          purchaseUom: line.purchaseUom || 'unit',
+          unitRate: line.unitRate,
+          taxPercent: line.taxPercent ?? 0,
+          expiryDate: line.expiryDate || '',
+        })));
+      })
+      .catch((e: any) => {
+        toast({ title: 'Failed to load purchase', description: e.message, variant: 'destructive' });
+        closeModal();
+      })
+      .finally(() => setIsPurchaseDetailLoading(false));
   };
 
   const addLine = () => setLines([...lines, { ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
@@ -57,6 +108,8 @@ export default function Purchases() {
 
   const handleSave = async () => {
     if (!formData.vendorId) { toast({ title: 'Please select a vendor', variant: 'destructive' }); return; }
+    const incompleteLine = lines.find(l => !l.ingredientId || l.ingredientId <= 0 || !l.quantity || l.quantity <= 0);
+    if (incompleteLine) { toast({ title: 'Complete every purchase row', description: 'Each row needs an ingredient and quantity greater than 0.', variant: 'destructive' }); return; }
     const validLines = lines.filter(l => l.ingredientId > 0 && l.quantity > 0);
     if (validLines.length === 0) { toast({ title: 'Add at least one item with quantity', variant: 'destructive' }); return; }
     const today = new Date().toISOString().split('T')[0];
@@ -75,13 +128,28 @@ export default function Purchases() {
         paymentMode: formData.isPaid ? formData.paymentMode : undefined,
         lines: validLines.map(l => ({ ...l, expiryDate: l.expiryDate || null })),
       };
-      await createMut.mutateAsync({ data: payload as any });
+      if (editingPurchaseId) {
+        const token = getAuthToken();
+        setIsSavingEdit(true);
+        const res = await fetch(`${BASE}api/purchases/${editingPurchaseId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await res.text());
+      } else {
+        await createMut.mutateAsync({ data: payload as any });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
       queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/balance'] });
-      setIsModalOpen(false);
-      toast({ title: 'Purchase recorded' });
+      closeModal();
+      toast({ title: editingPurchaseId ? 'Purchase updated' : 'Purchase recorded' });
     } catch (e: any) { toast({ title: 'Failed to save purchase', description: e.message, variant: 'destructive' }); }
+    finally { setIsSavingEdit(false); }
   };
 
   const handleVerify = async (id: number) => {
@@ -91,6 +159,23 @@ export default function Purchases() {
   const handleUnverify = async (id: number) => {
     await apiUnverify('purchases', id);
     queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`${BASE}api/purchases/${deleteConfirm.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
+      setDeleteConfirm(null);
+      toast({ title: 'Purchase deleted' });
+    } catch (e: any) {
+      toast({ title: 'Failed to delete purchase', description: e.message, variant: 'destructive' });
+    }
   };
 
   return (
@@ -112,14 +197,15 @@ export default function Purchases() {
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-right">Total Amount</th>
               <th className="px-6 py-4 text-center">Verified</th>
+              <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
+              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
             ) : purchases?.length === 0 ? (
-               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
-            ) : purchases?.map((p: any) => (
+               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
+            ) : purchasesPagination.paginatedRows.map((p: any) => (
               <tr key={p.id} className="table-row-hover">
                 <td className="px-6 py-4 text-foreground font-medium">{formatDate(p.purchaseDate)}</td>
                 <td className="px-6 py-4 text-muted-foreground">{p.purchaseNumber}</td>
@@ -134,14 +220,39 @@ export default function Purchases() {
                 <td className="px-6 py-4 text-center">
                   <VerifyButton verified={!!p.verified} isAdmin={isAdmin} onVerify={() => handleVerify(p.id)} onUnverify={() => handleUnverify(p.id)} />
                 </td>
+                <td className="px-6 py-4">
+                  <div className="flex justify-end gap-1">
+                    {!isViewer && (
+                      <button
+                        onClick={() => openEdit(p.id)}
+                        className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={p.paidAmount > 0 ? 'Paid purchases cannot be edited' : 'Edit'}
+                        disabled={p.paidAmount > 0 || (p.verified && !isAdmin)}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                    {!isViewer && (
+                      <button
+                        onClick={() => setDeleteConfirm(p)}
+                        className="p-2 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={p.verified && !isAdmin ? 'Verified purchases can only be deleted by admin' : 'Delete'}
+                        disabled={p.verified && !isAdmin}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        <TablePagination {...purchasesPagination} onPageChange={purchasesPagination.setPage} />
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={purchaseFormDirty} title="Record New Purchase" maxWidth="max-w-4xl"
-        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || lines.length === 0}>Complete Purchase</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={closeModal} dirty={purchaseFormDirty} title={editingPurchaseId ? "Edit Purchase" : "Record New Purchase"} maxWidth="max-w-4xl"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || isSavingEdit || lines.length === 0 || isPurchaseDetailLoading}>{editingPurchaseId ? 'Update Purchase' : 'Complete Purchase'}</Button></>}>
         <div className="space-y-6 py-2">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-transparent rounded-xl border border-border/50">
             <div>
@@ -210,6 +321,9 @@ export default function Purchases() {
                 <div className="w-28 text-right">Total</div>
                 <div className="w-10"></div>
               </div>
+              {editingPurchaseId && isPurchaseDetailLoading && (
+                <div className="px-3 py-4 text-sm text-muted-foreground">Loading purchase details...</div>
+              )}
               {lines.map((line, idx) => {
                 const lineTotal = (line.quantity * line.unitRate) * (1 + line.taxPercent/100);
                 return (
@@ -257,6 +371,17 @@ export default function Purchases() {
             </div>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        title="Delete Purchase"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}
+      >
+        <p className="py-2 text-sm text-muted-foreground">
+          Delete purchase <span className="font-semibold text-foreground">{deleteConfirm?.purchaseNumber}</span>? This removes its line items too.
+        </p>
       </Modal>
     </div>
   );

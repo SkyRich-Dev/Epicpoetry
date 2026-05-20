@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { PageHeader } from '../components/ui-extras';
 import { Cake, Heart, Phone, ArrowLeft } from 'lucide-react';
 import { Link } from 'wouter';
+import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
 
 async function apiFetch(path: string) {
-  const token = localStorage.getItem('token');
+  const token = getAuthToken();
   const res = await fetch(`${BASE}api/${path}`, { headers: { 'Authorization': `Bearer ${token}` } });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

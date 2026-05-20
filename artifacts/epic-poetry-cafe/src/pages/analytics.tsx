@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PageHeader, Button, Select, Label, Input, formatCurrency, formatDate } from '../components/ui-extras';
 import { BarChart3, TrendingUp, Trash2, Download, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
+import { getAuthToken } from '../lib/auth-storage';
 
 type Period = 'daily' | 'weekly' | 'monthly' | 'custom';
 type ReportTab = 'profitability' | 'wastage';
@@ -142,7 +143,7 @@ export default function AnalyticsPage() {
   const fetchReport = async () => {
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     const baseUrl = import.meta.env.BASE_URL || '/';
     const apiBase = `${window.location.origin}${baseUrl}api`.replace(/\/+/g, '/').replace(':/', '://');
 

@@ -214,20 +214,23 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
       let totalGst = 0;
       let totalTaxable = 0;
       let totalFinal = 0;
+      const hasDiscount = totalDiscount > 0 || lineData.some((line) => line.ppItemDiscount > 0);
       const useOrderLevelTax = orderTaxTotal > 0;
-      const discountRatio = grossAmount > 0 ? totalDiscount / grossAmount : 0;
+      const discountRatio = hasDiscount && grossAmount > 0 ? totalDiscount / grossAmount : 0;
 
       const finalLines = lineData.map(l => {
-        const lineDiscount = l.ppItemDiscount > 0
-          ? l.ppItemDiscount
-          : Math.round(l.grossLineAmount * discountRatio * 100) / 100;
+        const lineDiscount = hasDiscount
+          ? (l.ppItemDiscount > 0
+            ? l.ppItemDiscount
+            : Math.round(l.grossLineAmount * discountRatio * 100) / 100)
+          : 0;
         const taxable = l.grossLineAmount - lineDiscount;
-        let gst: number;
+        let gst = 0;
         if (useOrderLevelTax && grossAmount > 0) {
           gst = Math.round((l.grossLineAmount / grossAmount) * orderTaxTotal * 100) / 100;
         } else if (l.ppItemTax > 0) {
           gst = l.ppItemTax;
-        } else {
+        } else if (l.gstPercent > 0) {
           gst = Math.round(taxable * l.gstPercent / 100 * 100) / 100;
         }
         const finalAmt = taxable + gst;
@@ -242,7 +245,9 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
           quantity: l.quantity,
           grossLineAmount: Math.round(l.grossLineAmount * 100) / 100,
           lineDiscountAmount: Math.round(lineDiscount * 100) / 100,
-          discountedUnitPrice: l.quantity > 0 ? Math.round((l.grossLineAmount - lineDiscount) / l.quantity * 100) / 100 : 0,
+          discountedUnitPrice: l.quantity > 0
+            ? Math.round(((hasDiscount ? (l.grossLineAmount - lineDiscount) : l.grossLineAmount) / l.quantity) * 100) / 100
+            : 0,
           taxableLineAmount: Math.round(taxable * 100) / 100,
           gstPercent: l.gstPercent,
           gstAmount: Math.round(gst * 100) / 100,

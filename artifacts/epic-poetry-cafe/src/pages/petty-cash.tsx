@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useListPettyCash, useCreatePettyCash, useGetPettyCashSummary, useDeletePettyCash } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const METHODS = ['Cash', 'Bank Withdrawal', 'UPI', 'Card Withdrawal', 'Owner Contribution', 'Manager Float'];
 const CATEGORIES = ['Local Purchase', 'Cleaning Materials', 'Delivery Charges', 'Petty Maintenance', 'Staff Emergency', 'Small Repairs', 'Local Transport', 'Market Purchase', 'Tea/Snacks', 'Other'];
@@ -29,6 +30,7 @@ export default function PettyCash() {
   const createMut = useCreatePettyCash();
   const deleteMut = useDeletePettyCash();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const pettyCashPagination = useClientPagination(transactions || [], 10);
 
   const [obModal, setObModal] = useState(false);
   const [obAmount, setObAmount] = useState('');
@@ -41,7 +43,7 @@ export default function PettyCash() {
     setObSaving(true);
     try {
       const base = import.meta.env.BASE_URL || '/';
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       const res = await fetch(`${base}api/petty-cash/opening-balance`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -86,7 +88,7 @@ export default function PettyCash() {
     try {
       if (editingId) {
         const base = import.meta.env.BASE_URL || '/';
-        const token = localStorage.getItem('token');
+        const token = getAuthToken();
         const res = await fetch(`${base}api/petty-cash/${editingId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -188,7 +190,7 @@ export default function PettyCash() {
               <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : transactions?.length === 0 ? (
               <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">No transactions recorded.</td></tr>
-            ) : transactions?.map(t => (
+            ) : pettyCashPagination.paginatedRows.map(t => (
               <tr key={t.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(t.transactionDate)}</td>
                 <td className="px-6 py-4"><TypeBadge type={t.transactionType} /></td>
@@ -217,6 +219,7 @@ export default function PettyCash() {
             ))}
           </tbody>
         </table>
+        <TablePagination {...pettyCashPagination} onPageChange={pettyCashPagination.setPage} />
       </div>
 
       <Modal isOpen={obModal} onClose={() => setObModal(false)} dirty={obFormDirty} title="Set Opening Balance"

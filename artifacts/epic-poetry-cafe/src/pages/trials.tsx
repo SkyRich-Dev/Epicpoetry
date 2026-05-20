@@ -5,9 +5,10 @@ import { PageHeader, Button, Input, Label, Modal, Badge, Select, formatCurrency,
 import { FlaskConical, Plus, ArrowLeft, Clock, Beaker, ChevronRight, Trash2, CheckCircle2, Package, IndianRupee, Timer, XCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 function useIngredients() {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? getAuthToken() : null;
   const [data, setData] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   React.useEffect(() => {
@@ -96,6 +97,8 @@ export default function Trials() {
   };
 
   const handleCreateVersion = async () => {
+    const incompleteRow = ingredientRows.find(r => !r.ingredientId || r.ingredientId <= 0 || !r.actualQty || r.actualQty <= 0);
+    if (incompleteRow) { toast({ title: 'Complete every ingredient row', description: 'Each row needs an ingredient and actual quantity greater than 0.', variant: 'destructive' }); return; }
     const validLines = ingredientRows.filter(r => r.ingredientId > 0 && r.actualQty > 0);
     if (validLines.length === 0) { toast({ title: 'Add at least one ingredient', variant: 'destructive' }); return; }
     if (versionForm.batchSize <= 0) { toast({ title: 'Batch size must be > 0', variant: 'destructive' }); return; }

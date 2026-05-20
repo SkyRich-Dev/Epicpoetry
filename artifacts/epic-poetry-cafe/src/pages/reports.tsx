@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { PageHeader, Button, Input, Label, formatCurrency } from '../components/ui-extras';
+import { getAuthToken } from '../lib/auth-storage';
 import {
   Download, FileBarChart, FileSpreadsheet, FileText, Loader2, Play, Search, AlertCircle,
   Star, Coffee, Package, IndianRupee, Truck, Wallet, ShoppingBag, Clock,
@@ -17,7 +18,7 @@ const RECENTS_KEY = 'epc.reports.recents.v1';
 const DENSITY_KEY = 'epc.reports.density.v1';
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token');
+  const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

@@ -127,11 +127,12 @@ function ComparisonBadge({ current, previous, label }: { current: number; previo
   const diff = previous > 0 ? ((current - previous) / previous) * 100 : current > 0 ? 100 : 0;
   const isUp = diff > 0;
   const isFlat = diff === 0;
+  const diffDisplay = Math.round(diff);
   return (
     <div className="flex items-center gap-1.5">
       {isFlat ? <Minus size={12} className="text-muted-foreground" /> : isUp ? <ArrowUpRight size={12} className="text-emerald-600" /> : <ArrowDownRight size={12} className="text-rose-600" />}
       <span className={cn("text-xs font-medium", isFlat ? "text-muted-foreground" : isUp ? "text-emerald-600" : "text-rose-600")}>
-        {isFlat ? "0%" : `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`}
+        {isFlat ? "0%" : `${diffDisplay > 0 ? '+' : ''}${diffDisplay}%`}
       </span>
       <span className="text-xs text-muted-foreground">{label} ({formatCurrency(previous)})</span>
     </div>
@@ -431,6 +432,56 @@ function ActionRequired({ summary }: { summary: any }) {
           >
             Next <ChevronRight size={14} />
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CelebrationsCard() {
+  const [data, setData] = useState<{ birthdays: any[]; anniversaries: any[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    customFetch(`${BASE}api/customers/reminders/this-month`)
+      .then((d: any) => setData(d))
+      .catch(() => setData({ birthdays: [], anniversaries: [] }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const monthName = new Date().toLocaleDateString('en-US', { month: 'long' });
+  const bCount = data?.birthdays?.length ?? 0;
+  const aCount = data?.anniversaries?.length ?? 0;
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Cake className="text-pink-500" size={22} />
+          <h3 className="text-lg font-display font-semibold text-foreground">Celebrations in {monthName}</h3>
+        </div>
+        <Link href="/celebrations" className="inline-flex items-center gap-1 text-sm text-primary hover:underline font-medium">
+          View details <ArrowRight size={14} />
+        </Link>
+      </div>
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex items-center gap-3 p-4 bg-pink-50 dark:bg-pink-950/20 rounded-xl border border-pink-100 dark:border-pink-900/30">
+            <Cake className="text-pink-500 shrink-0" size={28} />
+            <div>
+              <p className="text-2xl font-bold text-pink-600 dark:text-pink-400 font-numbers">{bCount}</p>
+              <p className="text-xs text-muted-foreground">Birthdays this month</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-rose-50 dark:bg-rose-950/20 rounded-xl border border-rose-100 dark:border-rose-900/30">
+            <Heart className="text-rose-500 shrink-0" size={28} />
+            <div>
+              <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 font-numbers">{aCount}</p>
+              <p className="text-xs text-muted-foreground">Anniversaries this month</p>
+            </div>
+          </div>
         </div>
       )}
     </div>

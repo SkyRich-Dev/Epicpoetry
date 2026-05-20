@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useListMenuItems } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, useFormDirty } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string, opts?: any) {
-  const token = localStorage.getItem('token');
+  const token = getAuthToken();
   const headers: any = { 'Authorization': `Bearer ${token}` };
   if (opts?.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}api/${path}`, { ...opts, headers: { ...headers, ...opts?.headers } });
@@ -39,6 +40,13 @@ export default function Sales() {
   const [dailySummary, setDailySummary] = useState<any[]>([]);
   const [consumption, setConsumption] = useState<any[]>([]);
   const [invLoading, setInvLoading] = useState(false);
+  const [invoiceSummary, setInvoiceSummary] = useState({
+    count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0,
+  });
+  const invoicesPagination = useClientPagination(invoices, 10);
+  const itemSummaryPagination = useClientPagination(itemSummary, 10);
+  const dailySummaryPagination = useClientPagination(dailySummary, 10);
+  const consumptionPagination = useClientPagination(consumption, 10);
 
   const [invoiceModal, setInvoiceModal] = useState(false);
   const [detailModal, setDetailModal] = useState<any>(null);
@@ -52,8 +60,6 @@ export default function Sales() {
     lines: [{ menuItemId: 0, quantity: 1, gstPercent: 5 }] as { menuItemId: number; quantity: number; gstPercent: number }[],
   });
   const invoiceFormDirty = useFormDirty(invoiceModal, invoiceForm);
-
-  const getMenuPrice = (id: number) => menuItems?.find(m => m.id === id)?.sellingPrice || 0;
 
   const buildParams = () => {
     const p = new URLSearchParams();
@@ -69,6 +75,10 @@ export default function Sales() {
 
   const loadItemSummary = useCallback(async () => {
     try { const data = await apiFetch(`sales-invoices-item-summary?${buildParams()}`); setItemSummary(data); } catch {}
+  }, [fromDate, toDate]);
+
+  const loadInvoiceSummary = useCallback(async () => {
+    try { const data = await apiFetch(`sales-invoices-summary?${buildParams()}`); setInvoiceSummary(data); } catch {}
   }, [fromDate, toDate]);
 
   const loadDailySummary = useCallback(async () => {
@@ -88,6 +98,7 @@ export default function Sales() {
 
   useEffect(() => {
     loadInvoices();
+    loadInvoiceSummary();
   }, [fromDate, toDate]);
 
   const openInvoiceCreate = () => {
@@ -106,10 +117,6 @@ export default function Sales() {
     setInvoiceForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: value } : l) }));
   };
 
-  const calcLineGross = () => invoiceForm.lines.reduce((sum, l) => sum + l.quantity * getMenuPrice(l.menuItemId), 0);
-  const grossTotal = calcLineGross();
-  const netTotal = grossTotal - invoiceForm.totalDiscount;
-
   const handleInvoiceCreate = async () => {
     try {
       const validLines = invoiceForm.lines.filter(l => l.menuItemId > 0 && l.quantity > 0);
@@ -121,29 +128,32 @@ export default function Sales() {
       toast({ title: 'Invoice created' });
       setInvoiceModal(false);
       loadInvoices();
+      loadInvoiceSummary();
     } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
   };
 
   const viewInvoiceDetail = async (id: number) => {
-    try { const data = await apiFetch(`sales-invoices/${id}`); setDetailModal(data); } catch {}
+    try {
+      const data = await apiFetch(`sales-invoices/${id}`);
+      setDetailModal(data);
+    } catch {}
+  };
+
+  const closeDetailModal = () => {
+    setDetailModal(null);
   };
 
   const handleVerifyInv = async (id: number) => {
-    try { await apiFetch(`sales-invoices/${id}/verify`, { method: 'PATCH' }); toast({ title: 'Verified' }); loadInvoices(); } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+    try { await apiFetch(`sales-invoices/${id}/verify`, { method: 'PATCH' }); toast({ title: 'Verified' }); loadInvoices(); loadInvoiceSummary(); } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
   };
   const handleUnverifyInv = async (id: number) => {
-    try { await apiFetch(`sales-invoices/${id}/unverify`, { method: 'PATCH' }); toast({ title: 'Unverified' }); loadInvoices(); } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+    try { await apiFetch(`sales-invoices/${id}/unverify`, { method: 'PATCH' }); toast({ title: 'Unverified' }); loadInvoices(); loadInvoiceSummary(); } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
   };
 
   const handleInvDelete = async () => {
     if (!deleteConfirmInv) return;
-    try { await apiFetch(`sales-invoices/${deleteConfirmInv.id}`, { method: 'DELETE' }); toast({ title: 'Deleted' }); setDeleteConfirmInv(null); loadInvoices(); } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
+    try { await apiFetch(`sales-invoices/${deleteConfirmInv.id}`, { method: 'DELETE' }); toast({ title: 'Deleted' }); setDeleteConfirmInv(null); loadInvoices(); loadInvoiceSummary(); } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
   };
-
-  const invStats = useMemo(() => invoices.reduce((acc, inv) => ({
-    count: acc.count + 1, gross: acc.gross + inv.grossAmount, discount: acc.discount + inv.totalDiscount,
-    gst: acc.gst + inv.gstAmount, final: acc.final + inv.finalAmount, mismatched: acc.mismatched + (inv.matchStatus === 'mismatched' ? 1 : 0),
-  }), { count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0 }), [invoices]);
 
   const drillToDate = (date: string) => {
     setFromDate(date);
@@ -167,23 +177,23 @@ export default function Sales() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-card rounded-xl border p-4 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setTab('invoices')}>
           <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><TrendingUp size={12} /> Total Sales</p>
-          <p className="text-2xl font-bold font-numbers text-emerald-600">{formatCurrency(invStats.final)}</p>
-          <p className="text-xs text-muted-foreground mt-1">{invStats.count} invoices</p>
+          <p className="text-2xl font-bold font-numbers text-emerald-600">{formatCurrency(invoiceSummary.final)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{invoiceSummary.count} invoices</p>
         </div>
         <div className="bg-card rounded-xl border p-4">
           <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><FileText size={12} /> Gross Sales</p>
-          <p className="text-xl font-bold font-numbers">{formatCurrency(invStats.gross)}</p>
-          <p className="text-xs text-muted-foreground mt-1">Before discounts & GST</p>
+          <p className="text-xl font-bold font-numbers">{formatCurrency(invoiceSummary.gross)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Stored invoice gross total</p>
         </div>
         <div className="bg-card rounded-xl border p-4">
           <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><IndianRupee size={12} /> GST Collected</p>
-          <p className="text-xl font-bold font-numbers text-blue-600">{formatCurrency(invStats.gst)}</p>
-          <p className="text-xs text-muted-foreground mt-1">Discount: {formatCurrency(invStats.discount)}</p>
+          <p className="text-xl font-bold font-numbers text-blue-600">{formatCurrency(invoiceSummary.gst)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Stored discount: {formatCurrency(invoiceSummary.discount)}</p>
         </div>
         <div className="bg-card rounded-xl border p-4">
           <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><AlertTriangle size={12} /> Mismatches</p>
-          <p className="text-xl font-bold font-numbers text-red-600">{invStats.mismatched}</p>
-          <p className="text-xs text-muted-foreground mt-1">{invStats.mismatched > 0 ? 'Needs attention' : 'All matched'}</p>
+          <p className="text-xl font-bold font-numbers text-red-600">{invoiceSummary.mismatched}</p>
+          <p className="text-xs text-muted-foreground mt-1">{invoiceSummary.mismatched > 0 ? 'Needs attention' : 'All matched'}</p>
         </div>
       </div>
 
@@ -219,7 +229,7 @@ export default function Sales() {
                 <tr><td colSpan={11} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
               ) : invoices.length === 0 ? (
                 <tr><td colSpan={11} className="px-6 py-8 text-center text-muted-foreground">No invoices found</td></tr>
-              ) : invoices.map(inv => (
+              ) : invoicesPagination.paginatedRows.map(inv => (
                 <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
                   <td className="px-4 py-3"><div className="font-medium">{inv.invoiceNo}</div><div className="text-xs text-muted-foreground capitalize">{inv.sourceType}</div></td>
                   <td className="px-4 py-3">{formatDate(inv.salesDate)}{inv.invoiceTime && <div className="text-xs text-muted-foreground">{inv.invoiceTime}</div>}</td>
@@ -246,6 +256,7 @@ export default function Sales() {
               ))}
             </tbody>
           </table>
+          <TablePagination {...invoicesPagination} onPageChange={invoicesPagination.setPage} />
         </div>
       )}
 
@@ -266,7 +277,7 @@ export default function Sales() {
             <tbody>
               {itemSummary.length === 0 ? (
                 <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No data</td></tr>
-              ) : itemSummary.map((item: any) => (
+              ) : itemSummaryPagination.paginatedRows.map((item: any) => (
                 <tr key={item.menuItemId} className="border-b hover:bg-muted/30">
                   <td className="px-4 py-3"><div className="font-medium">{item.itemName}</div><div className="text-xs text-muted-foreground">{item.itemCode}</div></td>
                   <td className="px-4 py-3 text-right font-numbers">{item.totalQty}</td>
@@ -281,6 +292,7 @@ export default function Sales() {
               ))}
             </tbody>
           </table>
+          <TablePagination {...itemSummaryPagination} onPageChange={itemSummaryPagination.setPage} />
         </div>
       )}
 
@@ -299,7 +311,7 @@ export default function Sales() {
             <tbody>
               {dailySummary.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No data</td></tr>
-              ) : dailySummary.map((day: any) => (
+              ) : dailySummaryPagination.paginatedRows.map((day: any) => (
                 <tr key={day.date} className="border-b hover:bg-muted/30 cursor-pointer group" onClick={() => drillToDate(day.date)} title="Click to view invoices for this date">
                   <td className="px-4 py-3 font-medium text-primary group-hover:underline flex items-center gap-1">{formatDate(day.date)} <ArrowRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" /></td>
                   <td className="px-4 py-3 text-right font-numbers">{day.totalInvoices}</td>
@@ -312,6 +324,7 @@ export default function Sales() {
               ))}
             </tbody>
           </table>
+          <TablePagination {...dailySummaryPagination} onPageChange={dailySummaryPagination.setPage} />
         </div>
       )}
 
@@ -328,7 +341,7 @@ export default function Sales() {
             <tbody>
               {consumption.length === 0 ? (
                 <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No consumption data</td></tr>
-              ) : consumption.map((c: any) => (
+              ) : consumptionPagination.paginatedRows.map((c: any) => (
                 <tr key={c.ingredientId} className="border-b hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium">{c.ingredientName}</td>
                   <td className="px-4 py-3 text-right font-numbers">{c.totalQty}</td>
@@ -345,6 +358,7 @@ export default function Sales() {
               )}
             </tbody>
           </table>
+          <TablePagination {...consumptionPagination} onPageChange={consumptionPagination.setPage} />
         </div>
       )}
 
@@ -397,10 +411,6 @@ export default function Sales() {
                     {idx === 0 && <span className="text-xs text-muted-foreground">GST %</span>}
                     <Input type="number" min="0" step="0.5" value={line.gstPercent} onChange={e => updateLine(idx, 'gstPercent', Number(e.target.value))} />
                   </div>
-                  <div className="w-24 text-right font-numbers text-sm pt-1">
-                    {idx === 0 && <span className="text-xs text-muted-foreground block">Line Total</span>}
-                    {formatCurrency(line.quantity * getMenuPrice(line.menuItemId))}
-                  </div>
                   {invoiceForm.lines.length > 1 && (
                     <button onClick={() => removeLine(idx)} className="p-1.5 text-muted-foreground hover:text-red-500"><X size={14} /></button>
                   )}
@@ -409,23 +419,31 @@ export default function Sales() {
             </div>
           </div>
           <div className="p-4 bg-primary/10 rounded-xl border border-primary/20 space-y-1">
-            <div className="flex justify-between text-sm"><span>Gross Total:</span><span className="font-numbers">{formatCurrency(grossTotal)}</span></div>
-            <div className="flex justify-between text-sm text-orange-600"><span>Discount:</span><span className="font-numbers">-{formatCurrency(invoiceForm.totalDiscount)}</span></div>
-            <div className="flex justify-between font-semibold text-primary text-lg border-t pt-1 mt-1"><span>Net Total:</span><span className="font-numbers">{formatCurrency(netTotal)}</span></div>
+            <div className="flex justify-between text-sm text-orange-600"><span>Entered Discount:</span><span className="font-numbers">-{formatCurrency(invoiceForm.totalDiscount)}</span></div>
+            <p className="text-xs text-muted-foreground">
+              Saved sales values are shown from the database as-is. This screen no longer previews recalculated totals.
+            </p>
           </div>
         </div>
       </Modal>
 
       {detailModal && (
-        <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title={`Invoice ${detailModal.invoiceNo}`} maxWidth="max-w-2xl">
+        <Modal
+          isOpen={!!detailModal}
+          onClose={closeDetailModal}
+          title={`Invoice ${detailModal.invoiceNo}`}
+          maxWidth="max-w-2xl"
+        >
           <div className="space-y-5 py-2">
-            <div className="grid grid-cols-3 gap-x-4 gap-y-5 text-sm">
-              <div><span className="text-muted-foreground">Date:</span> {formatDate(detailModal.salesDate)}</div>
-              <div><span className="text-muted-foreground">Type:</span> <span className="capitalize">{detailModal.orderType}</span></div>
-              <div><span className="text-muted-foreground">Payment:</span> <span className="capitalize">{detailModal.paymentMode}</span></div>
-              {detailModal.customerName && <div><span className="text-muted-foreground">Customer:</span> {detailModal.customerName}</div>}
-              <div><span className="text-muted-foreground">Source:</span> <span className="capitalize">{detailModal.sourceType}</span></div>
-              <div><span className="text-muted-foreground">Match:</span> <span className={detailModal.matchStatus === 'matched' ? 'text-emerald-600' : 'text-red-600'}>{detailModal.matchStatus}</span></div>
+            <div>
+              <div className="grid grid-cols-3 gap-x-4 gap-y-5 text-sm">
+                <div><span className="text-muted-foreground">Date:</span> {formatDate(detailModal.salesDate)}</div>
+                <div><span className="text-muted-foreground">Type:</span> <span className="capitalize">{detailModal.orderType}</span></div>
+                <div><span className="text-muted-foreground">Payment:</span> <span className="capitalize">{detailModal.paymentMode}</span></div>
+                {detailModal.customerName && <div><span className="text-muted-foreground">Customer:</span> {detailModal.customerName}</div>}
+                <div><span className="text-muted-foreground">Source:</span> <span className="capitalize">{detailModal.sourceType}</span></div>
+                <div><span className="text-muted-foreground">Match:</span> <span className={detailModal.matchStatus === 'matched' ? 'text-emerald-600' : 'text-red-600'}>{detailModal.matchStatus}</span></div>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

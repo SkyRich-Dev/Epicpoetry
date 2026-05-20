@@ -361,8 +361,18 @@ export async function customFetch<T = unknown>(
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
+    if ((response.status === 401 || response.status === 402) && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("epicpoetry:auth-expired", {
+        detail: {
+          status: response.status,
+          data: errorData,
+          url: response.url || requestInfo.url,
+        },
+      }));
+    }
     throw new ApiError(response, errorData, requestInfo);
   }
 
   return (await parseSuccessBody(response, responseType, requestInfo)) as T;
 }
+
