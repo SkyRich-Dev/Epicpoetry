@@ -140,7 +140,7 @@ router.get("/attendance", authMiddleware, async (req, res): Promise<void> => {
   res.json(records);
 });
 
-router.post("/attendance", authMiddleware, async (req, res): Promise<void> => {
+router.post("/attendance", authMiddleware, requirePermission("attendance.create"), async (req, res): Promise<void> => {
   const { employeeId, attendanceDate, shiftId, status } = req.body;
   if (!employeeId || !attendanceDate || !status) { res.status(400).json({ error: "employeeId, attendanceDate, status required" }); return; }
   const dateErr = validateNotFutureDate(attendanceDate, "Attendance date");
@@ -161,7 +161,7 @@ router.post("/attendance", authMiddleware, async (req, res): Promise<void> => {
   res.json(record);
 });
 
-router.post("/attendance/bulk", authMiddleware, async (req, res): Promise<void> => {
+router.post("/attendance/bulk", authMiddleware, requirePermission("attendance.create"), async (req, res): Promise<void> => {
   const { date, entries } = req.body;
   if (!date || !entries || !Array.isArray(entries)) { res.status(400).json({ error: "date and entries array required" }); return; }
   const bulkDateErr = validateNotFutureDate(date, "Attendance date");

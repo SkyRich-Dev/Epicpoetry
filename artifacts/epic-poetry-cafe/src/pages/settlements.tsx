@@ -200,13 +200,13 @@ export default function Settlements() {
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => setDetailModal(s.id)} className="text-muted-foreground hover:text-primary"><Eye size={16} /></button>
-                    {hasPerm('settlements.edit') && s.status !== 'verified' && (
+                    {hasPerm('settlements.create') && s.status !== 'verified' && (
                       <button onClick={() => handleEdit(s)} className="text-muted-foreground hover:text-primary"><Pencil size={16} /></button>
                     )}
                     {hasPerm('settlements.verify') && s.status !== 'verified' && (
                       <button onClick={() => handleVerify(s.id)} className="text-muted-foreground hover:text-emerald-600"><ShieldCheck size={16} /></button>
                     )}
-                    {hasPerm('settlements.delete') && s.status !== 'verified' && (
+                    {hasPerm('settlements.create') && s.status !== 'verified' && (
                       <button onClick={() => handleDelete(s.id)} className="text-muted-foreground hover:text-red-500"><Trash2 size={16} /></button>
                     )}
                   </div>

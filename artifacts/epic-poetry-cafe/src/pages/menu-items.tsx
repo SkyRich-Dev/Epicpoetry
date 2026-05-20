@@ -194,7 +194,7 @@ export default function MenuItems() {
   return (
     <div className="space-y-6">
       <PageHeader title="Menu & Recipes" description="Manage your offerings, prices, and complex recipes">
-        {hasPerm('menu_items.create') && <Button onClick={openCreate}><Plus size={18}/> Add Menu Item</Button>}
+        {hasPerm('menu_items.edit') && <Button onClick={openCreate}><Plus size={18}/> Add Menu Item</Button>}
       </PageHeader>
 
       {!isLoading && totalCount > 0 && (
@@ -332,7 +332,7 @@ export default function MenuItems() {
                       <ChefHat size={14} className="mr-1"/> Recipe
                     </Button>
                     {canEdit && <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>}
-                    {hasPerm('menu_items.delete') && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                    {hasPerm('menu_items.edit') && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                   </div>
                 </td>
               </tr>

@@ -208,7 +208,7 @@ export default function PettyCash() {
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(t.runningBalance)}</td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
-                    {hasPerm('petty_cash.edit') && (
+                    {hasPerm('petty_cash.create') && (
                       <button onClick={() => handleEditTxn(t)} className="text-muted-foreground hover:text-primary"><Pencil size={16} /></button>
                     )}
                     {hasPerm('petty_cash.delete') && (

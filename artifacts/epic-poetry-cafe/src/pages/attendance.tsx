@@ -145,7 +145,7 @@ export default function AttendancePage() {
               <Label>Date</Label>
               <Input type="date" max={new Date().toISOString().split('T')[0]} value={date} onChange={e => setDate(e.target.value)} className="w-44" />
             </div>
-            {hasPerm('attendance.edit') && <Button onClick={saveAttendance}><Check size={16} className="mr-2" /> Save Attendance</Button>}
+            {hasPerm('attendance.create') && <Button onClick={saveAttendance}><Check size={16} className="mr-2" /> Save Attendance</Button>}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
