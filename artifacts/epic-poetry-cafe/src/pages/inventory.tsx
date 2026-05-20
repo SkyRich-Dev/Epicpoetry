@@ -4,12 +4,15 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge,
 import { PackageSearch, AlertCircle, Save, Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '../lib/auth';
 
 const UNCATEGORIZED = '__uncategorized__';
 
 export default function Inventory() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { hasPerm } = useAuth();
+  const canAdjust = hasPerm('inventory.edit');
   const { data: stock, isLoading } = useGetStockOverview();
   const { data: categories } = useListCategories({ type: 'ingredient' });
   const saveMut = useSaveStockSnapshot();
@@ -178,7 +181,7 @@ export default function Inventory() {
   return (
     <div className="space-y-6">
       <PageHeader title="Inventory Overview" description="Real-time theoretical stock levels based on purchases and sales">
-        <Button onClick={openSnapshot}><PackageSearch size={18}/> End of Day Count</Button>
+        {canAdjust && <Button onClick={openSnapshot}><PackageSearch size={18}/> End of Day Count</Button>}
       </PageHeader>
 
       <div className="flex flex-wrap items-end gap-3" data-testid="inventory-filters">

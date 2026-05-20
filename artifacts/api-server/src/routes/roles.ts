@@ -102,6 +102,33 @@ router.patch("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise<
 
   if (Array.isArray(permissions)) {
     const next = new Set<string>(permissions.filter(isValidPermissionKey));
+
+    // Last-`roles.edit` holder protection: refuse a save that would
+    // leave zero users able to manage roles. `owner` and `admin` are
+    // always treated as having every permission (see requirePermission),
+    // so any role with users assigned where name is owner/admin counts
+    // as a holder regardless of stored perms.
+    if (!next.has("roles.edit")) {
+      const allRoles = await db.select().from(rolesTable);
+      const allPerms = await db.select().from(rolePermissionsTable);
+      const allUsers = await db.select({ role: usersTable.role }).from(usersTable);
+      const otherHoldersUserCount = allRoles
+        .filter((r) => r.id !== id)
+        .filter((r) =>
+          r.name === "owner" ||
+          r.name === "admin" ||
+          allPerms.some((p) => p.roleId === r.id && p.permissionKey === "roles.edit")
+        )
+        .reduce((sum, r) => sum + allUsers.filter((u) => u.role === r.name).length, 0);
+      if (otherHoldersUserCount === 0) {
+        res.status(409).json({
+          error:
+            "Refused: this change would leave zero users able to manage roles. Grant roles.edit to another role with at least one user first.",
+        });
+        return;
+      }
+    }
+
     await db.delete(rolePermissionsTable).where(eq(rolePermissionsTable.roleId, id));
     if (next.size > 0) {
       await db.insert(rolePermissionsTable).values(

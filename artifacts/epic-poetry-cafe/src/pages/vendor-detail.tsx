@@ -22,7 +22,7 @@ export default function VendorDetailPage() {
   const params = useParams<{ id: string }>();
   const vendorId = Number(params.id);
   const [, setLocation] = useLocation();
-  const { user } = useAuth();
+  const { user, hasPerm } = useAuth();
   const { toast } = useToast();
 
   const [detail, setDetail] = useState<any>(null);
@@ -172,7 +172,7 @@ export default function VendorDetailPage() {
           <p className="text-sm text-muted-foreground">{vendor.code} {vendor.contactPerson ? `• ${vendor.contactPerson}` : ''}</p>
         </div>
         <div className="ml-auto">
-          <Button onClick={openPaymentModal}><Plus size={16} className="mr-1" /> Record Payment</Button>
+          {hasPerm('vendor_payments.create') && <Button onClick={openPaymentModal}><Plus size={16} className="mr-1" /> Record Payment</Button>}
         </div>
       </div>
 
