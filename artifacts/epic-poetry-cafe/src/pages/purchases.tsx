@@ -22,19 +22,19 @@ export default function Purchases() {
   const createMut = useCreatePurchase();
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  const [formData, setFormData] = useState({ 
-    purchaseDate: new Date().toISOString().split('T')[0], 
-    vendorId: 0, 
-    invoiceNumber: '', 
-    paymentMode: 'CASH',
-    paymentStatus: 'PAID'
+  const [formData, setFormData] = useState({
+    purchaseDate: new Date().toISOString().split('T')[0],
+    vendorId: 0,
+    invoiceNumber: '',
+    isPaid: false,
+    paymentMode: 'cash' as 'cash' | 'petty_cash' | 'account' | 'upi',
   });
-  
+
   const [lines, setLines] = useState<any[]>([]);
   const purchaseFormDirty = useFormDirty(isModalOpen, { formData, lines });
 
   const openCreate = () => {
-    setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', paymentMode: 'CASH', paymentStatus: 'PAID' });
+    setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', isPaid: false, paymentMode: 'cash' });
     setLines([{ ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
     setIsModalOpen(true);
   };
@@ -68,11 +68,17 @@ export default function Purchases() {
     }
     try {
       const payload = {
-        ...formData,
+        purchaseDate: formData.purchaseDate,
+        vendorId: formData.vendorId,
+        invoiceNumber: formData.invoiceNumber,
+        paymentStatus: formData.isPaid ? 'paid' : 'unpaid',
+        paymentMode: formData.isPaid ? formData.paymentMode : undefined,
         lines: validLines.map(l => ({ ...l, expiryDate: l.expiryDate || null })),
       };
       await createMut.mutateAsync({ data: payload as any });
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/balance'] });
       setIsModalOpen(false);
       toast({ title: 'Purchase recorded' });
     } catch (e: any) { toast({ title: 'Failed to save purchase', description: e.message, variant: 'destructive' }); }
@@ -120,7 +126,9 @@ export default function Purchases() {
                 <td className="px-6 py-4">{p.vendorName}</td>
                 <td className="px-6 py-4 text-muted-foreground">{p.invoiceNumber || '-'}</td>
                 <td className="px-6 py-4 text-center">
-                  <Badge variant={p.paymentStatus === 'PAID' ? 'success' : 'warning'}>{p.paymentStatus}</Badge>
+                  <Badge variant={(p.paymentStatus === 'fully_paid' || p.paymentStatus === 'paid' || p.paymentStatus === 'PAID') ? 'success' : 'warning'}>
+                    {p.paymentStatus === 'fully_paid' ? 'Paid' : p.paymentStatus === 'unpaid' ? 'Unpaid' : String(p.paymentStatus || '').replace(/_/g, ' ')}
+                  </Badge>
                 </td>
                 <td className="px-6 py-4 text-right font-medium text-foreground">{formatCurrency(p.totalAmount)}</td>
                 <td className="px-6 py-4 text-center">
@@ -151,6 +159,37 @@ export default function Purchases() {
               <Label>Invoice Number (Optional)</Label>
               <Input value={formData.invoiceNumber} onChange={(e:any) => setFormData({...formData, invoiceNumber: e.target.value})} placeholder="INV-12345" />
             </div>
+          </div>
+
+          <div className="p-4 bg-transparent rounded-xl border border-border/50 space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={formData.isPaid}
+                onChange={(e:any) => setFormData({...formData, isPaid: e.target.checked})}
+                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+              />
+              <span className="text-sm font-medium text-foreground">Paid at the time of purchase</span>
+              <span className="text-xs text-muted-foreground">(otherwise tracked as vendor payable)</span>
+            </label>
+            {formData.isPaid && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <Label>Payment Method</Label>
+                  <Select value={formData.paymentMode} onChange={(e:any) => setFormData({...formData, paymentMode: e.target.value})}>
+                    <option value="cash">Cash</option>
+                    <option value="petty_cash">Petty Cash</option>
+                    <option value="account">Bank / Account</option>
+                    <option value="upi">UPI</option>
+                  </Select>
+                  {formData.paymentMode === 'petty_cash' && (
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      ⚠ The purchase total will be deducted from the petty cash balance.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

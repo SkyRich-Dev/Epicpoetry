@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { PageHeader, StatCard, formatCurrency, Badge, cn } from '../components/ui-extras';
-import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Minus, CalendarDays, Calendar, FileText, CreditCard, AlertOctagon, Cake, Heart, ArrowRight } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Minus, CalendarDays, Calendar, FileText, CreditCard, AlertOctagon, Cake, Heart, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link } from 'wouter';
 import { useAuth } from '../lib/auth';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
@@ -343,41 +343,96 @@ function AdminDashboard({ summary, mode }: { summary: any; mode: FilterMode }) {
           </div>
         </div>
 
-        <div className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-200 dark:border-rose-900/50 rounded-2xl p-6">
-          <div className="flex items-center gap-2 mb-6">
-            <AlertCircle className="text-rose-600" size={24} />
-            <h3 className="text-lg font-display font-semibold text-rose-950 dark:text-rose-400">Action Required</h3>
-          </div>
-          
-          <div className="space-y-5">
-            {summary.lowStockCount > 0 && (
-              <div className="bg-white dark:bg-card p-4 rounded-xl border border-rose-100 dark:border-border shadow-sm">
-                <h4 className="font-semibold text-sm text-rose-700 dark:text-rose-400 mb-1">Low Stock Alert</h4>
-                <p className="text-xs text-muted-foreground">{Number(summary.lowStockCount).toFixed(0)} ingredients are below reorder level.</p>
-              </div>
-            )}
-            {summary.pendingRecurringExpenses > 0 && (
-              <div className="bg-white dark:bg-card p-4 rounded-xl border border-amber-100 dark:border-border shadow-sm">
-                <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-500 mb-1">Pending Expenses</h4>
-                <p className="text-xs text-muted-foreground">{Number(summary.pendingRecurringExpenses).toFixed(0)} recurring expenses due soon.</p>
-              </div>
-            )}
-            
-            {summary.alerts?.map((alert: any, i: number) => (
-              <div key={i} className="bg-white dark:bg-card p-4 rounded-xl border border-border shadow-sm">
-                <h4 className={cn("font-semibold text-sm mb-1 capitalize", alert.severity === 'high' ? 'text-rose-600' : 'text-amber-600')}>
-                  {alert.type.replace('_', ' ')}
-                </h4>
-                <p className="text-xs text-muted-foreground">{alert.message}</p>
-              </div>
-            ))}
-            
-            {(!summary.alerts?.length && summary.lowStockCount === 0 && !summary.pendingRecurringExpenses) && (
-              <p className="text-sm text-muted-foreground text-center py-8">All clear! No urgent alerts.</p>
-            )}
-          </div>
-        </div>
+        <ActionRequired summary={summary} />
       </div>
+    </div>
+  );
+}
+
+function ActionRequired({ summary }: { summary: any }) {
+  // Flatten every alert source into one list so pagination is uniform.
+  // Order: low-stock + recurring expenses summary cards first (they're
+  // synthesized from counts, not per-row alerts), then the server-provided
+  // per-row alerts. Pagination is purely client-side since the dashboard
+  // endpoint already returns the full alert list.
+  const items: Array<{ title: string; message: string; tone: 'rose' | 'amber' | 'neutral' }> = [];
+  if (summary.lowStockCount > 0) {
+    items.push({ title: 'Low Stock Alert', message: `${Number(summary.lowStockCount).toFixed(0)} ingredients are below reorder level.`, tone: 'rose' });
+  }
+  if (summary.pendingRecurringExpenses > 0) {
+    items.push({ title: 'Pending Expenses', message: `${Number(summary.pendingRecurringExpenses).toFixed(0)} recurring expenses due soon.`, tone: 'amber' });
+  }
+  for (const alert of summary.alerts ?? []) {
+    items.push({
+      title: String(alert.type || '').replace(/_/g, ' '),
+      message: String(alert.message || ''),
+      tone: alert.severity === 'high' ? 'rose' : 'amber',
+    });
+  }
+
+  const PAGE_SIZE = 3;
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const [page, setPage] = useState(1);
+  // Clamp when items change (e.g. an alert resolves between polls).
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const start = (page - 1) * PAGE_SIZE;
+  const visible = items.slice(start, start + PAGE_SIZE);
+
+  return (
+    <div className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-200 dark:border-rose-900/50 rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="text-rose-600" size={24} />
+          <h3 className="text-lg font-display font-semibold text-rose-950 dark:text-rose-400">Action Required</h3>
+        </div>
+        {items.length > 0 && (
+          <span className="text-xs text-muted-foreground font-medium">
+            {items.length} {items.length === 1 ? 'item' : 'items'}
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-5">
+        {visible.map((it, i) => (
+          <div key={start + i} className="bg-white dark:bg-card p-4 rounded-xl border border-border shadow-sm">
+            <h4 className={cn(
+              'font-semibold text-sm mb-1 capitalize',
+              it.tone === 'rose' ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-500',
+            )}>
+              {it.title}
+            </h4>
+            <p className="text-xs text-muted-foreground">{it.message}</p>
+          </div>
+        ))}
+
+        {items.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-8">All clear! No urgent alerts.</p>
+        )}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-5 mt-2 border-t border-rose-200/60 dark:border-rose-900/40">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={14} /> Prev
+          </button>
+          <span className="text-xs text-muted-foreground font-numbers">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Next <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
