@@ -62,7 +62,7 @@ export default function Ingredients() {
     });
     return rows;
   }, [ingredients, search, filterCategoryId, sortBy]);
-  const ingredientsPagination = useClientPagination(filteredSorted, 10);
+  const ingredientsPagination = useClientPagination(filteredSorted, 5);
 
   const openCreate = () => {
     setEditId(null);

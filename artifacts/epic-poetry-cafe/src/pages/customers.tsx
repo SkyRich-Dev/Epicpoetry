@@ -48,7 +48,7 @@ export default function CustomersPage() {
   const [form, setForm] = useState({ name: '', phone: '', email: '', birthday: '', anniversary: '', notes: '' });
   const customerFormDirty = useFormDirty(modal, form);
   const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
-  const customersPagination = useClientPagination(list, 10);
+  const customersPagination = useClientPagination(list, 5);
 
   const load = async () => {
     setLoading(true);

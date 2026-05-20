@@ -30,7 +30,7 @@ export default function Settlements() {
   const updateMut = useUpdateSettlement();
   const verifyMut = useVerifySettlement();
   const deleteMut = useDeleteSettlement();
-  const settlementsPagination = useClientPagination(settlements || [], 10);
+  const settlementsPagination = useClientPagination(settlements || [], 5);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);

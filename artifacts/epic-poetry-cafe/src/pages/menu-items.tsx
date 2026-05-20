@@ -51,7 +51,7 @@ export default function MenuItems() {
     }
     return true;
   });
-  const menuItemsPagination = useClientPagination(filteredMenuItems, 10);
+  const menuItemsPagination = useClientPagination(filteredMenuItems, 5);
 
   const [formData, setFormData] = useState<{
     name: string;

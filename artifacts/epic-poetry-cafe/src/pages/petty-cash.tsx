@@ -31,7 +31,7 @@ export default function PettyCash() {
   const createMut = useCreatePettyCash();
   const deleteMut = useDeletePettyCash();
   const [editingId, setEditingId] = useState<number | null>(null);
-  const pettyCashPagination = useClientPagination(transactions || [], 10);
+  const pettyCashPagination = useClientPagination(transactions || [], 5);
 
   const [obModal, setObModal] = useState(false);
   const [obAmount, setObAmount] = useState('');

@@ -68,7 +68,7 @@ export default function Expenses() {
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState<ExpenseFormState>(blankExpenseForm());
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; desc: string } | null>(null);
-  const expensesPagination = useClientPagination(expenses || [], 10);
+  const expensesPagination = useClientPagination(expenses || [], 5);
 
   const formDirty = useFormDirty(isModalOpen, formData);
 

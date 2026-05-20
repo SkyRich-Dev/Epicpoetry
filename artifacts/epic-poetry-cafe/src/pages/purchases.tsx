@@ -42,7 +42,7 @@ export default function Purchases() {
 
   const [lines, setLines] = useState<any[]>([]);
   const purchaseFormDirty = useFormDirty(isModalOpen, { formData, lines });
-  const purchasesPagination = useClientPagination(purchases || [], 10);
+  const purchasesPagination = useClientPagination(purchases || [], 5);
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -70,12 +70,14 @@ export default function Purchases() {
         return res.json();
       })
       .then((detail) => {
+        const rawPaymentMode = String(detail.purchase.paymentMode || 'cash').toLowerCase();
+        const paymentMode = rawPaymentMode === 'petty_cash' || rawPaymentMode === 'account' || rawPaymentMode === 'upi' ? rawPaymentMode : 'cash';
         setFormData({
           purchaseDate: detail.purchase.purchaseDate,
           vendorId: detail.purchase.vendorId,
           invoiceNumber: detail.purchase.invoiceNumber || '',
-          paymentMode: detail.purchase.paymentMode || 'CASH',
-          paymentStatus: detail.purchase.paymentStatus === 'fully_paid' ? 'PAID' : 'PENDING',
+          isPaid: detail.purchase.paymentStatus === 'fully_paid',
+          paymentMode,
         });
         setLines((detail.lines || []).map((line: any) => ({
           ingredientId: line.ingredientId,

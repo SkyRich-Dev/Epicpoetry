@@ -47,7 +47,7 @@ export default function Inventory() {
     });
     return rows;
   }, [stock, search, filterCategoryId, sortBy]);
-  const inventoryPagination = useClientPagination(filteredStock, 10);
+  const inventoryPagination = useClientPagination(filteredStock, 5);
 
   // ----- End of Day Physical Count modal -----
   const [isSnapshotOpen, setIsSnapshotOpen] = useState(false);

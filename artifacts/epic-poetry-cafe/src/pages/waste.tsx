@@ -27,7 +27,7 @@ export default function Waste() {
   const { toast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const wasteFormDirty = useFormDirty(isModalOpen, formData);
-  const wastePagination = useClientPagination(waste || [], 10);
+  const wastePagination = useClientPagination(waste || [], 5);
 
   const openCreate = () => { setEditId(null); setFormData({ wasteDate: new Date().toISOString().split('T')[0], wasteType: 'INGREDIENT', ingredientId: 0, quantity: 1, uom: 'g', reason: '' }); setIsModalOpen(true); };
   const openEdit = (w: any) => { setEditId(w.id); setFormData({ wasteDate: w.wasteDate, wasteType: w.wasteType, ingredientId: w.ingredientId || 0, quantity: Number(w.quantity), uom: w.uom, reason: w.reason || '' }); setIsModalOpen(true); };

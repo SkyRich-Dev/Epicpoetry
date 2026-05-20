@@ -45,10 +45,10 @@ export default function Sales() {
   const [invoiceSummary, setInvoiceSummary] = useState({
     count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0,
   });
-  const invoicesPagination = useClientPagination(invoices, 10);
-  const itemSummaryPagination = useClientPagination(itemSummary, 10);
-  const dailySummaryPagination = useClientPagination(dailySummary, 10);
-  const consumptionPagination = useClientPagination(consumption, 10);
+  const invoicesPagination = useClientPagination(invoices, 5);
+  const itemSummaryPagination = useClientPagination(itemSummary, 5);
+  const dailySummaryPagination = useClientPagination(dailySummary, 5);
+  const consumptionPagination = useClientPagination(consumption, 5);
 
   const [invoiceModal, setInvoiceModal] = useState(false);
   const [detailModal, setDetailModal] = useState<any>(null);

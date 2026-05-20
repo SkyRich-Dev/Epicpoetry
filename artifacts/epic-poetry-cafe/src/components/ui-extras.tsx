@@ -344,8 +344,9 @@ export function Badge({ children, variant = 'default', className }: any) {
   );
 }
 
-export function useClientPagination<T>(rows: T[] | null | undefined, pageSize = 5) {
+export function useClientPagination<T>(rows: T[] | null | undefined, initialPageSize = 5) {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const totalItems = rows?.length || 0;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
@@ -364,6 +365,7 @@ export function useClientPagination<T>(rows: T[] | null | undefined, pageSize = 
   return {
     page,
     setPage,
+    setPageSize,
     pageSize,
     totalItems,
     totalPages,
@@ -378,22 +380,39 @@ export function TablePagination({
   totalPages,
   totalItems,
   pageSize,
+  setPageSize,
   onPageChange,
 }: {
   page: number;
   totalPages: number;
   totalItems: number;
   pageSize: number;
+  setPageSize: (pageSize: number) => void;
   onPageChange: (page: number) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border/60 bg-card">
-      <p className="text-xs text-muted-foreground">
-        {totalItems === 0
-          ? 'Showing 0 of 0'
-          : `Showing ${Math.min((page - 1) * pageSize + 1, totalItems)}-${Math.min(page * pageSize, totalItems)} of ${totalItems}`}
-      </p>
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-3 px-4 py-3 border-t border-border/60 bg-card sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+        <p className="text-xs text-muted-foreground">
+          {totalItems === 0
+            ? 'Showing 0 of 0'
+            : `Showing ${Math.min((page - 1) * pageSize + 1, totalItems)}-${Math.min(page * pageSize, totalItems)} of ${totalItems}`}
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Rows per page</span>
+          <Select
+            className="h-9 w-[92px] rounded-lg px-2.5 py-1.5 text-sm"
+            value={String(pageSize)}
+            onChange={(e: any) => setPageSize(Number(e.target.value))}
+          >
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </Select>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 self-end sm:self-auto">
         <Button variant="outline" className="h-9 px-3" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
           Previous
         </Button>

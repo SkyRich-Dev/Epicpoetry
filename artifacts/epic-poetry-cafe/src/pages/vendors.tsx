@@ -130,7 +130,7 @@ export default function Vendors() {
     if (filter === 'overdue') return s.overdueBillsCount > 0;
     return true;
   });
-  const vendorsPagination = useClientPagination(filteredVendors || [], 10);
+  const vendorsPagination = useClientPagination(filteredVendors || [], 5);
 
   return (
     <div className="space-y-6">
