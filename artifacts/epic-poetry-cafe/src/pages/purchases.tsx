@@ -11,9 +11,12 @@ const BASE = import.meta.env.BASE_URL || '/';
 
 export default function Purchases() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, hasPerm } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'owner';
   const isViewer = user?.role === 'viewer';
+  const canCreate = hasPerm('purchases.create');
+  const canEdit = hasPerm('purchases.edit');
+  const canDelete = hasPerm('purchases.delete');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -181,7 +184,7 @@ export default function Purchases() {
   return (
     <div className="space-y-6">
       <PageHeader title="Purchases" description="Record inward inventory and vendor bills">
-        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> New Purchase</Button>}
+        {canCreate && <Button onClick={openCreate}><Plus size={18}/> New Purchase</Button>}
       </PageHeader>
 
       <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
@@ -222,7 +225,7 @@ export default function Purchases() {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex justify-end gap-1">
-                    {!isViewer && (
+                    {canEdit && (
                       <button
                         onClick={() => openEdit(p.id)}
                         className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -232,7 +235,7 @@ export default function Purchases() {
                         <Pencil size={15} />
                       </button>
                     )}
-                    {!isViewer && (
+                    {canDelete && (
                       <button
                         onClick={() => setDeleteConfirm(p)}
                         className="p-2 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

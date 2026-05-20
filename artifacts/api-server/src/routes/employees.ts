@@ -227,7 +227,7 @@ router.post("/leaves", authMiddleware, requirePermission("leaves.approve"), asyn
   res.json(leave);
 });
 
-router.delete("/leaves/:id", authMiddleware, async (req, res): Promise<void> => {
+router.delete("/leaves/:id", authMiddleware, requirePermission("leaves.approve"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [leave] = await db.delete(leavesTable).where(eq(leavesTable.id, id)).returning();
   if (!leave) { res.status(404).json({ error: "Not found" }); return; }

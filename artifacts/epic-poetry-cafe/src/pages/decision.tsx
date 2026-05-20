@@ -266,7 +266,7 @@ function RevenueTab() {
   const canFinancial = hasPerm('decision_engine.financial');
   const leak = useApi<any>('decision/revenue/leakage');
   const profit = useApi<any>(canFinancial ? 'decision/revenue/profit-comparison' : null);
-  const matrix = useApi<any>(canFinancial ? 'decision/revenue/item-matrix' : null);
+  const matrix = useApi<any>('decision/revenue/item-matrix');
 
   return (
     <div className="space-y-6">

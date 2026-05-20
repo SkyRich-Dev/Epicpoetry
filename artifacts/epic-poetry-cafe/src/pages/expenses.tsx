@@ -37,6 +37,8 @@ export default function Expenses() {
   const { user } = useAuth();
   const { hasPerm } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'owner';
+  const canCreate = hasPerm('expenses.create');
+  const canEdit = hasPerm('expenses.edit');
   const canDelete = hasPerm('expenses.delete');
   const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
@@ -151,7 +153,7 @@ export default function Expenses() {
   return (
     <div className="space-y-6">
       <PageHeader title="Expenses" description="Manage operational costs, utilities, and generic expenses">
-        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> Log Expense</Button>}
+        {canCreate && <Button onClick={openCreate}><Plus size={18}/> Log Expense</Button>}
       </PageHeader>
 
       <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
@@ -168,7 +170,7 @@ export default function Expenses() {
               <th className="px-6 py-4 text-right">Amount</th>
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-center">Verified</th>
-              {!isViewer && <th className="px-6 py-4 text-right">Actions</th>}
+              {(canEdit || canDelete) && <th className="px-6 py-4 text-right">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -196,10 +198,10 @@ export default function Expenses() {
                   )}
                 </td>
                 <td className="px-6 py-4 text-center"><VerifyButton verified={!!e.verified} isAdmin={isAdmin} onVerify={() => handleVerify(e.id)} onUnverify={() => handleUnverify(e.id)} /></td>
-                {!isViewer && (
+                {(canEdit || canDelete) && (
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1">
-                      <button onClick={() => openEdit(e)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
+                      {canEdit && <button onClick={() => openEdit(e)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>}
                       {canDelete && <button onClick={() => setDeleteConfirm({ id: e.id, desc: e.description || 'this expense' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
                     </div>
                   </td>
