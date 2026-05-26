@@ -414,12 +414,24 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
     return;
   }
 
+  req.log?.info({
+    event: "petpooja.webhook.received",
+    tenantSchemaName,
+    publicWebhookKeySuffix: publicWebhookKey.slice(-8),
+    provider: "petpooja",
+  });
+
   await runWithTenantSchema(tenantSchemaName, async () => {
     const [rawIntegration] = await db.select().from(posIntegrationsTable).where(
       and(eq(posIntegrationsTable.publicWebhookKey, publicWebhookKey), eq(posIntegrationsTable.provider, "petpooja"))
     );
     const integration = rawIntegration ? await ensureWebhookIdentity(rawIntegration, tenantSchemaName) : null;
     if (!integration || !integration.active) {
+      req.log?.warn({
+        event: "petpooja.webhook.integration_not_found",
+        tenantSchemaName,
+        publicWebhookKeySuffix: publicWebhookKey.slice(-8),
+      });
       res.status(404).json({ error: "Integration not found or inactive" });
       return;
     }
@@ -474,6 +486,12 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
     try {
       const result = await importPetpoojaOrder({ ppOrder, ppItems, ppCustomer, integration });
       if (!result.created) {
+        req.log?.info({
+          event: "petpooja.webhook.duplicate",
+          tenantSchemaName,
+          integrationId: integration.id,
+          invoiceNo: result.invoiceNo,
+        });
         await updateWebhookEvent(webhookEvent.id, {
           status: "skipped",
           message: `Order ${result.invoiceNo} was already imported`,
@@ -499,12 +517,27 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
           autoCreated: result.autoCreated,
         },
       });
+      req.log?.info({
+        event: "petpooja.webhook.processed",
+        tenantSchemaName,
+        integrationId: integration.id,
+        invoiceNo: result.invoiceNo,
+        salesInvoiceId: invoice?.id ?? null,
+        autoCreated: result.autoCreated,
+      });
       res.json({
         success: true,
         message: `Order ${result.invoiceNo} processed successfully`,
         autoCreated: result.autoCreated.length > 0 ? result.autoCreated : undefined,
       });
     } catch (e: any) {
+      req.log?.error({
+        err: e,
+        event: "petpooja.webhook.failed",
+        tenantSchemaName,
+        integrationId: integration.id,
+        restaurantId: integration.restaurantId,
+      }, "Petpooja webhook processing failed");
       await updateSyncStatusFailed(integration.id);
       await updateWebhookEvent(webhookEvent.id, {
         status: "failed",

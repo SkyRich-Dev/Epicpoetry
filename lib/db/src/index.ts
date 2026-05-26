@@ -29,11 +29,36 @@ function tenantSearchPath(schemaName: string): string {
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const originalPoolQuery = pool.query.bind(pool);
+const originalPoolConnect = pool.connect.bind(pool);
+
+pool.connect = (async (...args: Parameters<typeof originalPoolConnect>) => {
+  const client = await originalPoolConnect(...args);
+  const schemaName = tenantSchemaContext.getStore();
+  if (!schemaName) return client;
+
+  await client.query("select set_config('search_path', $1, false)", [tenantSearchPath(schemaName)]);
+
+  const originalRelease = client.release.bind(client);
+  let released = false;
+  client.release = ((...releaseArgs: Parameters<typeof originalRelease>) => {
+    if (released) return undefined as ReturnType<typeof originalRelease>;
+    released = true;
+    client.query("select set_config('search_path', 'public', false)")
+      .catch(() => undefined)
+      .finally(() => {
+        originalRelease(...releaseArgs);
+      });
+    return undefined as ReturnType<typeof originalRelease>;
+  }) as typeof client.release;
+
+  return client;
+}) as typeof pool.connect;
+
 pool.query = (async (...args: Parameters<typeof originalPoolQuery>) => {
   const schemaName = tenantSchemaContext.getStore();
   if (!schemaName) return originalPoolQuery(...args);
 
-  const client = await pool.connect();
+  const client = await originalPoolConnect();
   try {
     await client.query("select set_config('search_path', $1, false)", [tenantSearchPath(schemaName)]);
     return await client.query(...args);
