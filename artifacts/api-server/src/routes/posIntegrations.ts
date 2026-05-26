@@ -43,6 +43,76 @@ function sanitizeWebhookPayload(payload: any): Record<string, unknown> {
   return clone;
 }
 
+function maskSecretValue(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  return text.length <= 4 ? "****" : `****${text.slice(-4)}`;
+}
+
+function summarizePosIntegrationPayload(body: Record<string, unknown>) {
+  return {
+    name: body.name,
+    provider: body.provider,
+    restaurantId: body.restaurantId,
+    baseUrl: body.baseUrl,
+    autoSync: body.autoSync,
+    syncMenuItems: body.syncMenuItems,
+    syncOrders: body.syncOrders,
+    defaultGstPercent: body.defaultGstPercent,
+    defaultOrderType: body.defaultOrderType,
+    hasApiKey: !!String(body.apiKey || "").trim(),
+    hasApiSecret: !!String(body.apiSecret || "").trim(),
+    accessTokenHint: maskSecretValue(body.accessToken),
+  };
+}
+
+function buildPosIntegrationError(err: any) {
+  const message = String(err?.message || "Unknown error");
+  const code = String(err?.code || "");
+
+  if (code === "42703" || code === "42P01" || /column .* does not exist/i.test(message) || /relation .* does not exist/i.test(message)) {
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message: "POS integration schema is out of date. Run the EpicPoetry database migration before creating integrations.",
+        errorCode: "POS_INTEGRATION_MIGRATION_REQUIRED",
+      },
+    };
+  }
+
+  if (code === "23502") {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "A required POS integration field is missing.",
+        errorCode: "POS_INTEGRATION_REQUIRED_FIELD_MISSING",
+      },
+    };
+  }
+
+  if (code === "23505") {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message: "A POS integration with this unique value already exists.",
+        errorCode: "POS_INTEGRATION_DUPLICATE",
+      },
+    };
+  }
+
+  return {
+    status: 500,
+    body: {
+      success: false,
+      message: "Failed to create POS integration.",
+      errorCode: "POS_INTEGRATION_CREATE_FAILED",
+    },
+  };
+}
+
 function generatePublicWebhookKey(): string {
   return crypto.randomBytes(18).toString("hex");
 }
@@ -147,39 +217,86 @@ router.get("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res):
 router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { name, provider, apiKey, apiSecret, restaurantId, baseUrl, accessToken,
     autoSync, syncMenuItems, syncOrders, defaultGstPercent, defaultOrderType } = req.body;
-  if (!name || !provider) { res.status(400).json({ error: "name and provider are required" }); return; }
-
-  const webhookSecret = crypto.randomBytes(32).toString("hex");
-  const publicWebhookKey = generatePublicWebhookKey();
-  const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
-  if (!tenantSchemaName) {
-    res.status(400).json({ error: "Tenant schema context is missing for this integration." });
+  if (!name || !provider) {
+    res.status(400).json({ success: false, message: "name and provider are required", errorCode: "POS_INTEGRATION_VALIDATION_FAILED" });
     return;
   }
 
-  const [integration] = await db.insert(posIntegrationsTable).values({
-    name, provider,
-    apiKey: apiKey || null,
-    apiSecret: apiSecret || null,
-    webhookSecret,
-    publicWebhookKey,
+  const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
+  req.log?.info({
+    event: "pos_integration.create.request",
     tenantSchemaName,
-    restaurantId: restaurantId || null,
-    baseUrl: baseUrl || null,
-    accessToken: accessToken || null,
-    autoSync: autoSync ?? false,
-    syncMenuItems: syncMenuItems ?? true,
-    syncOrders: syncOrders ?? true,
-    defaultGstPercent: defaultGstPercent ?? 5,
-    defaultOrderType: defaultOrderType || "dine-in",
-  }).returning();
-
-  await createAuditLog("pos_integrations", integration.id, "create", null, redactSecrets(integration));
-  res.status(201).json({
-    ...integration,
-    apiSecret: integration.apiSecret ? "****" : null,
-    accessToken: integration.accessToken ? "****" : null,
+    userId: (req as any).userId,
+    userRole: (req as any).userRole,
+    payload: summarizePosIntegrationPayload(req.body || {}),
   });
+
+  if (!tenantSchemaName) {
+    req.log?.warn({ event: "pos_integration.create.missing_tenant_context" }, "Tenant schema context missing while creating POS integration");
+    res.status(400).json({
+      success: false,
+      message: "Tenant schema context is missing for this integration.",
+      errorCode: "POS_INTEGRATION_TENANT_CONTEXT_MISSING",
+    });
+    return;
+  }
+
+  try {
+    const webhookSecret = crypto.randomBytes(32).toString("hex");
+    const publicWebhookKey = generatePublicWebhookKey();
+    req.log?.info({
+      event: "pos_integration.create.generated",
+      tenantSchemaName,
+      provider,
+      publicWebhookKeySuffix: publicWebhookKey.slice(-8),
+      webhookSecretSuffix: webhookSecret.slice(-8),
+    });
+
+    const [integration] = await db.insert(posIntegrationsTable).values({
+      name, provider,
+      apiKey: apiKey || null,
+      apiSecret: apiSecret || null,
+      webhookSecret,
+      publicWebhookKey,
+      tenantSchemaName,
+      restaurantId: restaurantId || null,
+      baseUrl: baseUrl || null,
+      accessToken: accessToken || null,
+      autoSync: autoSync ?? false,
+      syncMenuItems: syncMenuItems ?? true,
+      syncOrders: syncOrders ?? true,
+      defaultGstPercent: defaultGstPercent ?? 5,
+      defaultOrderType: defaultOrderType || "dine-in",
+    }).returning();
+
+    req.log?.info({
+      event: "pos_integration.create.inserted",
+      tenantSchemaName,
+      integrationId: integration.id,
+      provider: integration.provider,
+      restaurantId: integration.restaurantId,
+      publicWebhookKeySuffix: integration.publicWebhookKey?.slice(-8) ?? null,
+    });
+
+    await createAuditLog("pos_integrations", integration.id, "create", null, redactSecrets(integration));
+    res.status(201).json({
+      ...integration,
+      apiSecret: integration.apiSecret ? "****" : null,
+      accessToken: integration.accessToken ? "****" : null,
+    });
+  } catch (err: any) {
+    req.log?.error({
+      err,
+      event: "pos_integration.create.failed",
+      tenantSchemaName,
+      userId: (req as any).userId,
+      provider,
+      payload: summarizePosIntegrationPayload(req.body || {}),
+      dbCode: err?.code,
+    }, "Failed to create POS integration");
+    const mapped = buildPosIntegrationError(err);
+    res.status(mapped.status).json(mapped.body);
+  }
 });
 
 router.patch("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {

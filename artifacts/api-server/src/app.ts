@@ -59,4 +59,27 @@ app.use("/api", async (req: Request, res: Response, next: NextFunction) => {
 
 app.use("/api", router);
 
+app.use("/api", (err: any, req: Request, res: Response, next: NextFunction) => {
+  req.log?.error({
+    err,
+    event: "api.unhandled_error",
+    path: req.originalUrl,
+    method: req.method,
+    tenantSchemaName: (req as any).tenantSchemaName ?? null,
+    userId: (req as any).userId ?? null,
+  }, "Unhandled API error");
+
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
+  const status = Number(err?.statusCode || err?.status || 500);
+  res.status(status).json({
+    success: false,
+    message: err?.message || "Internal Server Error",
+    errorCode: err?.errorCode || "INTERNAL_SERVER_ERROR",
+  });
+});
+
 export default app;
