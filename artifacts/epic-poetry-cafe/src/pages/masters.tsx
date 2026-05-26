@@ -1231,9 +1231,10 @@ function POSIntegrationsTab() {
     toast({ title: 'Copied to clipboard' });
   };
 
-  const webhookUrl = (id: number) => {
+  const webhookUrl = (integration: any) => {
     const base = window.location.origin;
-    return `${base}${BASE}api/webhook/petpooja/${id}`;
+    if (!integration?.tenantSchemaName || !integration?.publicWebhookKey) return '';
+    return `${base}${BASE}api/webhook/petpooja/${integration.tenantSchemaName}/${integration.publicWebhookKey}`;
   };
 
   if (detailView) {
@@ -1268,9 +1269,9 @@ function POSIntegrationsTab() {
 
           <div className="bg-card rounded-xl border p-5 space-y-4">
             <h4 className="font-semibold flex items-center gap-2"><Wifi size={16} /> Webhook Endpoint</h4>
-            <p className="text-xs text-muted-foreground">Use this URL in your POS system to push orders automatically.</p>
-            <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookUrl(detailView.id)}</div>
-            <button onClick={() => copyToClipboard(webhookUrl(detailView.id))} className="text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy URL</button>
+            <p className="text-xs text-muted-foreground">Use this customer-specific URL in your POS system to push orders automatically.</p>
+            <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookUrl(detailView) || 'Webhook URL will appear after this integration is saved.'}</div>
+            <button onClick={() => webhookUrl(detailView) && copyToClipboard(webhookUrl(detailView))} className="text-xs text-primary hover:underline flex items-center gap-1" disabled={!webhookUrl(detailView)}><Copy size={12} /> Copy URL</button>
 
             <div className="border-t pt-3">
               <h5 className="text-sm font-medium mb-2">Webhook Secret</h5>

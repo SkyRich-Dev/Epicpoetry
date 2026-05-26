@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, integer, timestamp, date, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, integer, timestamp, date, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { salesInvoicesTable } from "./salesInvoices";
 
 export const posIntegrationsTable = pgTable("pos_integrations", {
@@ -8,6 +8,8 @@ export const posIntegrationsTable = pgTable("pos_integrations", {
   apiKey: text("api_key"),
   apiSecret: text("api_secret"),
   webhookSecret: text("webhook_secret"),
+  publicWebhookKey: text("public_webhook_key"),
+  tenantSchemaName: text("tenant_schema_name"),
   restaurantId: text("restaurant_id"),
   baseUrl: text("base_url"),
   accessToken: text("access_token"),
@@ -24,7 +26,10 @@ export const posIntegrationsTable = pgTable("pos_integrations", {
   lastManualFetchAt: timestamp("last_manual_fetch_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (t) => ({
+  publicWebhookKeyUnique: uniqueIndex("pos_integrations_public_webhook_key_idx").on(t.publicWebhookKey),
+  tenantSchemaNameIdx: index("pos_integrations_tenant_schema_name_idx").on(t.tenantSchemaName),
+}));
 
 export const posSyncLogsTable = pgTable("pos_sync_logs", {
   id: serial("id").primaryKey(),

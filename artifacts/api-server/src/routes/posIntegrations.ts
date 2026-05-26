@@ -5,6 +5,7 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { importPetpoojaOrder, upsertPetpoojaCustomer } from "../lib/petpoojaImporter";
+import { runWithTenantSchema } from "../lib/saas";
 import { fetchFromPos, getProviderCapabilities, POS_DATA_TYPES, POS_DATA_TYPE_LABELS,
   PosFetchError, type PosDataType } from "../lib/posProviders";
 import { isValidIsoDate } from "../lib/dateValidation";
@@ -40,6 +41,41 @@ function sanitizeWebhookPayload(payload: any): Record<string, unknown> {
   if (clone.token !== undefined) clone.token = "[REDACTED]";
   if (clone.Token !== undefined) clone.Token = "[REDACTED]";
   return clone;
+}
+
+function generatePublicWebhookKey(): string {
+  return crypto.randomBytes(18).toString("hex");
+}
+
+function normalizeTenantSchemaName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(normalized)) return null;
+  if (normalized === "public" || normalized.startsWith("pg_") || normalized === "information_schema") return null;
+  return normalized;
+}
+
+async function ensureWebhookIdentity(integration: any, tenantSchemaName?: string | null) {
+  const updates: Record<string, string> = {};
+  const normalizedSchema = normalizeTenantSchemaName(tenantSchemaName);
+
+  if (!integration.publicWebhookKey) {
+    updates.publicWebhookKey = generatePublicWebhookKey();
+  }
+  if (!integration.tenantSchemaName && normalizedSchema) {
+    updates.tenantSchemaName = normalizedSchema;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return integration;
+  }
+
+  const [updated] = await db.update(posIntegrationsTable)
+    .set(updates)
+    .where(eq(posIntegrationsTable.id, integration.id))
+    .returning();
+
+  return updated ?? { ...integration, ...updates };
 }
 
 async function createWebhookEvent(input: {
@@ -82,8 +118,10 @@ async function updateWebhookEvent(id: number, updates: {
 }
 
 router.get("/pos-integrations", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const tenantSchemaName = (req as any).tenantSchemaName as string | undefined;
   const integrations = await db.select().from(posIntegrationsTable).orderBy(posIntegrationsTable.createdAt);
-  const safe = integrations.map(i => ({
+  const hydrated = await Promise.all(integrations.map((integration) => ensureWebhookIdentity(integration, tenantSchemaName)));
+  const safe = hydrated.map(i => ({
     ...i,
     apiKey: i.apiKey ? `****${i.apiKey.slice(-4)}` : null,
     apiSecret: i.apiSecret ? "****" : null,
@@ -95,7 +133,8 @@ router.get("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pro
 
 router.get("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  const [integration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  const [rawIntegration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  const integration = rawIntegration ? await ensureWebhookIdentity(rawIntegration, (req as any).tenantSchemaName as string | undefined) : null;
   if (!integration) { res.status(404).json({ error: "Not found" }); return; }
   res.json({
     ...integration,
@@ -111,12 +150,20 @@ router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pr
   if (!name || !provider) { res.status(400).json({ error: "name and provider are required" }); return; }
 
   const webhookSecret = crypto.randomBytes(32).toString("hex");
+  const publicWebhookKey = generatePublicWebhookKey();
+  const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
+  if (!tenantSchemaName) {
+    res.status(400).json({ error: "Tenant schema context is missing for this integration." });
+    return;
+  }
 
   const [integration] = await db.insert(posIntegrationsTable).values({
     name, provider,
     apiKey: apiKey || null,
     apiSecret: apiSecret || null,
     webhookSecret,
+    publicWebhookKey,
+    tenantSchemaName,
     restaurantId: restaurantId || null,
     baseUrl: baseUrl || null,
     accessToken: accessToken || null,
@@ -242,110 +289,121 @@ router.get("/pos-integrations/:id/stats", authMiddleware, adminOnly, async (req,
 });
 
 async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
-  const integrationId = Number(req.params.integrationId);
-  const [integration] = await db.select().from(posIntegrationsTable).where(
-    and(eq(posIntegrationsTable.id, integrationId), eq(posIntegrationsTable.provider, "petpooja"))
-  );
-  if (!integration || !integration.active) {
-    res.status(404).json({ error: "Integration not found or inactive" }); return;
+  const tenantSchemaName = normalizeTenantSchemaName(req.params.tenantSchemaName);
+  const publicWebhookKey = String(req.params.publicWebhookKey || "").trim();
+
+  if (!tenantSchemaName || !publicWebhookKey) {
+    res.status(400).json({ error: "Invalid tenant webhook URL" });
+    return;
   }
 
-  const payload = req.body;
-  const providedToken = getProvidedWebhookToken(payload, req.headers || {});
-  const webhookEvent = await createWebhookEvent({
-    integrationId,
-    provider: integration.provider,
-    payload,
-    status: "received",
-    tokenHint: maskToken(providedToken),
-  });
-
-  if (integration.webhookSecret) {
-    if (!providedToken || providedToken !== integration.webhookSecret) {
-      await updateWebhookEvent(webhookEvent.id, {
-        status: "invalid_auth",
-        message: "Invalid webhook token",
-        responsePayload: { success: false, error: "Invalid webhook token" },
-      });
-      res.status(401).json({ error: "Invalid webhook token" }); return;
-    }
-  }
-
-  if (payload?.event !== "orderdetails" || !payload?.properties) {
-    await updateWebhookEvent(webhookEvent.id, {
-      status: "invalid_payload",
-      message: "Invalid payload: expected event=orderdetails with properties",
-      responsePayload: { success: false, error: "Invalid payload: expected event=orderdetails with properties" },
-    });
-    res.status(400).json({ error: "Invalid payload: expected event=orderdetails with properties" }); return;
-  }
-
-  const props = payload.properties;
-  const ppOrder = props.Order;
-  const ppItems = props.OrderItem;
-  const ppCustomer = props.Customer;
-
-  if (!ppOrder || !ppItems || !Array.isArray(ppItems) || ppItems.length === 0) {
-    await updateWebhookEvent(webhookEvent.id, {
-      status: "invalid_payload",
-      message: "Missing Order or OrderItem in payload",
-      responsePayload: { success: false, error: "Missing Order or OrderItem in payload" },
-    });
-    res.status(400).json({ error: "Missing Order or OrderItem in payload" }); return;
-  }
-
-  try {
-    const result = await importPetpoojaOrder({ ppOrder, ppItems, ppCustomer, integration });
-    if (!result.created) {
-      await updateWebhookEvent(webhookEvent.id, {
-        status: "skipped",
-        message: `Order ${result.invoiceNo} was already imported`,
-        invoiceNo: result.invoiceNo,
-        responsePayload: { success: true, skipped: true, invoiceNo: result.invoiceNo },
-      });
-      res.json({ success: true, skipped: true, message: `Order ${result.invoiceNo} was already imported`, invoiceNo: result.invoiceNo });
+  await runWithTenantSchema(tenantSchemaName, async () => {
+    const [rawIntegration] = await db.select().from(posIntegrationsTable).where(
+      and(eq(posIntegrationsTable.publicWebhookKey, publicWebhookKey), eq(posIntegrationsTable.provider, "petpooja"))
+    );
+    const integration = rawIntegration ? await ensureWebhookIdentity(rawIntegration, tenantSchemaName) : null;
+    if (!integration || !integration.active) {
+      res.status(404).json({ error: "Integration not found or inactive" });
       return;
     }
-    // Customer linkage is now handled atomically inside importPetpoojaOrder
-    // (the invoice row is committed with customer_id + normalized customer_phone),
-    // and recomputeCustomerStats runs there too. No second upsert needed here —
-    // doing one would risk overwriting a curated name or skipping phone normalization.
-    const [invoice] = await db.select({ id: salesInvoicesTable.id })
-      .from(salesInvoicesTable)
-      .where(and(eq(salesInvoicesTable.invoiceNo, result.invoiceNo), eq(salesInvoicesTable.sourceType, "petpooja")))
-      .limit(1);
-    await updateWebhookEvent(webhookEvent.id, {
-      status: "processed",
-      message: `Order ${result.invoiceNo} processed successfully`,
-      invoiceNo: result.invoiceNo,
-      salesInvoiceId: invoice?.id || null,
-      responsePayload: {
-        success: true,
+
+    const payload = req.body;
+    const providedToken = getProvidedWebhookToken(payload, req.headers || {});
+    const webhookEvent = await createWebhookEvent({
+      integrationId: integration.id,
+      provider: integration.provider,
+      payload,
+      status: "received",
+      tokenHint: maskToken(providedToken),
+    });
+
+    if (integration.webhookSecret) {
+      if (!providedToken || providedToken !== integration.webhookSecret) {
+        await updateWebhookEvent(webhookEvent.id, {
+          status: "invalid_auth",
+          message: "Invalid webhook token",
+          responsePayload: { success: false, error: "Invalid webhook token" },
+        });
+        res.status(401).json({ error: "Invalid webhook token" });
+        return;
+      }
+    }
+
+    if (payload?.event !== "orderdetails" || !payload?.properties) {
+      await updateWebhookEvent(webhookEvent.id, {
+        status: "invalid_payload",
+        message: "Invalid payload: expected event=orderdetails with properties",
+        responsePayload: { success: false, error: "Invalid payload: expected event=orderdetails with properties" },
+      });
+      res.status(400).json({ error: "Invalid payload: expected event=orderdetails with properties" });
+      return;
+    }
+
+    const props = payload.properties;
+    const ppOrder = props.Order;
+    const ppItems = props.OrderItem;
+    const ppCustomer = props.Customer;
+
+    if (!ppOrder || !ppItems || !Array.isArray(ppItems) || ppItems.length === 0) {
+      await updateWebhookEvent(webhookEvent.id, {
+        status: "invalid_payload",
+        message: "Missing Order or OrderItem in payload",
+        responsePayload: { success: false, error: "Missing Order or OrderItem in payload" },
+      });
+      res.status(400).json({ error: "Missing Order or OrderItem in payload" });
+      return;
+    }
+
+    try {
+      const result = await importPetpoojaOrder({ ppOrder, ppItems, ppCustomer, integration });
+      if (!result.created) {
+        await updateWebhookEvent(webhookEvent.id, {
+          status: "skipped",
+          message: `Order ${result.invoiceNo} was already imported`,
+          invoiceNo: result.invoiceNo,
+          responsePayload: { success: true, skipped: true, invoiceNo: result.invoiceNo },
+        });
+        res.json({ success: true, skipped: true, message: `Order ${result.invoiceNo} was already imported`, invoiceNo: result.invoiceNo });
+        return;
+      }
+
+      const [invoice] = await db.select({ id: salesInvoicesTable.id })
+        .from(salesInvoicesTable)
+        .where(and(eq(salesInvoicesTable.invoiceNo, result.invoiceNo), eq(salesInvoicesTable.sourceType, "petpooja")))
+        .limit(1);
+      await updateWebhookEvent(webhookEvent.id, {
+        status: "processed",
+        message: `Order ${result.invoiceNo} processed successfully`,
         invoiceNo: result.invoiceNo,
-        autoCreated: result.autoCreated,
-      },
-    });
-    res.json({
-      success: true,
-      message: `Order ${result.invoiceNo} processed successfully`,
-      autoCreated: result.autoCreated.length > 0 ? result.autoCreated : undefined,
-    });
-  } catch (e: any) {
-    await updateSyncStatusFailed(integrationId);
-    await updateWebhookEvent(webhookEvent.id, {
-      status: "failed",
-      message: `Order processing failed: ${e.message}`,
-      responsePayload: { success: false, error: e.message || "Order processing failed" },
-    });
-    res.status(500).json({ success: false, message: `Order processing failed: ${e.message}` });
-  }
+        salesInvoiceId: invoice?.id || null,
+        responsePayload: {
+          success: true,
+          invoiceNo: result.invoiceNo,
+          autoCreated: result.autoCreated,
+        },
+      });
+      res.json({
+        success: true,
+        message: `Order ${result.invoiceNo} processed successfully`,
+        autoCreated: result.autoCreated.length > 0 ? result.autoCreated : undefined,
+      });
+    } catch (e: any) {
+      await updateSyncStatusFailed(integration.id);
+      await updateWebhookEvent(webhookEvent.id, {
+        status: "failed",
+        message: `Order processing failed: ${e.message}`,
+        responsePayload: { success: false, error: e.message || "Order processing failed" },
+      });
+      res.status(500).json({ success: false, message: `Order processing failed: ${e.message}` });
+    }
+  });
 }
 
-router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> => {
+router.post("/webhook/petpooja/:tenantSchemaName/:publicWebhookKey", async (req, res): Promise<void> => {
   await handlePetpoojaWebhook(req, res);
 });
 
-router.post("/webhook/petpooja-global/:integrationId", async (req, res): Promise<void> => {
+router.post("/webhook/petpooja-global/:tenantSchemaName/:publicWebhookKey", async (req, res): Promise<void> => {
   await handlePetpoojaWebhook(req, res);
 });
 
@@ -564,3 +622,4 @@ router.post("/pos-integrations/:id/fetch", authMiddleware, adminOnly, async (req
 });
 
 export default router;
+
