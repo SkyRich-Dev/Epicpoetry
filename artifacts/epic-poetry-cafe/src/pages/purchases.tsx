@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useListPurchases, useCreatePurchase, useListVendors, useListIngredients } from '@workspace/api-client-react';
+import { useListPurchases, useCreatePurchase, useListVendors, useListIngredients, useGetPettyCashSummary } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,6 +23,7 @@ export default function Purchases() {
   const { data: purchases, isLoading } = useListPurchases(Object.keys(dateParams).length ? dateParams : undefined);
   const { data: vendors } = useListVendors();
   const { data: ingredients } = useListIngredients();
+  const { data: pettyCashSummary } = useGetPettyCashSummary();
   
   const { toast } = useToast();
   const createMut = useCreatePurchase();
@@ -111,12 +112,25 @@ export default function Purchases() {
     }, 0);
   };
 
+  const purchaseTotal = calcTotal();
+  const availablePettyCashBalance = Number(pettyCashSummary?.currentBalance || 0);
+  const isPettyCashPayment = formData.isPaid && formData.paymentMode === 'petty_cash';
+  const insufficientPettyCash = isPettyCashPayment && purchaseTotal > availablePettyCashBalance + 0.01;
+
   const handleSave = async () => {
     if (!formData.vendorId) { toast({ title: 'Please select a vendor', variant: 'destructive' }); return; }
     const incompleteLine = lines.find(l => !l.ingredientId || l.ingredientId <= 0 || !l.quantity || l.quantity <= 0);
     if (incompleteLine) { toast({ title: 'Complete every purchase row', description: 'Each row needs an ingredient and quantity greater than 0.', variant: 'destructive' }); return; }
     const validLines = lines.filter(l => l.ingredientId > 0 && l.quantity > 0);
     if (validLines.length === 0) { toast({ title: 'Add at least one item with quantity', variant: 'destructive' }); return; }
+    if (insufficientPettyCash) {
+      toast({
+        title: 'Insufficient petty cash balance',
+        description: `Available: ${formatCurrency(availablePettyCashBalance)}. Required: ${formatCurrency(purchaseTotal)}.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     const today = new Date().toISOString().split('T')[0];
     for (const l of validLines) {
       if (l.expiryDate && l.expiryDate < today) {
@@ -150,7 +164,8 @@ export default function Purchases() {
       }
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/balance'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/expenses'] });
       closeModal();
       toast({ title: editingPurchaseId ? 'Purchase updated' : 'Purchase recorded' });
     } catch (e: any) { toast({ title: 'Failed to save purchase', description: e.message, variant: 'destructive' }); }
@@ -176,6 +191,9 @@ export default function Purchases() {
       });
       if (!res.ok) throw new Error(await res.text());
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/expenses'] });
       setDeleteConfirm(null);
       toast({ title: 'Purchase deleted' });
     } catch (e: any) {
@@ -231,8 +249,8 @@ export default function Purchases() {
                       <button
                         onClick={() => openEdit(p.id)}
                         className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={p.paidAmount > 0 ? 'Paid purchases cannot be edited' : 'Edit'}
-                        disabled={p.paidAmount > 0 || (p.verified && !isAdmin)}
+                        title={p.verified && !isAdmin ? 'Verified purchases can only be edited by admin' : 'Edit'}
+                        disabled={p.verified && !isAdmin}
                       >
                         <Pencil size={15} />
                       </button>
@@ -257,7 +275,7 @@ export default function Purchases() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={closeModal} dirty={purchaseFormDirty} title={editingPurchaseId ? "Edit Purchase" : "Record New Purchase"} maxWidth="max-w-4xl"
-        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || isSavingEdit || lines.length === 0 || isPurchaseDetailLoading}>{editingPurchaseId ? 'Update Purchase' : 'Complete Purchase'}</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || isSavingEdit || lines.length === 0 || isPurchaseDetailLoading || insufficientPettyCash}>{editingPurchaseId ? 'Update Purchase' : 'Complete Purchase'}</Button></>}>
         <div className="space-y-6 py-2">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-transparent rounded-xl border border-border/50">
             <div>
@@ -298,6 +316,18 @@ export default function Purchases() {
                     <option value="account">Bank / Account</option>
                     <option value="upi">UPI</option>
                   </Select>
+                  {formData.paymentMode === 'petty_cash' && (
+                    <div className="mt-2 space-y-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        Available Petty Cash Balance: <span className="font-semibold text-foreground">{formatCurrency(availablePettyCashBalance)}</span>
+                      </p>
+                      {insufficientPettyCash && (
+                        <p className="text-xs text-destructive">
+                          Insufficient petty cash balance. Available: {formatCurrency(availablePettyCashBalance)}. Required: {formatCurrency(purchaseTotal)}.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {formData.paymentMode === 'petty_cash' && (
                     <p className="text-xs text-muted-foreground mt-1.5">
                       ⚠ The purchase total will be deducted from the petty cash balance.
@@ -372,7 +402,7 @@ export default function Purchases() {
           <div className="flex justify-end pt-4 border-t border-border">
             <div className="text-right">
               <p className="text-sm text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Grand Total</p>
-              <p className="text-3xl font-display font-bold text-primary">{formatCurrency(calcTotal())}</p>
+              <p className="text-3xl font-display font-bold text-primary">{formatCurrency(purchaseTotal)}</p>
             </div>
           </div>
         </div>

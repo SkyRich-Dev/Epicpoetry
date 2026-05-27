@@ -1,0 +1,104 @@
+Seed: Database already has data, skipping seed.
+[11:16:38.004] [32mINFO[39m (32208): [36mServer listening[39m
+    port: 3111
+[11:16:38.005] [32mINFO[39m (32208): [36mnotification scheduler started[39m
+[11:16:39.180] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 1,
+      "method": "GET",
+      "url": "/api/petty-cash/summary"
+    }
+    res: {
+      "statusCode": 401
+    }
+    responseTime: 10
+[11:18:06.744] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 2,
+      "method": "POST",
+      "url": "/api/auth/login"
+    }
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 311
+[11:18:06.980] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 3,
+      "method": "POST",
+      "url": "/api/purchases"
+    }
+    res: {
+      "statusCode": 201
+    }
+    responseTime: 215
+[11:18:07.064] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 4,
+      "method": "POST",
+      "url": "/api/purchases"
+    }
+    res: {
+      "statusCode": 400
+    }
+    responseTime: 67
+[11:18:07.140] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 5,
+      "method": "POST",
+      "url": "/api/purchases"
+    }
+    res: {
+      "statusCode": 201
+    }
+    responseTime: 70
+[11:18:07.250] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 6,
+      "method": "PATCH",
+      "url": "/api/purchases/12"
+    }
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 101
+[11:18:07.352] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 7,
+      "method": "PATCH",
+      "url": "/api/purchases/14"
+    }
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 86
+[11:18:07.420] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 8,
+      "method": "PATCH",
+      "url": "/api/purchases/14"
+    }
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 59
+[11:18:07.480] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 9,
+      "method": "DELETE",
+      "url": "/api/purchases/12"
+    }
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 51
+[11:18:07.526] [32mINFO[39m (32208): [36mrequest completed[39m
+    req: {
+      "id": 10,
+      "method": "DELETE",
+      "url": "/api/purchases/14"
+    }
+    res: {
+      "statusCode": 200
+    }
+    responseTime: 39

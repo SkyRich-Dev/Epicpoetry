@@ -22,6 +22,7 @@ export const purchasesTable = pgTable("purchases", {
   pendingAmount: doublePrecision("pending_amount").notNull().default(0),
   billAttachment: text("bill_attachment"),
   lastPaymentDate: text("last_payment_date"),
+  linkedExpenseId: integer("linked_expense_id"),
   notes: text("notes"),
   remarks: text("remarks"),
   createdBy: integer("created_by"),

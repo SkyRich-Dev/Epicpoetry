@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db, pool, saasSubscriptionLinkTable, systemConfigTable } from "@workspace/db";
 import { hashPassword } from "../lib/auth";
 import { getSaasAccessState, requirePlatrInternalSecret } from "../lib/saas";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -142,17 +143,47 @@ function normalizePayload(body: unknown): SyncInput | null {
   return flat.data;
 }
 
-async function maybeHydrateCafeName(companyName: string | null | undefined) {
-  if (!companyName) return;
+function normalizeBrandingCandidate(value: string | null | undefined, blockedName?: string | null): string | null {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return null;
+  if (trimmed.toLowerCase() === "platr") return null;
+  if (blockedName && trimmed.toLowerCase() === blockedName.toLowerCase()) return null;
+  return trimmed;
+}
+
+async function maybeHydrateCafeName(
+  companyName: string | null | undefined,
+  customerName: string | null | undefined,
+  tenantSchemaName?: string | null,
+) {
   const rows = await db.select().from(systemConfigTable);
   const config = rows[0];
   if (!config) return;
 
   const currentName = (config.cafeName || "").trim().toLowerCase();
-  if (!currentName || currentName === "platr") {
+  const publicRows = await pool.query<{ cafe_name: string | null }>("select cafe_name from public.system_config order by id asc limit 1");
+  const publicName = (publicRows.rows[0]?.cafe_name || "").trim().toLowerCase();
+  const nextName =
+    normalizeBrandingCandidate(companyName, publicName || null) ??
+    normalizeBrandingCandidate(customerName, publicName || null);
+  if (!nextName) return;
+  const shouldReplace =
+    !currentName ||
+    currentName === "platr" ||
+    (!!publicName && currentName === publicName);
+
+  if (shouldReplace) {
     await db.update(systemConfigTable)
-      .set({ cafeName: companyName.trim() })
+      .set({ cafeName: nextName })
       .where(eq(systemConfigTable.id, config.id));
+    logger.info({
+      event: "tenant.branding.hydrated",
+      tenantSchemaName: tenantSchemaName ?? null,
+      previousCafeName: config.cafeName,
+      publicCafeName: publicRows.rows[0]?.cafe_name ?? null,
+      nextCafeName: nextName,
+      source: "internal_saas",
+    }, "Hydrated tenant cafe name from SaaS company name");
   }
 }
 
@@ -288,7 +319,7 @@ async function upsertLink(input: SyncInput) {
         .returning())[0]
     : (await db.insert(saasSubscriptionLinkTable).values(values).returning())[0];
 
-  await maybeHydrateCafeName(input.companyName);
+  await maybeHydrateCafeName(input.companyName, input.platrCustomerName, input.tenantSchemaName ?? null);
   return row;
 }
 

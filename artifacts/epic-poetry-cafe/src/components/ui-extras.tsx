@@ -25,9 +25,29 @@ export function formatDate(dateString: string | null | undefined): string {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+export function toLocalDateInputValue(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function daysAgoLocalDateInputValue(days: number, referenceDate: Date = new Date()): string {
+  const value = new Date(referenceDate);
+  value.setDate(value.getDate() - days);
+  return toLocalDateInputValue(value);
+}
+
+function normalizeCafeName(value: string | null | undefined): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.toLowerCase() === 'platr') return '';
+  return trimmed;
+}
+
 export function PageHeader({ title, description, children }: { title: string, description?: string, children?: React.ReactNode }) {
   const { data: config } = useGetConfig();
-  const cafeName = (config as any)?.cafeName?.trim();
+  const cafeName = normalizeCafeName((config as any)?.cafeName);
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div>
@@ -266,11 +286,11 @@ export function Label({ className, children, ...props }: any) {
 }
 
 export function DateFilter({ fromDate, toDate, onChange, defaultFrom = '', defaultTo = '' }: { fromDate: string; toDate: string; onChange: (from: string, to: string) => void; defaultFrom?: string; defaultTo?: string }) {
-  const today = new Date().toISOString().split('T')[0];
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  const today = toLocalDateInputValue();
+  const yesterday = daysAgoLocalDateInputValue(1);
   const setPreset = (days: number) => {
     const to = today;
-    const from = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+    const from = daysAgoLocalDateInputValue(days);
     onChange(from, to);
   };
   const isAtDefault = fromDate === defaultFrom && toDate === defaultTo;

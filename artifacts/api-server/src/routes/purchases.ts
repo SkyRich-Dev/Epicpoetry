@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte, asc, sql } from "drizzle-orm";
-import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable, vendorLedgerTable, pettyCashLedgerTable, systemConfigTable } from "@workspace/db";
+import { eq, and, gte, lte, asc, desc, sql } from "drizzle-orm";
+import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable, vendorLedgerTable, pettyCashLedgerTable, systemConfigTable, expensesTable } from "@workspace/db";
 import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurchaseResponse } from "@workspace/api-zod";
 import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -66,13 +66,19 @@ async function applyPurchaseLines(
   tx: any,
   purchaseId: number,
   lines: Array<{ ingredientId: number; quantity: number; purchaseUom?: string; unitRate: number; taxPercent?: number; expiryDate?: string | null }>,
-): Promise<number> {
+): Promise<{ subtotal: number; taxAmount: number; totalAmount: number }> {
+  let subtotal = 0;
+  let taxAmount = 0;
   let totalAmount = 0;
   for (const line of lines) {
     const taxPercent = line.taxPercent ?? 0;
     const quantity = line.quantity;
     const unitRate = line.unitRate;
-    const lineTotal = round2(quantity * unitRate * (1 + taxPercent / 100));
+    const baseAmount = round2(quantity * unitRate);
+    const lineTax = round2(baseAmount * (taxPercent / 100));
+    const lineTotal = round2(baseAmount + lineTax);
+    subtotal = round2(subtotal + baseAmount);
+    taxAmount = round2(taxAmount + lineTax);
     totalAmount = round2(totalAmount + lineTotal);
 
     await tx.insert(purchaseLinesTable).values({
@@ -96,14 +102,181 @@ async function applyPurchaseLines(
       currentStock: newStock,
       latestCost: unitRate,
       weightedAvgCost: newAvg,
-    }).where(eq(ingredientsTable.id, line.ingredientId));
+      }).where(eq(ingredientsTable.id, line.ingredientId));
   }
-  return totalAmount;
+  return { subtotal, taxAmount, totalAmount };
 }
 
 function normalizePurchasePaymentStatus(status?: string | null): "fully_paid" | "unpaid" {
   const value = String(status || "").trim().toLowerCase();
   return value === "paid" || value === "fully_paid" ? "fully_paid" : "unpaid";
+}
+
+async function getPettyCashOpeningBalance(tx: any): Promise<number> {
+  const [config] = await tx.select().from(systemConfigTable);
+  return Number(config?.pettyCashOpeningBalance || 0);
+}
+
+async function getPettyCashBalanceInTx(tx: any): Promise<number> {
+  const opening = await getPettyCashOpeningBalance(tx);
+  const [agg] = await tx.select({
+    sum: sql<number>`COALESCE(
+      SUM(CASE WHEN transaction_type = 'receipt'    THEN amount ELSE 0 END) -
+      SUM(CASE WHEN transaction_type = 'expense'    THEN amount ELSE 0 END) +
+      SUM(CASE WHEN transaction_type = 'adjustment' THEN amount ELSE 0 END), 0)`
+  }).from(pettyCashLedgerTable);
+  return round2(opening + Number(agg?.sum || 0));
+}
+
+async function recalculatePettyCashRunningBalances(tx: any): Promise<void> {
+  const opening = await getPettyCashOpeningBalance(tx);
+  const rows = await tx.select({
+    id: pettyCashLedgerTable.id,
+    amount: pettyCashLedgerTable.amount,
+    transactionType: pettyCashLedgerTable.transactionType,
+  })
+    .from(pettyCashLedgerTable)
+    .orderBy(asc(pettyCashLedgerTable.transactionDate), asc(pettyCashLedgerTable.id));
+
+  let runningBalance = opening;
+  for (const row of rows) {
+    if (row.transactionType === "receipt") runningBalance = round2(runningBalance + Number(row.amount || 0));
+    else if (row.transactionType === "expense") runningBalance = round2(runningBalance - Number(row.amount || 0));
+    else if (row.transactionType === "adjustment") runningBalance = round2(runningBalance + Number(row.amount || 0));
+    await tx.update(pettyCashLedgerTable).set({ runningBalance }).where(eq(pettyCashLedgerTable.id, row.id));
+  }
+}
+
+async function deletePurchasePettyCashArtifacts(tx: any, purchase: typeof purchasesTable.$inferSelect): Promise<void> {
+  if (purchase.linkedExpenseId) {
+    await tx.delete(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.linkedExpenseId, purchase.linkedExpenseId));
+    await tx.delete(expensesTable).where(eq(expensesTable.id, purchase.linkedExpenseId));
+    await recalculatePettyCashRunningBalances(tx);
+    return;
+  }
+
+  const legacyRows = await tx.select({ id: pettyCashLedgerTable.id })
+    .from(pettyCashLedgerTable)
+    .where(and(
+      eq(pettyCashLedgerTable.transactionType, "expense"),
+      sql`lower(${pettyCashLedgerTable.category}) = 'purchase'`,
+      eq(pettyCashLedgerTable.transactionDate, purchase.purchaseDate),
+      eq(pettyCashLedgerTable.amount, round2(Number(purchase.totalAmount || 0))),
+      sql`${pettyCashLedgerTable.description} like ${`Purchase ${purchase.purchaseNumber}%`}`,
+    ))
+    .orderBy(pettyCashLedgerTable.id);
+
+  const legacyId = legacyRows.at(-1)?.id;
+  if (legacyId) {
+    await tx.delete(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.id, legacyId));
+    await recalculatePettyCashRunningBalances(tx);
+  }
+}
+
+async function createPurchasePettyCashArtifacts(tx: any, opts: {
+  purchase: typeof purchasesTable.$inferSelect;
+  vendorName: string;
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  purchaseDate: string;
+  invoiceNumber?: string | null;
+  userId: number | null;
+}): Promise<number> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(91234567)`);
+
+  const balance = await getPettyCashBalanceInTx(tx);
+  if (balance + 0.01 < opts.totalAmount) {
+    throw Object.assign(
+      new Error(`Insufficient petty cash balance. Available: ₹${balance.toFixed(2)}, Required: ₹${opts.totalAmount.toFixed(2)}`),
+      { httpStatus: 400 },
+    );
+  }
+
+  const expenseNumber = await generateCode("EXP", "expenses");
+  const [expense] = await tx.insert(expensesTable).values({
+    expenseNumber,
+    expenseDate: opts.purchaseDate,
+    vendorId: opts.purchase.vendorId,
+    amount: opts.subtotal,
+    taxAmount: opts.taxAmount,
+    totalAmount: opts.totalAmount,
+    paymentMode: "Petty Cash",
+    paidBy: opts.vendorName || null,
+    description: `Purchase ${opts.purchase.purchaseNumber}`,
+    costType: "variable",
+    recurring: false,
+    createdBy: opts.userId,
+  }).returning();
+
+  const [ledger] = await tx.insert(pettyCashLedgerTable).values({
+    transactionDate: opts.purchaseDate,
+    transactionType: "expense",
+    amount: opts.totalAmount,
+    method: "petty cash",
+    counterpartyName: opts.vendorName || null,
+    category: "Purchase",
+    linkedExpenseId: expense.id,
+    description: `Purchase ${opts.purchase.purchaseNumber}${opts.invoiceNumber ? ` - Invoice ${opts.invoiceNumber}` : ""}`,
+    runningBalance: round2(balance - opts.totalAmount),
+    approvalStatus: "approved",
+    createdBy: opts.userId,
+  }).returning();
+
+  await tx.update(expensesTable).set({ linkedPettyCashId: ledger.id }).where(eq(expensesTable.id, expense.id));
+  await tx.update(purchasesTable).set({ linkedExpenseId: expense.id }).where(eq(purchasesTable.id, opts.purchase.id));
+  await recalculatePettyCashRunningBalances(tx);
+  return expense.id;
+}
+
+async function rebuildVendorLedgerForPurchase(tx: any, opts: {
+  purchaseId: number;
+  vendorId: number;
+  purchaseDate: string;
+  purchaseNumber: string;
+  invoiceNumber?: string | null;
+  totalAmount: number;
+  paymentMode: string | null;
+  paymentStatus: "fully_paid" | "unpaid";
+}): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(57000000, ${opts.vendorId})`);
+  await tx.delete(vendorLedgerTable).where(and(
+    eq(vendorLedgerTable.referenceType, "purchase"),
+    eq(vendorLedgerTable.referenceId, opts.purchaseId),
+  ));
+
+  const lastLedger = await tx.select().from(vendorLedgerTable)
+    .where(eq(vendorLedgerTable.vendorId, opts.vendorId))
+    .orderBy(desc(vendorLedgerTable.transactionDate), desc(vendorLedgerTable.id))
+    .limit(1);
+  let prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
+
+  await tx.insert(vendorLedgerTable).values({
+    vendorId: opts.vendorId,
+    transactionDate: opts.purchaseDate,
+    transactionType: "purchase",
+    referenceType: "purchase",
+    referenceId: opts.purchaseId,
+    debit: opts.totalAmount,
+    credit: 0,
+    runningBalance: round2(prevBalance + opts.totalAmount),
+    description: `Purchase ${opts.purchaseNumber} - ${opts.invoiceNumber || "No invoice"}`,
+  });
+  prevBalance = round2(prevBalance + opts.totalAmount);
+
+  if (opts.paymentStatus === "fully_paid") {
+    await tx.insert(vendorLedgerTable).values({
+      vendorId: opts.vendorId,
+      transactionDate: opts.purchaseDate,
+      transactionType: "payment",
+      referenceType: "purchase",
+      referenceId: opts.purchaseId,
+      debit: 0,
+      credit: opts.totalAmount,
+      runningBalance: round2(prevBalance - opts.totalAmount),
+      description: `Paid on creation via ${opts.paymentMode || "cash"}`,
+    });
+  }
 }
 
 function generateBillPdf(data: {
@@ -299,12 +472,6 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
   const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
-  // Normalise payment fields. The form sends paymentStatus="paid" when the
-  // "Paid" checkbox is ticked and paymentMode in { cash | petty_cash |
-  // account | upi }. We translate to the canonical DB values: "fully_paid"
-  // or "unpaid". Petty-cash purchases must atomically debit the petty-cash
-  // ledger under the same advisory lock used by every other petty-cash
-  // writer, so the whole route runs inside a transaction.
   const isPaid = parsed.data.paymentStatus === "paid";
   const paymentMode = parsed.data.paymentMode || (isPaid ? "cash" : null);
   const isPettyCash = isPaid && paymentMode === "petty_cash";
@@ -314,6 +481,8 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
 
   let createdPurchase: typeof purchasesTable.$inferSelect;
   let computedTotal = 0;
+  let computedSubtotal = 0;
+  let computedTaxAmount = 0;
   let vendorName = "";
 
   try {
@@ -323,143 +492,67 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         purchaseDate: parsed.data.purchaseDate,
         vendorId: parsed.data.vendorId,
         invoiceNumber: parsed.data.invoiceNumber,
+        vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
+        dueDate: parsed.data.dueDate || undefined,
         paymentMode,
         paymentStatus: isPaid ? "fully_paid" : "unpaid",
         notes: parsed.data.notes,
         totalAmount: 0,
       }).returning();
 
-      let totalAmount = 0;
-      for (const line of parsed.data.lines) {
-        const lineTotal = line.quantity * line.unitRate * (1 + (line.taxPercent ?? 0) / 100);
-        totalAmount += lineTotal;
-        await tx.insert(purchaseLinesTable).values({
-          purchaseId: purchase.id,
-          ingredientId: line.ingredientId,
-          quantity: line.quantity,
-          purchaseUom: line.purchaseUom ?? "unit",
-          unitRate: line.unitRate,
-          taxPercent: line.taxPercent ?? 0,
-          lineTotal,
-          expiryDate: line.expiryDate || null,
-        });
-
-        const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
-        if (ing) {
-          const newStock = ing.currentStock + line.quantity;
-          const oldTotal = ing.weightedAvgCost * ing.currentStock;
-          const newTotal = oldTotal + line.unitRate * line.quantity;
-          const newAvg = newStock > 0 ? newTotal / newStock : line.unitRate;
-          await tx.update(ingredientsTable).set({
-            currentStock: newStock,
-            latestCost: line.unitRate,
-            weightedAvgCost: newAvg,
-          }).where(eq(ingredientsTable.id, line.ingredientId));
-        }
-      }
-
-      totalAmount = round2(totalAmount);
+      const lineTotals = await applyPurchaseLines(tx, purchase.id, parsed.data.lines as any);
+      const totalAmount = round2(lineTotals.totalAmount);
       const finalStatus = isPaid ? "fully_paid" : "unpaid";
       await tx.update(purchasesTable).set({
         totalAmount,
-        grossAmount: totalAmount,
+        grossAmount: lineTotals.subtotal,
+        taxAmount: lineTotals.taxAmount,
         pendingAmount: finalStatus === "fully_paid" ? 0 : totalAmount,
         paidAmount: finalStatus === "fully_paid" ? totalAmount : 0,
         paymentStatus: finalStatus,
-        vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
-        dueDate: parsed.data.dueDate || undefined,
         lastPaymentDate: finalStatus === "fully_paid" ? parsed.data.purchaseDate : undefined,
       }).where(eq(purchasesTable.id, purchase.id));
 
-      // Vendor ledger: debit the vendor for the bill, then if it was paid
-      // up-front we immediately credit the same amount so the vendor's
-      // outstanding balance ends at zero for this purchase. Take a
-      // vendor-scoped advisory lock so concurrent purchases for the same
-      // vendor can't both observe the same previous balance and write
-      // colliding running_balance values.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(57000000, ${parsed.data.vendorId})`);
-      const lastLedger = await tx.select().from(vendorLedgerTable)
-        .where(eq(vendorLedgerTable.vendorId, parsed.data.vendorId))
-        .orderBy(vendorLedgerTable.id)
-        .limit(1);
-      let prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
-
-      await tx.insert(vendorLedgerTable).values({
-        vendorId: parsed.data.vendorId,
-        transactionDate: parsed.data.purchaseDate,
-        transactionType: "purchase",
-        referenceType: "purchase",
-        referenceId: purchase.id,
-        debit: totalAmount,
-        credit: 0,
-        runningBalance: round2(prevBalance + totalAmount),
-        description: `Purchase ${purchaseNumber} - ${parsed.data.invoiceNumber || 'No invoice'}`,
-      });
-      prevBalance = round2(prevBalance + totalAmount);
-
-      if (isPaid) {
-        await tx.insert(vendorLedgerTable).values({
-          vendorId: parsed.data.vendorId,
-          transactionDate: parsed.data.purchaseDate,
-          transactionType: "payment",
-          referenceType: "purchase",
-          referenceId: purchase.id,
-          debit: 0,
-          credit: totalAmount,
-          runningBalance: round2(prevBalance - totalAmount),
-          description: `Paid on creation via ${paymentMode}`,
-        });
-      }
-
-      // Petty-cash debit. Mirrors vendorPayments.ts:297-336 so concurrent
-      // writers can't both observe the same balance and overdraw the
-      // drawer. The same advisory lock 91234567 is taken by every
-      // petty-cash insert path in this codebase.
-      if (isPettyCash) {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(91234567)`);
-
-        const [vendorRow] = await tx.select({ name: vendorsTable.name })
-          .from(vendorsTable)
-          .where(eq(vendorsTable.id, parsed.data.vendorId))
-          .limit(1);
-        const vName = vendorRow?.name || `vendor #${parsed.data.vendorId}`;
-
-        const [config] = await tx.select().from(systemConfigTable);
-        const opening = Number(config?.pettyCashOpeningBalance || 0);
-        const [agg] = await tx.select({
-          sum: sql<number>`COALESCE(
-            SUM(CASE WHEN transaction_type = 'receipt'    THEN amount ELSE 0 END) -
-            SUM(CASE WHEN transaction_type = 'expense'    THEN amount ELSE 0 END) +
-            SUM(CASE WHEN transaction_type = 'adjustment' THEN amount ELSE 0 END), 0)`
-        }).from(pettyCashLedgerTable);
-        const pcBalance = round2(opening + Number(agg?.sum || 0));
-
-        if (pcBalance + 0.01 < totalAmount) {
-          throw Object.assign(
-            new Error(`Insufficient petty cash balance. Available: ₹${pcBalance.toFixed(2)}, requested: ₹${totalAmount.toFixed(2)}`),
-            { httpStatus: 400 },
-          );
-        }
-
-        await tx.insert(pettyCashLedgerTable).values({
-          transactionDate: parsed.data.purchaseDate,
-          transactionType: "expense",
-          amount: totalAmount,
-          method: "cash",
-          counterpartyName: vName,
-          category: "purchase",
-          linkedExpenseId: null,
-          description: `Purchase ${purchaseNumber} - ${vName}${parsed.data.invoiceNumber ? ` (Invoice ${parsed.data.invoiceNumber})` : ""}`,
-          runningBalance: round2(pcBalance - totalAmount),
-          approvalStatus: "approved",
-          createdBy: userId,
-        });
-      }
-
       const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, parsed.data.vendorId));
-      return { purchase, totalAmount, vendorName: vendor?.name ?? "" };
+      const resolvedVendorName = vendor?.name ?? "";
+
+      await rebuildVendorLedgerForPurchase(tx, {
+        purchaseId: purchase.id,
+        vendorId: parsed.data.vendorId,
+        purchaseDate: parsed.data.purchaseDate,
+        purchaseNumber,
+        invoiceNumber: parsed.data.invoiceNumber,
+        totalAmount,
+        paymentMode,
+        paymentStatus: finalStatus,
+      });
+      await recalculateVendorLedger(tx, parsed.data.vendorId);
+
+      if (isPettyCash) {
+        await createPurchasePettyCashArtifacts(tx, {
+          purchase,
+          vendorName: resolvedVendorName || `vendor #${parsed.data.vendorId}`,
+          subtotal: lineTotals.subtotal,
+          taxAmount: lineTotals.taxAmount,
+          totalAmount,
+          purchaseDate: parsed.data.purchaseDate,
+          invoiceNumber: parsed.data.invoiceNumber,
+          userId,
+        });
+      }
+
+      const [freshPurchase] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, purchase.id)).limit(1);
+      return {
+        purchase: freshPurchase ?? purchase,
+        subtotal: lineTotals.subtotal,
+        taxAmount: lineTotals.taxAmount,
+        totalAmount,
+        vendorName: resolvedVendorName,
+      };
     });
     createdPurchase = result.purchase;
+    computedSubtotal = result.subtotal;
+    computedTaxAmount = result.taxAmount;
     computedTotal = result.totalAmount;
     vendorName = result.vendorName;
   } catch (e: any) {
@@ -468,13 +561,10 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
     return;
   }
 
-  // Fill in the financial-tracking columns added on origin (gross / paid /
-  // pending / vendor invoice / due date). Local INSERT only sets paymentStatus
-  // and a placeholder totalAmount=0, so without this UPDATE these columns
-  // would stay at default 0 and break payables/aging reports.
   await db.update(purchasesTable).set({
     totalAmount: computedTotal,
-    grossAmount: computedTotal,
+    grossAmount: computedSubtotal,
+    taxAmount: computedTaxAmount,
     pendingAmount: isPaid ? 0 : computedTotal,
     paidAmount: isPaid ? computedTotal : 0,
     vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
@@ -504,10 +594,14 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
   const [existing] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can edit." }); return; }
-  if ((existing.paidAmount || 0) > 0) { res.status(403).json({ error: "Paid purchases cannot be edited." }); return; }
 
   const validLines = parsed.data.lines.filter((line) => line.ingredientId > 0 && line.quantity > 0);
   if (validLines.length === 0) { res.status(400).json({ error: "At least one purchase line is required." }); return; }
+
+  const paymentStatus = normalizePurchasePaymentStatus(parsed.data.paymentStatus);
+  const paymentMode = paymentStatus === "fully_paid" ? (parsed.data.paymentMode || "cash") : null;
+  const isPettyCash = paymentStatus === "fully_paid" && paymentMode === "petty_cash";
+  const userId = (req as any).userId || null;
 
   try {
     const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
@@ -517,48 +611,52 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
       }
       await removePurchaseStockImpact(tx, existing.id);
       await tx.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, existing.id));
+      await deletePurchasePettyCashArtifacts(tx, existing);
 
-      const totalAmount = await applyPurchaseLines(tx, existing.id, validLines as any);
-      const paymentStatus = normalizePurchasePaymentStatus(parsed.data.paymentStatus);
+      const lineTotals = await applyPurchaseLines(tx, existing.id, validLines as any);
+      const totalAmount = round2(lineTotals.totalAmount);
+      const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, parsed.data.vendorId));
+      const resolvedVendorName = vendor?.name ?? `vendor #${parsed.data.vendorId}`;
 
       const [purchase] = await tx.update(purchasesTable).set({
         purchaseDate: parsed.data.purchaseDate,
         vendorId: parsed.data.vendorId,
         invoiceNumber: parsed.data.invoiceNumber,
         vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
-        paymentMode: parsed.data.paymentMode,
+        dueDate: parsed.data.dueDate || undefined,
+        paymentMode,
         paymentStatus,
         notes: parsed.data.notes,
         totalAmount,
-        grossAmount: totalAmount,
+        grossAmount: lineTotals.subtotal,
+        taxAmount: lineTotals.taxAmount,
         pendingAmount: paymentStatus === "fully_paid" ? 0 : totalAmount,
         paidAmount: paymentStatus === "fully_paid" ? totalAmount : 0,
+        lastPaymentDate: paymentStatus === "fully_paid" ? parsed.data.purchaseDate : null,
+        linkedExpenseId: null,
       }).where(eq(purchasesTable.id, existing.id)).returning();
 
-      const [ledgerEntry] = await tx.select().from(vendorLedgerTable).where(and(
-        eq(vendorLedgerTable.referenceType, "purchase"),
-        eq(vendorLedgerTable.referenceId, existing.id),
-      ));
+      await rebuildVendorLedgerForPurchase(tx, {
+        purchaseId: existing.id,
+        vendorId: parsed.data.vendorId,
+        purchaseDate: parsed.data.purchaseDate,
+        purchaseNumber: existing.purchaseNumber,
+        invoiceNumber: parsed.data.invoiceNumber,
+        totalAmount,
+        paymentMode,
+        paymentStatus,
+      });
 
-      if (ledgerEntry) {
-        await tx.update(vendorLedgerTable).set({
-          vendorId: parsed.data.vendorId,
-          transactionDate: parsed.data.purchaseDate,
-          debit: totalAmount,
-          credit: 0,
-          description: `Purchase ${existing.purchaseNumber} - ${parsed.data.invoiceNumber || 'No invoice'}`,
-        }).where(eq(vendorLedgerTable.id, ledgerEntry.id));
-      } else {
-        await tx.insert(vendorLedgerTable).values({
-          vendorId: parsed.data.vendorId,
-          transactionDate: parsed.data.purchaseDate,
-          transactionType: "purchase",
-          referenceType: "purchase",
-          referenceId: existing.id,
-          debit: totalAmount,
-          credit: 0,
-          runningBalance: 0,
-          description: `Purchase ${existing.purchaseNumber} - ${parsed.data.invoiceNumber || 'No invoice'}`,
+      if (isPettyCash) {
+        await createPurchasePettyCashArtifacts(tx, {
+          purchase,
+          vendorName: resolvedVendorName,
+          subtotal: lineTotals.subtotal,
+          taxAmount: lineTotals.taxAmount,
+          totalAmount,
+          purchaseDate: parsed.data.purchaseDate,
+          invoiceNumber: parsed.data.invoiceNumber,
+          userId,
         });
       }
 
@@ -567,7 +665,8 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
         await recalculateVendorLedger(tx, parsed.data.vendorId);
       }
 
-      return purchase;
+      const [freshPurchase] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, existing.id)).limit(1);
+      return freshPurchase ?? purchase;
     });
 
     await createAuditLog("purchases", existing.id, "update", existing, {
@@ -575,6 +674,8 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
       purchaseDate: parsed.data.purchaseDate,
       invoiceNumber: parsed.data.invoiceNumber,
       totalAmount: updated.totalAmount,
+      paymentMode,
+      paymentStatus,
     });
 
     const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, updated.vendorId));
@@ -701,67 +802,19 @@ router.delete("/purchases/:id", authMiddleware, requirePermission("purchases.del
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
 
-  // Reverse every financial side-effect this purchase produced, atomically.
-  // Side-effects to undo:
-  //   1. ingredient stock (we added `quantity`)
-  //   2. vendor_ledger debit/credit rows referencing this purchase
-  //   3. petty_cash_ledger row (only if this purchase was paid via petty cash)
-  // Both ledger reversals run under the same advisory locks the writers use
-  // so concurrent operations on the affected vendor / petty-cash drawer
-  // observe a consistent balance.
-  const wasPettyCash = existing.paymentStatus === "fully_paid" && existing.paymentMode === "petty_cash";
-  const purchaseTotal = round2(Number(existing.totalAmount || 0));
-
   try {
     await db.transaction(async (tx) => {
-      const lines = await tx.select().from(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, id));
-      for (const line of lines) {
-        const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
-        if (ing) {
-          const newStock = Math.max(0, ing.currentStock - line.quantity);
-          await tx.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, line.ingredientId));
-        }
-      }
+      await removePurchaseStockImpact(tx, id);
+      await deletePurchasePettyCashArtifacts(tx, existing);
 
-      // Vendor ledger cleanup. Take a vendor-scoped lock matching the writer.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(57000000, ${existing.vendorId})`);
       await tx.delete(vendorLedgerTable).where(and(
         eq(vendorLedgerTable.referenceType, "purchase"),
         eq(vendorLedgerTable.referenceId, id),
       ));
-
-      // Petty-cash refund. Rather than deleting historic rows we post a
-      // compensating receipt so the ledger remains an append-only audit
-      // trail (matches the pattern used by vendorPayments DELETE).
-      if (wasPettyCash && purchaseTotal > 0) {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(91234567)`);
-        const [config] = await tx.select().from(systemConfigTable);
-        const opening = Number(config?.pettyCashOpeningBalance || 0);
-        const [agg] = await tx.select({
-          sum: sql<number>`COALESCE(
-            SUM(CASE WHEN transaction_type = 'receipt'    THEN amount ELSE 0 END) -
-            SUM(CASE WHEN transaction_type = 'expense'    THEN amount ELSE 0 END) +
-            SUM(CASE WHEN transaction_type = 'adjustment' THEN amount ELSE 0 END), 0)`
-        }).from(pettyCashLedgerTable);
-        const pcBalance = round2(opening + Number(agg?.sum || 0));
-
-        await tx.insert(pettyCashLedgerTable).values({
-          transactionDate: new Date().toISOString().split("T")[0],
-          transactionType: "receipt",
-          amount: purchaseTotal,
-          method: "cash",
-          counterpartyName: null,
-          category: "purchase_reversal",
-          linkedExpenseId: null,
-          description: `Reversal of petty-cash purchase ${existing.purchaseNumber}`,
-          runningBalance: round2(pcBalance + purchaseTotal),
-          approvalStatus: "approved",
-          createdBy: (req as any).userId || null,
-        });
-      }
-
       await tx.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, id));
       await tx.delete(purchasesTable).where(eq(purchasesTable.id, id));
+      await recalculateVendorLedger(tx, existing.vendorId);
     });
   } catch (e: any) {
     res.status(e?.httpStatus || 500).json({ error: e?.message || "Failed to delete purchase" });

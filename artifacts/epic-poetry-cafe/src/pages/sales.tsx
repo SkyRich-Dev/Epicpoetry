@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useListMenuItems } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, useFormDirty, useClientPagination, TablePagination, toLocalDateInputValue } from '../components/ui-extras';
 import { Plus, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -32,8 +32,8 @@ export default function Sales() {
   // Default the filter to "this calendar month → today" so the Total Sales /
   // Gross / GST cards reflect the current month on first load instead of
   // accidentally summing all-time.
-  const monthStart = useMemo(() => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; }, []);
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const monthStart = useMemo(() => { const d = new Date(); d.setDate(1); return toLocalDateInputValue(d); }, []);
+  const todayStr = useMemo(() => toLocalDateInputValue(), []);
   const [fromDate, setFromDate] = useState(monthStart);
   const [toDate, setToDate] = useState(todayStr);
 
@@ -56,7 +56,7 @@ export default function Sales() {
   // Snapshot the entire invoice form (header + line items) so adding /
   // removing rows or editing quantities both trigger the discard prompt.
   const [invoiceForm, setInvoiceForm] = useState({
-    salesDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTime: '',
+    salesDate: toLocalDateInputValue(), invoiceNo: '', invoiceTime: '',
     orderType: 'dine-in', customerName: '', customerPhone: '', totalDiscount: 0, paymentMode: 'cash',
     paymentReference: '', gstInclusive: true,
     lines: [{ menuItemId: 0, quantity: 1, gstPercent: 5 }] as { menuItemId: number; quantity: number; gstPercent: number }[],
@@ -105,7 +105,7 @@ export default function Sales() {
 
   const openInvoiceCreate = () => {
     setInvoiceForm({
-      salesDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTime: '',
+      salesDate: toLocalDateInputValue(), invoiceNo: '', invoiceTime: '',
       orderType: 'dine-in', customerName: '', customerPhone: '', totalDiscount: 0, paymentMode: 'cash',
       paymentReference: '', gstInclusive: true,
       lines: [{ menuItemId: 0, quantity: 1, gstPercent: 5 }],
@@ -368,7 +368,7 @@ export default function Sales() {
         footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
         <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto">
           <div className="grid grid-cols-3 gap-x-4 gap-y-5">
-            <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={invoiceForm.salesDate} onChange={e => setInvoiceForm(f => ({ ...f, salesDate: e.target.value }))} /></div>
+            <div><Label>Date</Label><Input type="date" max={todayStr} value={invoiceForm.salesDate} onChange={e => setInvoiceForm(f => ({ ...f, salesDate: e.target.value }))} /></div>
             <div><Label>Invoice No (optional)</Label><Input value={invoiceForm.invoiceNo} onChange={e => setInvoiceForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Auto-generated" /></div>
             <div><Label>Time</Label><Input type="time" value={invoiceForm.invoiceTime} onChange={e => setInvoiceForm(f => ({ ...f, invoiceTime: e.target.value }))} /></div>
           </div>

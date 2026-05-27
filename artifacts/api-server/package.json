@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:tenant-webhook": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/webhook-tenant-isolation.spec.js"
+    "test:tenant-webhook": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/webhook-tenant-isolation.spec.js",
+    "test:sales-summary": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/sales-invoice-summary.spec.js"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.21",

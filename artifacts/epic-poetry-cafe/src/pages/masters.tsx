@@ -17,6 +17,13 @@ const TABS = [
   { id: 'audit', label: 'Audit Logs', icon: ScrollText },
 ] as const;
 
+function normalizeCafeName(value: string | null | undefined): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.toLowerCase() === 'platr') return '';
+  return trimmed;
+}
+
 type ApiRole = {
   id: number;
   name: string;
@@ -66,7 +73,7 @@ function prettyRoleName(name: string): string {
 type TabId = typeof TABS[number]['id'];
 
 const DEFAULT_CONFIG = {
-  cafeName: 'Platr',
+  cafeName: '',
   costingMethod: 'weighted_average',
   currency: 'INR',
   decimalPrecision: 2,
@@ -116,7 +123,7 @@ function CategoriesConfigTab() {
   useEffect(() => {
     if (config) {
       setConfigForm({
-        cafeName: (config as any).cafeName || 'Platr',
+        cafeName: normalizeCafeName((config as any).cafeName),
         costingMethod: config.costingMethod || 'weighted_average',
         currency: config.currency || 'INR',
         decimalPrecision: config.decimalPrecision ?? 2,
@@ -261,7 +268,7 @@ function CategoriesConfigTab() {
           <div className="p-6 space-y-4">
             <div className="flex justify-between py-2 border-b border-border/50">
               <span className="text-muted-foreground">Cafe / Restaurant Name</span>
-              <span className="font-medium">{(config as any)?.cafeName || 'Platr'}</span>
+              <span className="font-medium">{normalizeCafeName((config as any)?.cafeName) || 'Not configured'}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-border/50">
               <span className="text-muted-foreground">Currency</span>
