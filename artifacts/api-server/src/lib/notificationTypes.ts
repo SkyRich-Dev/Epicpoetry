@@ -92,7 +92,7 @@ const wrap = (title: string, body: string) => `
   </div>
   <div style="background:#F8F5EE;padding:20px;border-radius:0 0 10px 10px;border:1px solid #eadfc8;border-top:none">
     ${body}
-    <div style="margin-top:24px;font-size:11px;color:#888;text-align:center">Powered by SkyRich</div>
+    <div style="margin-top:24px;font-size:11px;color:#888;text-align:center">Powered by Platr</div>
   </div>
 </div>`;
 

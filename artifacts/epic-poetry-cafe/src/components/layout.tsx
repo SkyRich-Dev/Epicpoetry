@@ -189,7 +189,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {children}
           </div>
           <footer className="text-center text-[11px] text-muted-foreground/60 py-6 mt-10">
-            Powered by SkyRich
+            Powered by Platr
           </footer>
         </div>
       </main>

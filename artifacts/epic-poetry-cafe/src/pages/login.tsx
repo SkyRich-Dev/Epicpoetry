@@ -97,7 +97,7 @@ export default function Login() {
         </form>
 
         <p className="text-center text-[11px] text-muted-foreground/60 mt-6 tracking-wide">
-          Powered by <span className="font-semibold text-muted-foreground/80">SkyRich</span>
+          Powered by <span className="font-semibold text-muted-foreground/80">Platr</span>
         </p>
       </div>
     </div>
