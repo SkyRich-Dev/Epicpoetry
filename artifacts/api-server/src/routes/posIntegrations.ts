@@ -121,13 +121,27 @@ function normalizeTenantSchemaName(value: string | null | undefined): string | n
   if (!value) return null;
   const normalized = value.trim().toLowerCase();
   if (!/^[a-z][a-z0-9_]{0,62}$/.test(normalized)) return null;
-  if (normalized === "public" || normalized.startsWith("pg_") || normalized === "information_schema") return null;
+  if (normalized.startsWith("pg_") || normalized === "information_schema") return null;
   return normalized;
+}
+
+function isPublicSchemaName(value: string | null | undefined): boolean {
+  return String(value || "").trim().toLowerCase() === "public";
+}
+
+function resolveIntegrationSchemaName(value: string | null | undefined): string | null {
+  const normalized = normalizeTenantSchemaName(value);
+  if (!normalized || isPublicSchemaName(normalized)) return null;
+  return normalized;
+}
+
+function effectiveWebhookSchemaName(value: string | null | undefined): string {
+  return resolveIntegrationSchemaName(value) || "public";
 }
 
 async function ensureWebhookIdentity(integration: any, tenantSchemaName?: string | null) {
   const updates: Record<string, string> = {};
-  const normalizedSchema = normalizeTenantSchemaName(tenantSchemaName);
+  const normalizedSchema = resolveIntegrationSchemaName(tenantSchemaName);
 
   if (!integration.publicWebhookKey) {
     updates.publicWebhookKey = generatePublicWebhookKey();
@@ -222,7 +236,7 @@ router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pr
     return;
   }
 
-  const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
+  const tenantSchemaName = resolveIntegrationSchemaName((req as any).tenantSchemaName);
   req.log?.info({
     event: "pos_integration.create.request",
     tenantSchemaName,
@@ -230,16 +244,6 @@ router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pr
     userRole: (req as any).userRole,
     payload: summarizePosIntegrationPayload(req.body || {}),
   });
-
-  if (!tenantSchemaName) {
-    req.log?.warn({ event: "pos_integration.create.missing_tenant_context" }, "Tenant schema context missing while creating POS integration");
-    res.status(400).json({
-      success: false,
-      message: "Tenant schema context is missing for this integration.",
-      errorCode: "POS_INTEGRATION_TENANT_CONTEXT_MISSING",
-    });
-    return;
-  }
 
   try {
     const webhookSecret = crypto.randomBytes(32).toString("hex");
@@ -406,30 +410,42 @@ router.get("/pos-integrations/:id/stats", authMiddleware, adminOnly, async (req,
 });
 
 async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
-  const tenantSchemaName = normalizeTenantSchemaName(req.params.tenantSchemaName);
+  const tenantSchemaName = resolveIntegrationSchemaName(req.params.tenantSchemaName);
   const publicWebhookKey = String(req.params.publicWebhookKey || "").trim();
 
-  if (!tenantSchemaName || !publicWebhookKey) {
-    res.status(400).json({ error: "Invalid tenant webhook URL" });
+  if (!publicWebhookKey) {
+    res.status(400).json({ error: "Invalid webhook URL" });
     return;
   }
 
+  const schemaNameForRequest = effectiveWebhookSchemaName(tenantSchemaName);
+
   req.log?.info({
     event: "petpooja.webhook.received",
-    tenantSchemaName,
+    tenantSchemaName: schemaNameForRequest,
     publicWebhookKeySuffix: publicWebhookKey.slice(-8),
     provider: "petpooja",
   });
 
-  await runWithTenantSchema(tenantSchemaName, async () => {
+  await runWithTenantSchema(schemaNameForRequest, async () => {
     const [rawIntegration] = await db.select().from(posIntegrationsTable).where(
-      and(eq(posIntegrationsTable.publicWebhookKey, publicWebhookKey), eq(posIntegrationsTable.provider, "petpooja"))
+      tenantSchemaName
+        ? and(
+            eq(posIntegrationsTable.publicWebhookKey, publicWebhookKey),
+            eq(posIntegrationsTable.provider, "petpooja"),
+            eq(posIntegrationsTable.tenantSchemaName, tenantSchemaName),
+          )
+        : and(
+            eq(posIntegrationsTable.publicWebhookKey, publicWebhookKey),
+            eq(posIntegrationsTable.provider, "petpooja"),
+            sql`${posIntegrationsTable.tenantSchemaName} IS NULL OR lower(${posIntegrationsTable.tenantSchemaName}) = 'public'`,
+          )
     );
     const integration = rawIntegration ? await ensureWebhookIdentity(rawIntegration, tenantSchemaName) : null;
     if (!integration || !integration.active) {
       req.log?.warn({
         event: "petpooja.webhook.integration_not_found",
-        tenantSchemaName,
+        tenantSchemaName: schemaNameForRequest,
         publicWebhookKeySuffix: publicWebhookKey.slice(-8),
       });
       res.status(404).json({ error: "Integration not found or inactive" });
@@ -488,7 +504,7 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
       if (!result.created) {
         req.log?.info({
           event: "petpooja.webhook.duplicate",
-          tenantSchemaName,
+          tenantSchemaName: schemaNameForRequest,
           integrationId: integration.id,
           invoiceNo: result.invoiceNo,
         });
@@ -519,7 +535,7 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
       });
       req.log?.info({
         event: "petpooja.webhook.processed",
-        tenantSchemaName,
+        tenantSchemaName: schemaNameForRequest,
         integrationId: integration.id,
         invoiceNo: result.invoiceNo,
         salesInvoiceId: invoice?.id ?? null,
@@ -534,7 +550,7 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
       req.log?.error({
         err: e,
         event: "petpooja.webhook.failed",
-        tenantSchemaName,
+        tenantSchemaName: schemaNameForRequest,
         integrationId: integration.id,
         restaurantId: integration.restaurantId,
       }, "Petpooja webhook processing failed");
@@ -553,7 +569,17 @@ router.post("/webhook/petpooja/:tenantSchemaName/:publicWebhookKey", async (req,
   await handlePetpoojaWebhook(req, res);
 });
 
+router.post("/webhook/petpooja/:publicWebhookKey", async (req, res): Promise<void> => {
+  req.params.tenantSchemaName = "public";
+  await handlePetpoojaWebhook(req, res);
+});
+
 router.post("/webhook/petpooja-global/:tenantSchemaName/:publicWebhookKey", async (req, res): Promise<void> => {
+  await handlePetpoojaWebhook(req, res);
+});
+
+router.post("/webhook/petpooja-global/:publicWebhookKey", async (req, res): Promise<void> => {
+  req.params.tenantSchemaName = "public";
   await handlePetpoojaWebhook(req, res);
 });
 

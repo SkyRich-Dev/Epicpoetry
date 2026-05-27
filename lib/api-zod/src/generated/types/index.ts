@@ -20,6 +20,7 @@ export * from "./createIngredientVendorMappingRequest";
 export * from "./createMenuItemRequest";
 export * from "./createPettyCashRequest";
 export * from "./createPettyCashRequestTransactionType";
+export * from "./createPurchaseBodyTwo";
 export * from "./createPurchaseRequest";
 export * from "./createSalesEntryRequest";
 export * from "./createSettlementRequest";

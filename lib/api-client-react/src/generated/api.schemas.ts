@@ -343,6 +343,12 @@ export interface Purchase {
   paymentStatus: string;
   totalAmount: number;
   /** @nullable */
+  billAttachmentUrl?: string | null;
+  /** @nullable */
+  billAttachmentName?: string | null;
+  /** @nullable */
+  billAttachmentType?: string | null;
+  /** @nullable */
   notes?: string | null;
   createdAt?: string;
 }
@@ -378,6 +384,7 @@ export interface CreatePurchaseRequest {
   invoiceNumber?: string;
   paymentMode?: string;
   paymentStatus?: string;
+  removeBillAttachment?: boolean;
   notes?: string;
   lines: PurchaseLineInput[];
 }
@@ -901,6 +908,13 @@ export type ListPurchasesParams = {
   vendorId?: number;
   fromDate?: string;
   toDate?: string;
+};
+
+export type CreatePurchaseBodyTwo = {
+  /** JSON string matching CreatePurchaseRequest */
+  payload?: string;
+  billAttachment?: Blob;
+  removeBillAttachment?: boolean;
 };
 
 export type ListExpensesParams = {

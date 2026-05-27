@@ -786,6 +786,9 @@ export const ListPurchasesResponseItem = zod.object({
   paymentMode: zod.string().nullish(),
   paymentStatus: zod.string(),
   totalAmount: zod.number(),
+  billAttachmentUrl: zod.string().nullish(),
+  billAttachmentName: zod.string().nullish(),
+  billAttachmentType: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date().optional(),
 });
@@ -800,6 +803,7 @@ export const CreatePurchaseBody = zod.object({
   invoiceNumber: zod.string().optional(),
   paymentMode: zod.string().optional(),
   paymentStatus: zod.string().optional(),
+  removeBillAttachment: zod.boolean().optional(),
   notes: zod.string().optional(),
   lines: zod.array(
     zod.object({
@@ -830,6 +834,9 @@ export const GetPurchaseResponse = zod.object({
     paymentMode: zod.string().nullish(),
     paymentStatus: zod.string(),
     totalAmount: zod.number(),
+    billAttachmentUrl: zod.string().nullish(),
+    billAttachmentName: zod.string().nullish(),
+    billAttachmentType: zod.string().nullish(),
     notes: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
   }),

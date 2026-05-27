@@ -6,13 +6,217 @@ import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
+import { createSignedReadUrl, deleteFileFromS3, sanitizeFileName, uploadFileToS3, type StoredS3Attachment } from "../lib/s3Storage";
 import PDFDocument from "pdfkit";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import type { Request, Response, NextFunction } from "express";
 
 function round2(n: number): number {
   return Math.round((n || 0) * 100) / 100;
 }
 
 const router: IRouter = Router();
+const PURCHASE_BILL_DIR = path.join(process.cwd(), "uploads", "purchase-bills");
+const MAX_BILL_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const ALLOWED_BILL_ATTACHMENT_TYPES = ["image/jpeg", "image/jpg", "image/png", "application/pdf"] as const;
+
+const purchaseBillUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_BILL_ATTACHMENT_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_BILL_ATTACHMENT_TYPES.includes(file.mimetype as (typeof ALLOWED_BILL_ATTACHMENT_TYPES)[number])) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Unsupported bill attachment format. Supported formats: JPG, JPEG, PNG, PDF."));
+  },
+});
+
+function purchaseBillUploadMiddleware(req: Request, res: Response, next: NextFunction): void {
+  purchaseBillUpload.single("billAttachment")(req, res, (err) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({ error: "Bill attachment must be 10 MB or smaller." });
+      return;
+    }
+    if (err instanceof multer.MulterError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(400).json({ error: "Unsupported bill attachment format. Supported formats: JPG, JPEG, PNG, PDF." });
+  });
+}
+
+type PurchaseAttachmentMetadata = {
+  billAttachmentUrl: string | null;
+  billAttachmentName: string | null;
+  billAttachmentType: string | null;
+};
+
+type ParsedStoredBillAttachment =
+  | ({ kind: "s3" } & StoredS3Attachment)
+  | { kind: "legacy-local"; path: string; name: string; type: string | null };
+
+function billAttachmentTypeFromName(name: string | null | undefined): string | null {
+  const lower = String(name || "").toLowerCase();
+  if (!lower) return null;
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  return null;
+}
+
+function parseStoredBillAttachment(billAttachment: string | null | undefined): ParsedStoredBillAttachment | null {
+  if (!billAttachment) {
+    return null;
+  }
+  const trimmed = String(billAttachment).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as Partial<StoredS3Attachment>;
+      if (parsed?.storage === "s3" && parsed.key && parsed.bucket) {
+        return {
+          kind: "s3",
+          storage: "s3",
+          bucket: String(parsed.bucket),
+          key: String(parsed.key),
+          name: String(parsed.name || path.basename(String(parsed.key))),
+          type: String(parsed.type || billAttachmentTypeFromName(String(parsed.name || parsed.key)) || "application/octet-stream"),
+          size: Number(parsed.size || 0),
+        };
+      }
+    } catch {
+      // fall through to legacy local attachment handling
+    }
+  }
+  const billAttachmentName = decodeURIComponent(path.basename(trimmed));
+  return {
+    kind: "legacy-local",
+    path: trimmed,
+    name: billAttachmentName,
+    type: billAttachmentTypeFromName(billAttachmentName),
+  };
+}
+
+async function serializeBillAttachment(billAttachment: string | null | undefined): Promise<PurchaseAttachmentMetadata> {
+  const parsed = parseStoredBillAttachment(billAttachment);
+  if (!parsed) {
+    return {
+      billAttachmentUrl: null,
+      billAttachmentName: null,
+      billAttachmentType: null,
+    };
+  }
+  if (parsed.kind === "s3") {
+    return {
+      billAttachmentUrl: await createSignedReadUrl(parsed.key, parsed.name, parsed.type),
+      billAttachmentName: parsed.name,
+      billAttachmentType: parsed.type,
+    };
+  }
+  return {
+    billAttachmentUrl: parsed.path,
+    billAttachmentName: parsed.name,
+    billAttachmentType: parsed.type,
+  };
+}
+
+async function uploadPurchaseBillAttachment(input: {
+  file: Express.Multer.File | undefined;
+  tenantSchemaName: string | null;
+  purchaseId: number;
+}): Promise<string | null> {
+  if (!input.file) return null;
+  const tenantKey = sanitizeFileName(input.tenantSchemaName || "public");
+  const objectKey = [
+    "purchase-bills",
+    tenantKey,
+    String(input.purchaseId),
+    `${Date.now()}-${sanitizeFileName(input.file.originalname)}`,
+  ].join("/");
+  const stored = await uploadFileToS3({
+    key: objectKey,
+    body: input.file.buffer,
+    contentType: input.file.mimetype,
+    originalName: input.file.originalname,
+    contentLength: input.file.size,
+  });
+  return JSON.stringify(stored);
+}
+
+async function deletePurchaseBillFile(billAttachment: string | null | undefined): Promise<void> {
+  const parsed = parseStoredBillAttachment(billAttachment);
+  if (!parsed) return;
+  if (parsed.kind === "s3") {
+    await deleteFileFromS3(parsed.key);
+    return;
+  }
+  const diskPath = path.join(PURCHASE_BILL_DIR, path.basename(parsed.path));
+  try {
+    fs.unlinkSync(diskPath);
+  } catch (error: any) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+function parseBooleanLike(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  }
+  return false;
+}
+
+function parsePurchaseRequestBody(req: Request) {
+  const contentType = String(req.headers["content-type"] || "").toLowerCase();
+  const rawBody = contentType.includes("multipart/form-data")
+    ? (() => {
+        if (typeof req.body?.payload !== "string") return null;
+        try {
+          return JSON.parse(req.body.payload);
+        } catch {
+          return undefined;
+        }
+      })()
+    : req.body;
+
+  if (rawBody === null) {
+    return {
+      success: false as const,
+      errorMessage: "Multipart purchase requests must include a JSON payload field.",
+    };
+  }
+  if (typeof rawBody === "undefined") {
+    return {
+      success: false as const,
+      errorMessage: "Invalid purchase payload JSON.",
+    };
+  }
+
+  const parsed = CreatePurchaseBody.safeParse(rawBody);
+  if (!parsed.success) {
+    return {
+      success: false as const,
+      errorMessage: parsed.error.message,
+    };
+  }
+
+  const removeBillAttachment = parseBooleanLike(req.body?.removeBillAttachment ?? rawBody?.removeBillAttachment);
+  return {
+    success: true as const,
+    data: parsed.data,
+    removeBillAttachment,
+  };
+}
 
 function normalizeTenantSchemaName(value: string | null | undefined): string | null {
   const trimmed = String(value || "").trim();
@@ -227,6 +431,11 @@ async function createPurchasePettyCashArtifacts(tx: any, opts: {
   await tx.update(purchasesTable).set({ linkedExpenseId: expense.id }).where(eq(purchasesTable.id, opts.purchase.id));
   await recalculatePettyCashRunningBalances(tx);
   return expense.id;
+}
+
+async function applyTenantSearchPath(tx: any, tenantSchemaName: string | null) {
+  if (!tenantSchemaName) return;
+  await tx.execute(sql`select set_config('search_path', ${`"${tenantSchemaName}", public`}, false)`);
 }
 
 async function rebuildVendorLedgerForPurchase(tx: any, opts: {
@@ -445,6 +654,7 @@ router.get("/purchases", async (req, res): Promise<void> => {
       totalAmount: purchasesTable.totalAmount,
       paidAmount: purchasesTable.paidAmount,
       pendingAmount: purchasesTable.pendingAmount,
+      billAttachment: purchasesTable.billAttachment,
       dueDate: purchasesTable.dueDate,
       vendorInvoiceNumber: purchasesTable.vendorInvoiceNumber,
       notes: purchasesTable.notes,
@@ -463,20 +673,24 @@ router.get("/purchases", async (req, res): Promise<void> => {
   const purchases = finalWhere
     ? await query.where(finalWhere).orderBy(purchasesTable.createdAt)
     : await query.orderBy(purchasesTable.createdAt);
-  res.json(purchases);
+  const serializedPurchases = await Promise.all(purchases.map(async (purchase) => ({
+    ...purchase,
+    ...(await serializeBillAttachment(purchase.billAttachment)),
+  })));
+  res.json(ListPurchasesResponse.parse(serializedPurchases));
 });
 
-router.post("/purchases", authMiddleware, requirePermission("purchases.create"), async (req, res): Promise<void> => {
-  const parsed = CreatePurchaseBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+router.post("/purchases", authMiddleware, requirePermission("purchases.create"), purchaseBillUploadMiddleware, async (req, res): Promise<void> => {
+  const parsed = parsePurchaseRequestBody(req);
+  if (!parsed.success) { res.status(400).json({ error: parsed.errorMessage }); return; }
   const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   const isPaid = parsed.data.paymentStatus === "paid";
   const paymentMode = parsed.data.paymentMode || (isPaid ? "cash" : null);
   const isPettyCash = isPaid && paymentMode === "petty_cash";
-
-  const purchaseNumber = await generateCode("PUR", "purchases");
+  const uploadedFile = req.file as Express.Multer.File | undefined;
+  const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
   const userId = (req as any).userId || null;
 
   let createdPurchase: typeof purchasesTable.$inferSelect;
@@ -484,9 +698,13 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
   let computedSubtotal = 0;
   let computedTaxAmount = 0;
   let vendorName = "";
+  let uploadedBillAttachment: string | null = null;
 
   try {
     const result = await db.transaction(async (tx) => {
+      await applyTenantSearchPath(tx, tenantSchemaName);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(56000000, ${parsed.data.vendorId})`);
+      const purchaseNumber = await generateCode("PUR", "purchases", tx);
       const [purchase] = await tx.insert(purchasesTable).values({
         purchaseNumber,
         purchaseDate: parsed.data.purchaseDate,
@@ -497,8 +715,19 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         paymentMode,
         paymentStatus: isPaid ? "fully_paid" : "unpaid",
         notes: parsed.data.notes,
+        billAttachment: null,
         totalAmount: 0,
       }).returning();
+
+      const nextBillAttachment = await uploadPurchaseBillAttachment({
+        file: uploadedFile,
+        tenantSchemaName,
+        purchaseId: purchase.id,
+      });
+      uploadedBillAttachment = nextBillAttachment;
+      if (nextBillAttachment) {
+        await tx.update(purchasesTable).set({ billAttachment: nextBillAttachment }).where(eq(purchasesTable.id, purchase.id));
+      }
 
       const lineTotals = await applyPurchaseLines(tx, purchase.id, parsed.data.lines as any);
       const totalAmount = round2(lineTotals.totalAmount);
@@ -544,6 +773,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
       const [freshPurchase] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, purchase.id)).limit(1);
       return {
         purchase: freshPurchase ?? purchase,
+        purchaseNumber,
         subtotal: lineTotals.subtotal,
         taxAmount: lineTotals.taxAmount,
         totalAmount,
@@ -551,11 +781,16 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
       };
     });
     createdPurchase = result.purchase;
+    const purchaseNumber = result.purchaseNumber;
     computedSubtotal = result.subtotal;
     computedTaxAmount = result.taxAmount;
     computedTotal = result.totalAmount;
     vendorName = result.vendorName;
+    await createAuditLog("purchases", createdPurchase.id, "create", null, { purchaseNumber, totalAmount: computedTotal, paymentMode, isPaid });
   } catch (e: any) {
+    if (uploadedBillAttachment) {
+      await deletePurchaseBillFile(uploadedBillAttachment).catch(() => undefined);
+    }
     const status = e?.httpStatus || 500;
     res.status(status).json({ error: e?.message || "Failed to create purchase" });
     return;
@@ -571,29 +806,24 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
     dueDate: parsed.data.dueDate || undefined,
   }).where(eq(purchasesTable.id, createdPurchase.id));
 
-  await createAuditLog("purchases", createdPurchase.id, "create", null, { purchaseNumber, totalAmount: computedTotal, paymentMode, isPaid });
-
   res.status(201).json({
     ...createdPurchase,
     totalAmount: computedTotal,
     paymentMode,
     paymentStatus: isPaid ? "fully_paid" : "unpaid",
     vendorName,
+    ...(await serializeBillAttachment(createdPurchase.billAttachment)),
   });
 });
 
-router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit"), async (req, res): Promise<void> => {
+router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit"), purchaseBillUploadMiddleware, async (req, res): Promise<void> => {
   const params = GetPurchaseParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
-  const parsed = CreatePurchaseBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const parsed = parsePurchaseRequestBody(req);
+  if (!parsed.success) { res.status(400).json({ error: parsed.errorMessage }); return; }
   const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
-
-  const [existing] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, params.data.id));
-  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can edit." }); return; }
 
   const validLines = parsed.data.lines.filter((line) => line.ingredientId > 0 && line.quantity > 0);
   if (validLines.length === 0) { res.status(400).json({ error: "At least one purchase line is required." }); return; }
@@ -602,16 +832,36 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
   const paymentMode = paymentStatus === "fully_paid" ? (parsed.data.paymentMode || "cash") : null;
   const isPettyCash = paymentStatus === "fully_paid" && paymentMode === "petty_cash";
   const userId = (req as any).userId || null;
+  const uploadedFile = req.file as Express.Multer.File | undefined;
+  let uploadedBillAttachment: string | null = null;
 
   try {
     const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
+    let existing: typeof purchasesTable.$inferSelect | null = null;
     const updated = await db.transaction(async (tx) => {
-      if (tenantSchemaName) {
-        await tx.execute(sql`select set_config('search_path', ${`"${tenantSchemaName}", public`}, false)`);
+      await applyTenantSearchPath(tx, tenantSchemaName);
+      const [existingRow] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, params.data.id)).limit(1);
+      if (!existingRow) {
+        throw Object.assign(new Error("Not found"), { httpStatus: 404 });
       }
-      await removePurchaseStockImpact(tx, existing.id);
-      await tx.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, existing.id));
-      await deletePurchasePettyCashArtifacts(tx, existing);
+      if (existingRow.verified && (req as any).userRole !== "admin") {
+        throw Object.assign(new Error("Record is verified. Only admin can edit."), { httpStatus: 403 });
+      }
+      existing = existingRow;
+      const uploadedAttachment = await uploadPurchaseBillAttachment({
+        file: uploadedFile,
+        tenantSchemaName,
+        purchaseId: existingRow.id,
+      });
+      uploadedBillAttachment = uploadedAttachment;
+      const nextBillAttachment = uploadedAttachment
+        ? uploadedAttachment
+        : parsed.removeBillAttachment
+          ? null
+          : existingRow.billAttachment || null;
+      await removePurchaseStockImpact(tx, existingRow.id);
+      await tx.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, existingRow.id));
+      await deletePurchasePettyCashArtifacts(tx, existingRow);
 
       const lineTotals = await applyPurchaseLines(tx, existing.id, validLines as any);
       const totalAmount = round2(lineTotals.totalAmount);
@@ -627,6 +877,7 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
         paymentMode,
         paymentStatus,
         notes: parsed.data.notes,
+        billAttachment: nextBillAttachment,
         totalAmount,
         grossAmount: lineTotals.subtotal,
         taxAmount: lineTotals.taxAmount,
@@ -634,13 +885,13 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
         paidAmount: paymentStatus === "fully_paid" ? totalAmount : 0,
         lastPaymentDate: paymentStatus === "fully_paid" ? parsed.data.purchaseDate : null,
         linkedExpenseId: null,
-      }).where(eq(purchasesTable.id, existing.id)).returning();
+      }).where(eq(purchasesTable.id, existingRow.id)).returning();
 
       await rebuildVendorLedgerForPurchase(tx, {
-        purchaseId: existing.id,
+        purchaseId: existingRow.id,
         vendorId: parsed.data.vendorId,
         purchaseDate: parsed.data.purchaseDate,
-        purchaseNumber: existing.purchaseNumber,
+        purchaseNumber: existingRow.purchaseNumber,
         invoiceNumber: parsed.data.invoiceNumber,
         totalAmount,
         paymentMode,
@@ -660,14 +911,18 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
         });
       }
 
-      await recalculateVendorLedger(tx, existing.vendorId);
-      if (parsed.data.vendorId !== existing.vendorId) {
+      await recalculateVendorLedger(tx, existingRow.vendorId);
+      if (parsed.data.vendorId !== existingRow.vendorId) {
         await recalculateVendorLedger(tx, parsed.data.vendorId);
       }
 
-      const [freshPurchase] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, existing.id)).limit(1);
+      const [freshPurchase] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, existingRow.id)).limit(1);
       return freshPurchase ?? purchase;
     });
+
+    if (!existing) {
+      throw Object.assign(new Error("Not found"), { httpStatus: 404 });
+    }
 
     await createAuditLog("purchases", existing.id, "update", existing, {
       vendorId: parsed.data.vendorId,
@@ -676,12 +931,20 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
       totalAmount: updated.totalAmount,
       paymentMode,
       paymentStatus,
+      billAttachmentChanged: existing.billAttachment !== updated.billAttachment,
     });
 
+    if (existing.billAttachment && existing.billAttachment !== updated.billAttachment) {
+      await deletePurchaseBillFile(existing.billAttachment);
+    }
+
     const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, updated.vendorId));
-    res.json({ ...updated, vendorName: vendor?.name ?? "" });
+    res.json({ ...updated, vendorName: vendor?.name ?? "", ...(await serializeBillAttachment(updated.billAttachment)) });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || "Failed to update purchase" });
+    if (uploadedBillAttachment) {
+      await deletePurchaseBillFile(uploadedBillAttachment).catch(() => undefined);
+    }
+    res.status(e?.httpStatus || 500).json({ error: e?.message || "Failed to update purchase" });
   }
 });
 
@@ -700,6 +963,7 @@ router.get("/purchases/:id", async (req, res): Promise<void> => {
       paymentMode: purchasesTable.paymentMode,
       paymentStatus: purchasesTable.paymentStatus,
       totalAmount: purchasesTable.totalAmount,
+      billAttachment: purchasesTable.billAttachment,
       notes: purchasesTable.notes,
       createdAt: purchasesTable.createdAt,
     })
@@ -726,7 +990,16 @@ router.get("/purchases/:id", async (req, res): Promise<void> => {
     .leftJoin(ingredientsTable, eq(purchaseLinesTable.ingredientId, ingredientsTable.id))
     .where(eq(purchaseLinesTable.purchaseId, params.data.id));
 
-  res.json(GetPurchaseResponse.parse({ purchase, lines }));
+  res.json(GetPurchaseResponse.parse({ purchase: { ...purchase, ...(await serializeBillAttachment(purchase.billAttachment)) }, lines }));
+});
+
+router.get("/uploads/purchase-bills/:filename", authMiddleware, async (req, res): Promise<void> => {
+  const filename = String(req.params.filename || "").trim();
+  if (!filename) { res.status(400).json({ error: "Missing filename" }); return; }
+  const decoded = path.basename(decodeURIComponent(filename));
+  const diskPath = path.join(PURCHASE_BILL_DIR, decoded);
+  if (!fs.existsSync(diskPath)) { res.status(404).json({ error: "Not found" }); return; }
+  res.sendFile(diskPath);
 });
 
 router.get("/purchases/:id/pdf", authMiddleware, async (req, res): Promise<void> => {
@@ -819,6 +1092,10 @@ router.delete("/purchases/:id", authMiddleware, requirePermission("purchases.del
   } catch (e: any) {
     res.status(e?.httpStatus || 500).json({ error: e?.message || "Failed to delete purchase" });
     return;
+  }
+
+  if (existing.billAttachment) {
+    await deletePurchaseBillFile(existing.billAttachment);
   }
 
   await createAuditLog("purchases", id, "delete", existing, null);

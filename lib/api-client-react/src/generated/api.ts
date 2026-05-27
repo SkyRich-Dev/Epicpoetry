@@ -27,6 +27,7 @@ import type {
   CreateIngredientVendorMappingRequest,
   CreateMenuItemRequest,
   CreatePettyCashRequest,
+  CreatePurchaseBodyTwo,
   CreatePurchaseRequest,
   CreateSalesEntryRequest,
   CreateSettlementRequest,
@@ -3013,14 +3014,13 @@ export const getCreatePurchaseUrl = () => {
 };
 
 export const createPurchase = async (
-  createPurchaseRequest: CreatePurchaseRequest,
+  createPurchaseBody: CreatePurchaseRequest | CreatePurchaseBodyTwo,
   options?: RequestInit,
 ): Promise<Purchase> => {
   return customFetch<Purchase>(getCreatePurchaseUrl(), {
     ...options,
     method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createPurchaseRequest),
+    body: JSON.stringify(createPurchaseBody),
   });
 };
 
@@ -3031,14 +3031,14 @@ export const getCreatePurchaseMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createPurchase>>,
     TError,
-    { data: BodyType<CreatePurchaseRequest> },
+    { data: BodyType<CreatePurchaseRequest | CreatePurchaseBodyTwo> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof createPurchase>>,
   TError,
-  { data: BodyType<CreatePurchaseRequest> },
+  { data: BodyType<CreatePurchaseRequest | CreatePurchaseBodyTwo> },
   TContext
 > => {
   const mutationKey = ["createPurchase"];
@@ -3052,7 +3052,7 @@ export const getCreatePurchaseMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof createPurchase>>,
-    { data: BodyType<CreatePurchaseRequest> }
+    { data: BodyType<CreatePurchaseRequest | CreatePurchaseBodyTwo> }
   > = (props) => {
     const { data } = props ?? {};
 
@@ -3065,7 +3065,9 @@ export const getCreatePurchaseMutationOptions = <
 export type CreatePurchaseMutationResult = NonNullable<
   Awaited<ReturnType<typeof createPurchase>>
 >;
-export type CreatePurchaseMutationBody = BodyType<CreatePurchaseRequest>;
+export type CreatePurchaseMutationBody = BodyType<
+  CreatePurchaseRequest | CreatePurchaseBodyTwo
+>;
 export type CreatePurchaseMutationError = ErrorType<unknown>;
 
 /**
@@ -3078,14 +3080,14 @@ export const useCreatePurchase = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createPurchase>>,
     TError,
-    { data: BodyType<CreatePurchaseRequest> },
+    { data: BodyType<CreatePurchaseRequest | CreatePurchaseBodyTwo> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof createPurchase>>,
   TError,
-  { data: BodyType<CreatePurchaseRequest> },
+  { data: BodyType<CreatePurchaseRequest | CreatePurchaseBodyTwo> },
   TContext
 > => {
   return useMutation(getCreatePurchaseMutationOptions(options));

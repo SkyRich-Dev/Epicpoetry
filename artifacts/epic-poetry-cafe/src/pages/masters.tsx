@@ -1240,8 +1240,11 @@ function POSIntegrationsTab() {
 
   const webhookUrl = (integration: any) => {
     const base = window.location.origin;
-    if (!integration?.tenantSchemaName || !integration?.publicWebhookKey) return '';
-    return `${base}${BASE}api/webhook/petpooja/${integration.tenantSchemaName}/${integration.publicWebhookKey}`;
+    if (!integration?.publicWebhookKey) return '';
+    if (integration?.tenantSchemaName && String(integration.tenantSchemaName).trim().toLowerCase() !== 'public') {
+      return `${base}${BASE}api/webhook/petpooja/${integration.tenantSchemaName}/${integration.publicWebhookKey}`;
+    }
+    return `${base}${BASE}api/webhook/petpooja/${integration.publicWebhookKey}`;
   };
 
   if (detailView) {

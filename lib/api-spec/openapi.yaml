@@ -739,6 +739,18 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePurchaseRequest"
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: string
+                  description: JSON string matching CreatePurchaseRequest
+                billAttachment:
+                  type: string
+                  format: binary
+                removeBillAttachment:
+                  type: boolean
       responses:
         "201":
           description: Created
@@ -2406,6 +2418,12 @@ components:
           type: string
         totalAmount:
           type: number
+        billAttachmentUrl:
+          type: ["string", "null"]
+        billAttachmentName:
+          type: ["string", "null"]
+        billAttachmentType:
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
         createdAt:
@@ -2477,6 +2495,8 @@ components:
           type: string
         paymentStatus:
           type: string
+        removeBillAttachment:
+          type: boolean
         notes:
           type: string
         lines:

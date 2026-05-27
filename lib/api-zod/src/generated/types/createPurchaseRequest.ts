@@ -13,6 +13,7 @@ export interface CreatePurchaseRequest {
   invoiceNumber?: string;
   paymentMode?: string;
   paymentStatus?: string;
+  removeBillAttachment?: boolean;
   notes?: string;
   lines: PurchaseLineInput[];
 }

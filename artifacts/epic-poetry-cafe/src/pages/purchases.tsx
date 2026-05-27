@@ -1,13 +1,25 @@
 import React, { useState } from 'react';
-import { useListPurchases, useCreatePurchase, useListVendors, useListIngredients, useGetPettyCashSummary } from '@workspace/api-client-react';
+import { useListPurchases, useListVendors, useListIngredients, useGetPettyCashSummary } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
-import { Plus, Trash2, Pencil } from 'lucide-react';
+import { Plus, Trash2, Pencil, Eye, Paperclip, X, Download } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getAuthToken } from '../lib/auth-storage';
 
 const BASE = import.meta.env.BASE_URL || '/';
+const MAX_BILL_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const ALLOWED_BILL_ATTACHMENT_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+
+type PurchaseAttachment = {
+  billAttachmentUrl: string | null;
+  billAttachmentName: string | null;
+  billAttachmentType: string | null;
+};
+
+type PurchaseAttachmentPreview = PurchaseAttachment & {
+  objectUrl: string;
+};
 
 export default function Purchases() {
   const queryClient = useQueryClient();
@@ -26,12 +38,16 @@ export default function Purchases() {
   const { data: pettyCashSummary } = useGetPettyCashSummary();
   
   const { toast } = useToast();
-  const createMut = useCreatePurchase();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<any>(null);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isPurchaseDetailLoading, setIsPurchaseDetailLoading] = useState(false);
+  const [billAttachmentFile, setBillAttachmentFile] = useState<File | null>(null);
+  const [existingBillAttachment, setExistingBillAttachment] = useState<PurchaseAttachment | null>(null);
+  const [removeExistingBillAttachment, setRemoveExistingBillAttachment] = useState(false);
+  const [billAttachmentError, setBillAttachmentError] = useState('');
+  const [previewAttachment, setPreviewAttachment] = useState<PurchaseAttachmentPreview | null>(null);
   
   const [formData, setFormData] = useState({
     purchaseDate: new Date().toISOString().split('T')[0],
@@ -42,18 +58,58 @@ export default function Purchases() {
   });
 
   const [lines, setLines] = useState<any[]>([]);
-  const purchaseFormDirty = useFormDirty(isModalOpen, { formData, lines });
+  const purchaseFormDirty = useFormDirty(isModalOpen, {
+    formData,
+    lines,
+    billAttachmentFileName: billAttachmentFile?.name || '',
+    existingBillAttachmentName: existingBillAttachment?.billAttachmentName || '',
+    removeExistingBillAttachment,
+  });
   const purchasesPagination = useClientPagination(purchases || [], 5);
+
+  const resolveAttachmentUrl = (url?: string | null) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    const basePath = BASE === '/' ? '' : BASE.replace(/\/$/, '');
+    return `${basePath}${url}`;
+  };
+
+  const validateBillAttachment = (file: File | null) => {
+    if (!file) return '';
+    if (!ALLOWED_BILL_ATTACHMENT_TYPES.includes(file.type)) {
+      return 'Unsupported file format. Supported formats: JPG, JPEG, PNG, PDF.';
+    }
+    if (file.size > MAX_BILL_ATTACHMENT_SIZE) {
+      return 'Bill attachment must be 10 MB or smaller.';
+    }
+    return '';
+  };
+
+  const resetBillAttachmentState = () => {
+    setBillAttachmentFile(null);
+    setExistingBillAttachment(null);
+    setRemoveExistingBillAttachment(false);
+    setBillAttachmentError('');
+  };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingPurchaseId(null);
+    resetBillAttachmentState();
+  };
+
+  const closePreviewAttachment = () => {
+    if (previewAttachment?.objectUrl && previewAttachment.objectUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewAttachment.objectUrl);
+    }
+    setPreviewAttachment(null);
   };
 
   const openCreate = () => {
     setEditingPurchaseId(null);
     setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', isPaid: false, paymentMode: 'cash' });
     setLines([{ ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
+    resetBillAttachmentState();
     setIsModalOpen(true);
   };
 
@@ -80,6 +136,14 @@ export default function Purchases() {
           isPaid: detail.purchase.paymentStatus === 'fully_paid',
           paymentMode,
         });
+        setExistingBillAttachment({
+          billAttachmentUrl: detail.purchase.billAttachmentUrl || null,
+          billAttachmentName: detail.purchase.billAttachmentName || null,
+          billAttachmentType: detail.purchase.billAttachmentType || null,
+        });
+        setRemoveExistingBillAttachment(false);
+        setBillAttachmentFile(null);
+        setBillAttachmentError('');
         setLines((detail.lines || []).map((line: any) => ({
           ingredientId: line.ingredientId,
           quantity: line.quantity,
@@ -94,6 +158,69 @@ export default function Purchases() {
         closeModal();
       })
       .finally(() => setIsPurchaseDetailLoading(false));
+  };
+
+  const handleBillAttachmentSelected = (file?: File | null) => {
+    const nextFile = file || null;
+    const error = validateBillAttachment(nextFile);
+    setBillAttachmentError(error);
+    if (error) {
+      setBillAttachmentFile(null);
+      return;
+    }
+    setBillAttachmentFile(nextFile);
+    if (nextFile) {
+      setRemoveExistingBillAttachment(false);
+    }
+  };
+
+  const clearSelectedBillAttachment = () => {
+    setBillAttachmentFile(null);
+    setBillAttachmentError('');
+  };
+
+  const openBillAttachment = async (attachment: PurchaseAttachment | null | undefined) => {
+    if (!attachment?.billAttachmentUrl) return;
+    try {
+      const resolvedUrl = resolveAttachmentUrl(attachment.billAttachmentUrl);
+      if (/^https?:\/\//i.test(resolvedUrl)) {
+        if (attachment.billAttachmentType?.startsWith('image/')) {
+          if (previewAttachment?.objectUrl && previewAttachment.objectUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(previewAttachment.objectUrl);
+          }
+          setPreviewAttachment({ ...attachment, objectUrl: resolvedUrl });
+          return;
+        }
+        window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const token = getAuthToken();
+      const res = await fetch(resolvedUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (attachment.billAttachmentType?.startsWith('image/')) {
+        if (previewAttachment?.objectUrl && previewAttachment.objectUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewAttachment.objectUrl);
+        }
+        setPreviewAttachment({ ...attachment, objectUrl });
+        return;
+      }
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (e: any) {
+      toast({ title: 'Failed to open bill attachment', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  const downloadBillAttachment = (attachment: PurchaseAttachment | null | undefined) => {
+    if (!attachment?.billAttachmentUrl) return;
+    const resolvedUrl = resolveAttachmentUrl(attachment.billAttachmentUrl);
+    window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
   };
 
   const addLine = () => setLines([...lines, { ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
@@ -146,22 +273,24 @@ export default function Purchases() {
         paymentStatus: formData.isPaid ? 'paid' : 'unpaid',
         paymentMode: formData.isPaid ? formData.paymentMode : undefined,
         lines: validLines.map(l => ({ ...l, expiryDate: l.expiryDate || null })),
+        removeBillAttachment: removeExistingBillAttachment,
       };
-      if (editingPurchaseId) {
-        const token = getAuthToken();
-        setIsSavingEdit(true);
-        const res = await fetch(`${BASE}api/purchases/${editingPurchaseId}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(await res.text());
-      } else {
-        await createMut.mutateAsync({ data: payload as any });
+      const token = getAuthToken();
+      setIsSaving(true);
+      const form = new FormData();
+      form.append('payload', JSON.stringify(payload));
+      form.append('removeBillAttachment', String(removeExistingBillAttachment));
+      if (billAttachmentFile) {
+        form.append('billAttachment', billAttachmentFile);
       }
+      const res = await fetch(`${BASE}api/${editingPurchaseId ? `purchases/${editingPurchaseId}` : 'purchases'}`, {
+        method: editingPurchaseId ? 'PATCH' : 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: form,
+      });
+      if (!res.ok) throw new Error(await res.text());
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
       queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/summary'] });
@@ -169,7 +298,7 @@ export default function Purchases() {
       closeModal();
       toast({ title: editingPurchaseId ? 'Purchase updated' : 'Purchase recorded' });
     } catch (e: any) { toast({ title: 'Failed to save purchase', description: e.message, variant: 'destructive' }); }
-    finally { setIsSavingEdit(false); }
+    finally { setIsSaving(false); }
   };
 
   const handleVerify = async (id: number) => {
@@ -219,15 +348,16 @@ export default function Purchases() {
               <th className="px-6 py-4">Invoice No</th>
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-right">Total Amount</th>
+              <th className="px-6 py-4 text-center">Bill</th>
               <th className="px-6 py-4 text-center">Verified</th>
               <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
+              <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
             ) : purchases?.length === 0 ? (
-               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
+               <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
             ) : purchasesPagination.paginatedRows.map((p: any) => (
               <tr key={p.id} className="table-row-hover">
                 <td className="px-6 py-4 text-foreground font-medium">{formatDate(p.purchaseDate)}</td>
@@ -240,6 +370,36 @@ export default function Purchases() {
                   </Badge>
                 </td>
                 <td className="px-6 py-4 text-right font-medium text-foreground">{formatCurrency(p.totalAmount)}</td>
+                <td className="px-6 py-4 text-center">
+                  {p.billAttachmentUrl ? (
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        onClick={() => openBillAttachment({
+                          billAttachmentUrl: p.billAttachmentUrl,
+                          billAttachmentName: p.billAttachmentName,
+                          billAttachmentType: p.billAttachmentType,
+                        })}
+                        className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        title={p.billAttachmentType === 'application/pdf' ? 'Open bill PDF' : 'Preview bill attachment'}
+                      >
+                        <Eye size={15} />
+                      </button>
+                      <button
+                        onClick={() => downloadBillAttachment({
+                          billAttachmentUrl: p.billAttachmentUrl,
+                          billAttachmentName: p.billAttachmentName,
+                          billAttachmentType: p.billAttachmentType,
+                        })}
+                        className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        title="Download bill attachment"
+                      >
+                        <Download size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </td>
                 <td className="px-6 py-4 text-center">
                   <VerifyButton verified={!!p.verified} isAdmin={isAdmin} onVerify={() => handleVerify(p.id)} onUnverify={() => handleUnverify(p.id)} />
                 </td>
@@ -275,7 +435,7 @@ export default function Purchases() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={closeModal} dirty={purchaseFormDirty} title={editingPurchaseId ? "Edit Purchase" : "Record New Purchase"} maxWidth="max-w-4xl"
-        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || isSavingEdit || lines.length === 0 || isPurchaseDetailLoading || insufficientPettyCash}>{editingPurchaseId ? 'Update Purchase' : 'Complete Purchase'}</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={isSaving || lines.length === 0 || isPurchaseDetailLoading || insufficientPettyCash || !!billAttachmentError}>{editingPurchaseId ? 'Update Purchase' : 'Complete Purchase'}</Button></>}>
         <div className="space-y-6 py-2">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-transparent rounded-xl border border-border/50">
             <div>
@@ -292,6 +452,94 @@ export default function Purchases() {
             <div>
               <Label>Invoice Number (Optional)</Label>
               <Input value={formData.invoiceNumber} onChange={(e:any) => setFormData({...formData, invoiceNumber: e.target.value})} placeholder="INV-12345" />
+            </div>
+          </div>
+
+          <div className="p-4 bg-transparent rounded-xl border border-border/50 space-y-3">
+            <div className="space-y-1">
+              <Label>Upload Bill Copy (Optional)</Label>
+              <p className="text-xs text-muted-foreground">Supported formats: JPG, JPEG, PNG, PDF</p>
+            </div>
+            <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+                  <Paperclip size={15} />
+                  <span>{billAttachmentFile ? 'Replace file' : 'Choose file'}</span>
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/jpg,image/png,application/pdf"
+                    className="hidden"
+                    onChange={(e:any) => handleBillAttachmentSelected(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {billAttachmentFile && (
+                  <button
+                    type="button"
+                    onClick={clearSelectedBillAttachment}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <X size={15} />
+                    Remove selected file
+                  </button>
+                )}
+              </div>
+
+              {billAttachmentFile && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{billAttachmentFile.name}</p>
+                    <p className="text-xs text-muted-foreground">{(billAttachmentFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                  </div>
+                </div>
+              )}
+
+              {!billAttachmentFile && existingBillAttachment?.billAttachmentUrl && !removeExistingBillAttachment && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{existingBillAttachment.billAttachmentName || 'Attached bill'}</p>
+                    <p className="text-xs text-muted-foreground">{existingBillAttachment.billAttachmentType === 'application/pdf' ? 'PDF attachment' : 'Image attachment'}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openBillAttachment(existingBillAttachment)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Eye size={15} />
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRemoveExistingBillAttachment(true)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
+                    >
+                      <Trash2 size={15} />
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!billAttachmentFile && existingBillAttachment?.billAttachmentUrl && removeExistingBillAttachment && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <span>Existing bill attachment will be removed when you save this purchase.</span>
+                  <button
+                    type="button"
+                    onClick={() => setRemoveExistingBillAttachment(false)}
+                    className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs font-medium"
+                  >
+                    Keep attachment
+                  </button>
+                </div>
+              )}
+
+              {!billAttachmentFile && !existingBillAttachment?.billAttachmentUrl && (
+                <p className="text-sm text-muted-foreground">No bill copy selected.</p>
+              )}
+
+              {billAttachmentError && (
+                <p className="text-sm text-destructive">{billAttachmentError}</p>
+              )}
             </div>
           </div>
 
@@ -417,6 +665,35 @@ export default function Purchases() {
         <p className="py-2 text-sm text-muted-foreground">
           Delete purchase <span className="font-semibold text-foreground">{deleteConfirm?.purchaseNumber}</span>? This removes its line items too.
         </p>
+      </Modal>
+
+      <Modal
+        isOpen={!!previewAttachment}
+        onClose={closePreviewAttachment}
+        title={previewAttachment?.billAttachmentName || 'Bill Attachment'}
+        maxWidth="max-w-3xl"
+        footer={(close) => <><Button variant="ghost" onClick={() => { closePreviewAttachment(); close(); }}>Close</Button></>}
+      >
+        {previewAttachment?.objectUrl ? (
+          <div className="space-y-3 py-2">
+            <img
+              src={previewAttachment.objectUrl}
+              alt={previewAttachment.billAttachmentName || 'Bill attachment'}
+              className="max-h-[70vh] w-full rounded-xl border border-border object-contain"
+            />
+            <div className="flex justify-end">
+              <a
+                href={previewAttachment.objectUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <Eye size={15} />
+                Open in new tab
+              </a>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

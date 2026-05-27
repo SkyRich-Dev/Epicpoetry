@@ -19,6 +19,12 @@ export interface Purchase {
   paymentStatus: string;
   totalAmount: number;
   /** @nullable */
+  billAttachmentUrl?: string | null;
+  /** @nullable */
+  billAttachmentName?: string | null;
+  /** @nullable */
+  billAttachmentType?: string | null;
+  /** @nullable */
   notes?: string | null;
   createdAt?: Date;
 }
