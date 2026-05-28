@@ -1090,7 +1090,7 @@ function POSIntegrationsTab() {
   const [editId, setEditId] = useState<number | null>(null);
   const [detailView, setDetailView] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
-  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [webhookSecrets, setWebhookSecrets] = useState<{ current: string | null; legacy: string | null }>({ current: null, legacy: null });
   const [deleteConfirm, setDeleteConfirm] = useState<any>(null);
   const [capabilities, setCapabilities] = useState<any>(null);
   const [syncLogs, setSyncLogs] = useState<any[]>([]);
@@ -1105,7 +1105,7 @@ function POSIntegrationsTab() {
   const [form, setForm] = useState({
     name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
     accessToken: '', autoSync: false, syncMenuItems: true, syncOrders: true,
-    defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true, webhookIdentifier: '', isLegacyActive: true,
+    defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true, webhookIdentifier: '', isLegacyActive: true, legacyWebhookSecret: '',
   });
 
   const load = useCallback(async () => {
@@ -1119,7 +1119,7 @@ function POSIntegrationsTab() {
     setEditId(null);
     setForm({ name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
       accessToken: '', autoSync: false, syncMenuItems: true, syncOrders: true,
-      defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true, webhookIdentifier: '', isLegacyActive: true });
+      defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true, webhookIdentifier: '', isLegacyActive: true, legacyWebhookSecret: '' });
     setShowModal(true);
   };
 
@@ -1129,7 +1129,7 @@ function POSIntegrationsTab() {
       name: i.name, provider: i.provider, apiKey: '', apiSecret: '', restaurantId: i.restaurantId || '',
       baseUrl: i.baseUrl || '', accessToken: '', autoSync: i.autoSync, syncMenuItems: i.syncMenuItems,
       syncOrders: i.syncOrders, defaultGstPercent: i.defaultGstPercent, defaultOrderType: i.defaultOrderType, active: i.active,
-      webhookIdentifier: i.webhookIdentifier || '', isLegacyActive: i.isLegacyActive ?? true,
+      webhookIdentifier: i.webhookIdentifier || '', isLegacyActive: i.isLegacyActive ?? true, legacyWebhookSecret: '',
     });
     setShowModal(true);
   };
@@ -1170,7 +1170,7 @@ function POSIntegrationsTab() {
 
   const viewDetail = async (i: any) => {
     setDetailView(i);
-    setWebhookSecret(null);
+    setWebhookSecrets({ current: null, legacy: null });
     setCapabilities(null);
     setFetchResults(null);
     setSelectedTypes({});
@@ -1215,14 +1215,17 @@ function POSIntegrationsTab() {
   };
 
   const showSecret = async (id: number) => {
-    try { const data = await posApiFetch(`pos-integrations/${id}/webhook-secret`); setWebhookSecret(data.webhookSecret); } catch {}
+    try {
+      const data = await posApiFetch(`pos-integrations/${id}/webhook-secret`);
+      setWebhookSecrets({ current: data.webhookSecret || null, legacy: data.legacyWebhookSecret || null });
+    } catch {}
   };
 
   const regenerateSecret = async (id: number) => {
     try {
       const data = await posApiFetch(`pos-integrations/${id}/regenerate-webhook-secret`, { method: 'POST' });
-      setWebhookSecret(data.webhookSecret);
-      toast({ title: 'Webhook secret regenerated' });
+      setWebhookSecrets({ current: data.webhookSecret || null, legacy: data.legacyWebhookSecret || null });
+      toast({ title: 'Webhook secret regenerated', description: data.legacyWebhookSecret ? 'The previous secret is still accepted as a legacy secret.' : undefined });
       load();
     } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
   };
@@ -1284,6 +1287,7 @@ function POSIntegrationsTab() {
               <div className="flex justify-between"><span className="text-muted-foreground">Restaurant ID</span><span className="font-medium">{detailView.restaurantId || '-'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Custom Endpoint</span><span className="font-medium">{detailView.webhookIdentifier || '-'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Legacy Endpoint</span><span className="font-medium">{detailView.legacyWebhookId || '-'}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Legacy Secret</span><span className="font-medium">{detailView.legacyWebhookSecret ? 'Configured' : '-'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">API Key</span><span className="font-medium">{detailView.apiKey || '-'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Auto Sync</span><span className="font-medium">{detailView.autoSync ? 'Yes' : 'No'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Default GST %</span><span className="font-medium">{detailView.defaultGstPercent}%</span></div>
@@ -1325,12 +1329,24 @@ function POSIntegrationsTab() {
 
             <div className="border-t pt-3">
               <h5 className="text-sm font-medium mb-2">Webhook Secret</h5>
-              {webhookSecret ? (
+              {webhookSecrets.current || webhookSecrets.legacy ? (
                 <div className="space-y-2">
-                  <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookSecret}</div>
+                  {webhookSecrets.current && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Current Secret</p>
+                      <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookSecrets.current}</div>
+                    </div>
+                  )}
+                  {webhookSecrets.legacy && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Accepted Legacy Secret</p>
+                      <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookSecrets.legacy}</div>
+                    </div>
+                  )}
                   <div className="flex gap-2">
-                    <button onClick={() => copyToClipboard(webhookSecret)} className="text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy</button>
-                    <button onClick={() => setWebhookSecret(null)} className="text-xs text-muted-foreground hover:underline">Hide</button>
+                    {webhookSecrets.current && <button onClick={() => copyToClipboard(webhookSecrets.current!)} className="text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy Current</button>}
+                    {webhookSecrets.legacy && <button onClick={() => copyToClipboard(webhookSecrets.legacy!)} className="text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy Legacy</button>}
+                    <button onClick={() => setWebhookSecrets({ current: null, legacy: null })} className="text-xs text-muted-foreground hover:underline">Hide</button>
                   </div>
                 </div>
               ) : (
@@ -1626,6 +1642,11 @@ function POSIntegrationsTab() {
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>API Key</Label><Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} /></div>
             <div><Label>Access Token</Label><Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} /></div>
+          </div>
+          <div>
+            <Label>Accepted Legacy Webhook Secret</Label>
+            <Input type="password" value={form.legacyWebhookSecret} onChange={e => setForm({ ...form, legacyWebhookSecret: e.target.value })} placeholder={editId ? 'Optional: paste old vendor secret to keep old webhook working' : 'Optional legacy secret'} />
+            <p className="mt-1 text-xs text-muted-foreground">Optional. If the vendor is still posting the old secret, paste it here so the old webhook configuration continues working.</p>
           </div>
           <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Default GST %</Label><Input type="number" min="0" max="28" value={form.defaultGstPercent} onChange={e => setForm({ ...form, defaultGstPercent: Number(e.target.value) })} /></div>

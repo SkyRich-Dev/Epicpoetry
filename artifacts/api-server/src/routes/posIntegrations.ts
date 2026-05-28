@@ -27,6 +27,7 @@ function redactSecrets(obj: any) {
   if (redacted.apiKey) redacted.apiKey = "****";
   if (redacted.apiSecret) redacted.apiSecret = "****";
   if (redacted.webhookSecret) redacted.webhookSecret = "****";
+  if (redacted.legacyWebhookSecret) redacted.legacyWebhookSecret = "****";
   if (redacted.accessToken) redacted.accessToken = "****";
   return redacted;
 }
@@ -69,6 +70,7 @@ function summarizePosIntegrationPayload(body: Record<string, unknown>) {
     syncOrders: body.syncOrders,
     defaultGstPercent: body.defaultGstPercent,
     defaultOrderType: body.defaultOrderType,
+    hasLegacyWebhookSecret: !!String(body.legacyWebhookSecret || "").trim(),
     hasApiKey: !!String(body.apiKey || "").trim(),
     hasApiSecret: !!String(body.apiSecret || "").trim(),
     accessTokenHint: maskSecretValue(body.accessToken),
@@ -466,6 +468,7 @@ router.get("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pro
     apiKey: i.apiKey ? `****${i.apiKey.slice(-4)}` : null,
     apiSecret: i.apiSecret ? "****" : null,
     webhookSecret: i.webhookSecret ? `****${i.webhookSecret.slice(-4)}` : null,
+    legacyWebhookSecret: i.legacyWebhookSecret ? `****${String(i.legacyWebhookSecret).slice(-4)}` : null,
     accessToken: i.accessToken ? "****" : null,
   }));
   res.json(safe);
@@ -480,13 +483,14 @@ router.get("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res):
     ...integration,
     apiSecret: integration.apiSecret ? "****" : null,
     webhookSecret: integration.webhookSecret ? `****${integration.webhookSecret.slice(-4)}` : null,
+    legacyWebhookSecret: integration.legacyWebhookSecret ? `****${String(integration.legacyWebhookSecret).slice(-4)}` : null,
     accessToken: integration.accessToken ? "****" : null,
   });
 });
 
 router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { name, provider, apiKey, apiSecret, restaurantId, baseUrl, accessToken,
-    autoSync, syncMenuItems, syncOrders, defaultGstPercent, defaultOrderType, webhookIdentifier, isLegacyActive } = req.body;
+    autoSync, syncMenuItems, syncOrders, defaultGstPercent, defaultOrderType, webhookIdentifier, isLegacyActive, legacyWebhookSecret } = req.body;
   if (!name || !provider) {
     res.status(400).json({ success: false, message: "name and provider are required", errorCode: "POS_INTEGRATION_VALIDATION_FAILED" });
     return;
@@ -530,6 +534,7 @@ router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pr
         apiKey: apiKey || null,
         apiSecret: apiSecret || null,
         webhookSecret,
+        legacyWebhookSecret: String(legacyWebhookSecret || "").trim() || null,
         publicWebhookKey,
         webhookIdentifier: normalizedWebhookIdentifier,
         isLegacyActive: typeof isLegacyActive === "boolean" ? isLegacyActive : true,
@@ -560,6 +565,7 @@ router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pr
     res.status(201).json({
       ...integration,
       apiSecret: integration.apiSecret ? "****" : null,
+      legacyWebhookSecret: integration.legacyWebhookSecret ? `****${String(integration.legacyWebhookSecret).slice(-4)}` : null,
       accessToken: integration.accessToken ? "****" : null,
     });
   } catch (err: any) {
@@ -586,6 +592,11 @@ router.patch("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res
   const fields = ["name", "provider", "apiKey", "apiSecret", "restaurantId", "baseUrl", "accessToken",
     "autoSync", "syncMenuItems", "syncOrders", "defaultGstPercent", "defaultOrderType", "active"];
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
+
+  if (req.body.legacyWebhookSecret !== undefined) {
+    const normalizedLegacyWebhookSecret = String(req.body.legacyWebhookSecret || "").trim();
+    updates.legacyWebhookSecret = normalizedLegacyWebhookSecret || null;
+  }
 
   if (req.body.webhookIdentifier !== undefined) {
     const rawWebhookIdentifier = String(req.body.webhookIdentifier || "").trim();
@@ -619,6 +630,7 @@ router.patch("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res
       ...updated,
       apiSecret: updated.apiSecret ? "****" : null,
       webhookSecret: updated.webhookSecret ? `****${updated.webhookSecret.slice(-4)}` : null,
+      legacyWebhookSecret: updated.legacyWebhookSecret ? `****${String(updated.legacyWebhookSecret).slice(-4)}` : null,
       accessToken: updated.accessToken ? "****" : null,
     });
   } catch (err: any) {
@@ -654,15 +666,18 @@ router.post("/pos-integrations/:id/regenerate-webhook-secret", authMiddleware, a
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
   const webhookSecret = crypto.randomBytes(32).toString("hex");
-  await db.update(posIntegrationsTable).set({ webhookSecret }).where(eq(posIntegrationsTable.id, id));
-  res.json({ webhookSecret });
+  const legacyWebhookSecret = existing.webhookSecret && existing.webhookSecret !== webhookSecret
+    ? existing.webhookSecret
+    : existing.legacyWebhookSecret;
+  await db.update(posIntegrationsTable).set({ webhookSecret, legacyWebhookSecret }).where(eq(posIntegrationsTable.id, id));
+  res.json({ webhookSecret, legacyWebhookSecret });
 });
 
 router.get("/pos-integrations/:id/webhook-secret", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-  res.json({ webhookSecret: existing.webhookSecret });
+  res.json({ webhookSecret: existing.webhookSecret, legacyWebhookSecret: existing.legacyWebhookSecret || null });
 });
 
 router.post("/pos-integrations/:id/test-connection", authMiddleware, adminOnly, async (req, res): Promise<void> => {
@@ -784,8 +799,12 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
       tokenHint: maskToken(providedToken),
     });
 
-    if (integration.webhookSecret) {
-      if (!providedToken || providedToken !== integration.webhookSecret) {
+    const acceptedWebhookSecrets = [integration.webhookSecret, integration.legacyWebhookSecret]
+      .map((value: unknown) => String(value || "").trim())
+      .filter(Boolean);
+
+    if (acceptedWebhookSecrets.length > 0) {
+      if (!providedToken || !acceptedWebhookSecrets.includes(String(providedToken).trim())) {
         await updateWebhookEvent(webhookEvent.id, {
           status: "invalid_auth",
           message: "Invalid webhook token",

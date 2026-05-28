@@ -112,7 +112,8 @@ async function ensurePosIntegrationColumns(schemaName: string) {
   await runSql(`
     ALTER TABLE ${schemaName}.pos_integrations
       ADD COLUMN IF NOT EXISTS public_webhook_key text,
-      ADD COLUMN IF NOT EXISTS tenant_schema_name text;
+      ADD COLUMN IF NOT EXISTS tenant_schema_name text,
+      ADD COLUMN IF NOT EXISTS legacy_webhook_secret text;
   `);
   await runSql(`
     CREATE UNIQUE INDEX IF NOT EXISTS ${schemaName}_pos_integrations_public_webhook_key_idx
@@ -133,7 +134,8 @@ async function ensurePublicPosIntegrationColumns() {
   await runSql(`
     ALTER TABLE public.pos_integrations
       ADD COLUMN IF NOT EXISTS public_webhook_key text,
-      ADD COLUMN IF NOT EXISTS tenant_schema_name text;
+      ADD COLUMN IF NOT EXISTS tenant_schema_name text,
+      ADD COLUMN IF NOT EXISTS legacy_webhook_secret text;
   `);
   await runSql(`
     CREATE UNIQUE INDEX IF NOT EXISTS pos_integrations_public_webhook_key_idx

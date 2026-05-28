@@ -8,6 +8,7 @@ export const posIntegrationsTable = pgTable("pos_integrations", {
   apiKey: text("api_key"),
   apiSecret: text("api_secret"),
   webhookSecret: text("webhook_secret"),
+  legacyWebhookSecret: text("legacy_webhook_secret"),
   publicWebhookKey: text("public_webhook_key"),
   webhookIdentifier: text("webhook_identifier"),
   legacyWebhookId: text("legacy_webhook_id"),

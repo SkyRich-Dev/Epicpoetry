@@ -10,6 +10,7 @@ const TEST_INVOICE_A = "PP-ORDER_PUBLIC_001";
 const TEST_INVOICE_B = "PP-ORDER_PUBLIC_002";
 const TEST_INVOICE_LEGACY = "PP-ORDER_PUBLIC_LEGACY";
 const TEST_INVOICE_CUSTOM = "PP-ORDER_PUBLIC_CUSTOM";
+const TEST_INVOICE_OLD_SECRET = "PP-ORDER_PUBLIC_OLD_SECRET";
 const TEST_RESTAURANT = "REST_PUBLIC";
 const TEST_RESTAURANT_DUP = "REST_PUBLIC_DUP";
 const execFileAsync = promisify(execFile);
@@ -90,7 +91,8 @@ async function ensurePublicPosIntegrationColumns() {
     await runSql(`
     ALTER TABLE public.pos_integrations
       ADD COLUMN IF NOT EXISTS public_webhook_key text,
-      ADD COLUMN IF NOT EXISTS tenant_schema_name text;
+      ADD COLUMN IF NOT EXISTS tenant_schema_name text,
+      ADD COLUMN IF NOT EXISTS legacy_webhook_secret text;
   `);
     await runSql(`
     CREATE UNIQUE INDEX IF NOT EXISTS pos_integrations_public_webhook_key_idx
@@ -106,12 +108,12 @@ async function cleanupPublicArtifacts() {
     DELETE FROM public.sales_invoice_lines
     WHERE invoice_id IN (
       SELECT id FROM public.sales_invoices
-      WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}', '${TEST_INVOICE_LEGACY}', '${TEST_INVOICE_CUSTOM}')
+      WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}', '${TEST_INVOICE_LEGACY}', '${TEST_INVOICE_CUSTOM}', '${TEST_INVOICE_OLD_SECRET}')
     );
   `);
     await runSql(`
     DELETE FROM public.sales_invoices
-    WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}', '${TEST_INVOICE_LEGACY}', '${TEST_INVOICE_CUSTOM}');
+    WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}', '${TEST_INVOICE_LEGACY}', '${TEST_INVOICE_CUSTOM}', '${TEST_INVOICE_OLD_SECRET}');
   `);
     await runSql(`
     DELETE FROM public.pos_webhook_events
@@ -202,12 +204,15 @@ function petpoojaPayload(orderId, restaurantId, itemName, qty) {
     };
 }
 async function sendWebhook(identifier, payload) {
+    return sendWebhookWithSecret(identifier, integration.webhookSecret, payload);
+}
+async function sendWebhookWithSecret(identifier, secret, payload) {
     const webhookPath = `/api/webhook/petpooja/${identifier}`;
     const { response, body } = await httpJson(webhookPath, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "X-Webhook-Secret": integration.webhookSecret,
+            "X-Webhook-Secret": secret,
         },
         body: JSON.stringify(payload),
     });
@@ -284,6 +289,24 @@ test("routes custom slug webhook into public schema only", async () => {
     assert.equal(result.response.status, 200, JSON.stringify(result.body));
     const invoiceRows = await queryJson(`SELECT invoice_no FROM public.sales_invoices WHERE invoice_no = '${TEST_INVOICE_CUSTOM}'`);
     assert.equal(invoiceRows.length, 1, "Expected custom webhook invoice in public schema");
+});
+test("accepts a configured legacy webhook secret for backward compatibility", async () => {
+    const oldSecret = "775d3983844a9ee887ec34708dca9544d50b171c557790604e93424bf1b174ba";
+    const patch = await httpJson(`/api/pos-integrations/${integration.id}`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${ownerTokenWithoutTenant()}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ legacyWebhookSecret: oldSecret }),
+    });
+    assert.equal(patch.response.status, 200, JSON.stringify(patch.body));
+    integration = { ...patch.body, webhookSecret: integration.webhookSecret };
+    const payload = petpoojaPayload(TEST_INVOICE_OLD_SECRET, TEST_RESTAURANT, "Legacy Secret Burger", 1);
+    const result = await sendWebhookWithSecret(String(integration.legacyWebhookId), oldSecret, payload);
+    assert.equal(result.response.status, 200, JSON.stringify(result.body));
+    const invoiceRows = await queryJson(`SELECT invoice_no FROM public.sales_invoices WHERE invoice_no = '${TEST_INVOICE_OLD_SECRET}'`);
+    assert.equal(invoiceRows.length, 1, "Expected legacy-secret webhook invoice in public schema");
 });
 test("rejects duplicate custom webhook identifiers", async () => {
     const duplicate = await createIntegration("Petpooja Public Duplicate", TEST_RESTAURANT_DUP);
