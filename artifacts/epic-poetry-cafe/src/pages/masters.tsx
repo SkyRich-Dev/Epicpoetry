@@ -1105,7 +1105,7 @@ function POSIntegrationsTab() {
   const [form, setForm] = useState({
     name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
     accessToken: '', autoSync: false, syncMenuItems: true, syncOrders: true,
-    defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true,
+    defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true, webhookIdentifier: '', isLegacyActive: true,
   });
 
   const load = useCallback(async () => {
@@ -1119,7 +1119,7 @@ function POSIntegrationsTab() {
     setEditId(null);
     setForm({ name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
       accessToken: '', autoSync: false, syncMenuItems: true, syncOrders: true,
-      defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true });
+      defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true, webhookIdentifier: '', isLegacyActive: true });
     setShowModal(true);
   };
 
@@ -1129,6 +1129,7 @@ function POSIntegrationsTab() {
       name: i.name, provider: i.provider, apiKey: '', apiSecret: '', restaurantId: i.restaurantId || '',
       baseUrl: i.baseUrl || '', accessToken: '', autoSync: i.autoSync, syncMenuItems: i.syncMenuItems,
       syncOrders: i.syncOrders, defaultGstPercent: i.defaultGstPercent, defaultOrderType: i.defaultOrderType, active: i.active,
+      webhookIdentifier: i.webhookIdentifier || '', isLegacyActive: i.isLegacyActive ?? true,
     });
     setShowModal(true);
   };
@@ -1238,13 +1239,29 @@ function POSIntegrationsTab() {
     toast({ title: 'Copied to clipboard' });
   };
 
-  const webhookUrl = (integration: any) => {
+  const primaryWebhookIdentifier = (integration: any) => integration?.webhookIdentifier || integration?.publicWebhookKey || '';
+
+  const compactWebhookUrl = (integration: any) => {
     const base = window.location.origin;
-    if (!integration?.publicWebhookKey) return '';
+    const identifier = primaryWebhookIdentifier(integration);
+    if (!identifier) return '';
+    return `${base}${BASE}api/webhook/petpooja/${identifier}`;
+  };
+
+  const tenantSafeWebhookUrl = (integration: any) => {
+    const base = window.location.origin;
+    const identifier = primaryWebhookIdentifier(integration);
+    if (!identifier) return '';
     if (integration?.tenantSchemaName && String(integration.tenantSchemaName).trim().toLowerCase() !== 'public') {
-      return `${base}${BASE}api/webhook/petpooja/${integration.tenantSchemaName}/${integration.publicWebhookKey}`;
+      return `${base}${BASE}api/webhook/petpooja/${integration.tenantSchemaName}/${identifier}`;
     }
-    return `${base}${BASE}api/webhook/petpooja/${integration.publicWebhookKey}`;
+    return `${base}${BASE}api/webhook/petpooja/${identifier}`;
+  };
+
+  const legacyWebhookUrl = (integration: any) => {
+    const base = window.location.origin;
+    if (!integration?.legacyWebhookId || integration?.isLegacyActive === false) return '';
+    return `${base}${BASE}api/webhook/petpooja/${integration.legacyWebhookId}`;
   };
 
   if (detailView) {
@@ -1265,6 +1282,8 @@ function POSIntegrationsTab() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Provider</span><span className="font-medium capitalize">{provInfo?.label || detailView.provider}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Restaurant ID</span><span className="font-medium">{detailView.restaurantId || '-'}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Custom Endpoint</span><span className="font-medium">{detailView.webhookIdentifier || '-'}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Legacy Endpoint</span><span className="font-medium">{detailView.legacyWebhookId || '-'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">API Key</span><span className="font-medium">{detailView.apiKey || '-'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Auto Sync</span><span className="font-medium">{detailView.autoSync ? 'Yes' : 'No'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Default GST %</span><span className="font-medium">{detailView.defaultGstPercent}%</span></div>
@@ -1279,9 +1298,30 @@ function POSIntegrationsTab() {
 
           <div className="bg-card rounded-xl border p-5 space-y-4">
             <h4 className="font-semibold flex items-center gap-2"><Wifi size={16} /> Webhook Endpoint</h4>
-            <p className="text-xs text-muted-foreground">Use this customer-specific URL in your POS system to push orders automatically.</p>
-            <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookUrl(detailView) || 'Webhook URL will appear after this integration is saved.'}</div>
-            <button onClick={() => webhookUrl(detailView) && copyToClipboard(webhookUrl(detailView))} className="text-xs text-primary hover:underline flex items-center gap-1" disabled={!webhookUrl(detailView)}><Copy size={12} /> Copy URL</button>
+            <p className="text-xs text-muted-foreground">Use the compact endpoint for vendor dashboards. Legacy endpoints stay available for older customer installs that still post to numeric URLs.</p>
+            <div className="space-y-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Primary Webhook URL</p>
+                <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{compactWebhookUrl(detailView) || 'Webhook URL will appear after this integration is saved.'}</div>
+                <button onClick={() => compactWebhookUrl(detailView) && copyToClipboard(compactWebhookUrl(detailView))} className="mt-1 text-xs text-primary hover:underline flex items-center gap-1" disabled={!compactWebhookUrl(detailView)}><Copy size={12} /> Copy URL</button>
+              </div>
+
+              {detailView?.tenantSchemaName && String(detailView.tenantSchemaName).trim().toLowerCase() !== 'public' && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Tenant-safe URL</p>
+                  <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{tenantSafeWebhookUrl(detailView)}</div>
+                  <button onClick={() => tenantSafeWebhookUrl(detailView) && copyToClipboard(tenantSafeWebhookUrl(detailView))} className="mt-1 text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy URL</button>
+                </div>
+              )}
+
+              {legacyWebhookUrl(detailView) && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Legacy Webhook URL</p>
+                  <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{legacyWebhookUrl(detailView)}</div>
+                  <button onClick={() => legacyWebhookUrl(detailView) && copyToClipboard(legacyWebhookUrl(detailView))} className="mt-1 text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy URL</button>
+                </div>
+              )}
+            </div>
 
             <div className="border-t pt-3">
               <h5 className="text-sm font-medium mb-2">Webhook Secret</h5>
@@ -1568,6 +1608,20 @@ function POSIntegrationsTab() {
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Restaurant ID</Label><Input value={form.restaurantId} onChange={e => setForm({ ...form, restaurantId: e.target.value })} placeholder="Your POS restaurant ID" /></div>
             <div><Label>Base URL</Label><Input value={form.baseUrl} onChange={e => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.petpooja.com" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+            <div>
+              <Label>Custom Webhook Endpoint</Label>
+              <Input value={form.webhookIdentifier} onChange={e => setForm({ ...form, webhookIdentifier: e.target.value.toLowerCase() })} placeholder="slvcoffee or petpooja-slv" />
+              <p className="mt-1 text-xs text-muted-foreground">Optional. Use lowercase letters, numbers, hyphen, or underscore.</p>
+            </div>
+            <div className="flex flex-col justify-end">
+              <label className="flex items-center gap-2 text-sm cursor-pointer h-10">
+                <input type="checkbox" checked={form.isLegacyActive} onChange={e => setForm({ ...form, isLegacyActive: e.target.checked })} className="rounded" />
+                Keep legacy webhook URL active
+              </label>
+              <p className="mt-1 text-xs text-muted-foreground">Recommended for customers whose vendors still post to older numeric URLs.</p>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>API Key</Label><Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} /></div>

@@ -11,6 +11,8 @@ type IntegrationRecord = {
   provider: string;
   webhookSecret: string;
   publicWebhookKey: string;
+  webhookIdentifier: string | null;
+  legacyWebhookId: string | null;
   tenantSchemaName: string;
   restaurantId: string | null;
 };
@@ -144,6 +146,7 @@ async function ensurePublicPosIntegrationColumns() {
 }
 
 async function cleanupTenants() {
+  await runSql(`DELETE FROM public.pos_webhook_routes WHERE tenant_schema_name IN ('${TENANT_A}', '${TENANT_B}')`);
   await runSql(`DELETE FROM public.saas_subscription_link WHERE tenant_schema_name IN ('${TENANT_A}', '${TENANT_B}')`);
 
   for (const schemaName of TEST_SCHEMAS) {
@@ -289,6 +292,29 @@ async function sendWebhook(integration: IntegrationRecord, payload: Record<strin
   return { response, body };
 }
 
+async function sendCompactWebhook(integration: IntegrationRecord, identifier: string, payload: Record<string, unknown>) {
+  const webhookPath = `/api/webhook/petpooja/${identifier}`;
+  const { response, body } = await httpJson(webhookPath, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Webhook-Secret": integration.webhookSecret,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  testLogs.push({
+    step: "sendCompactWebhook",
+    tenant: integration.tenantSchemaName,
+    webhookPath,
+    requestPayload: payload,
+    responseStatus: response.status,
+    responseBody: body,
+  });
+
+  return { response, body };
+}
+
 async function invoiceRows(schemaName: string, invoiceNo: string) {
   return queryJson<Array<{
     id: number;
@@ -416,6 +442,37 @@ test("stores payload only in the tenant addressed by the webhook URL", async () 
 
   assert.equal(tenantBInvoice.length, 1, "Payload addressed to tenant B should be stored in tenant B");
   assert.equal(tenantAInvoice.length, 0, "Payload addressed to tenant B must not leak into tenant A");
+});
+
+test("routes compact tenant hash and custom slug webhooks into the correct tenant schema", async () => {
+  const hashPayload = petpoojaPayload("ORDER_A_HASH_ONLY", "REST_A", "Hash Route", 1);
+  const hashResult = await sendCompactWebhook(integrationA, integrationA.publicWebhookKey, hashPayload);
+  assert.equal(hashResult.response.status, 200, JSON.stringify(hashResult.body));
+
+  const patch = await httpJson(`/api/pos-integrations/${integrationA.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${ownerToken(TENANT_A)}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ webhookIdentifier: "tenant-a-pos" }),
+  });
+  assert.equal(patch.response.status, 200, JSON.stringify(patch.body));
+  integrationA = { ...(patch.body as IntegrationRecord), webhookSecret: integrationA.webhookSecret };
+
+  const slugPayload = petpoojaPayload("ORDER_A_CUSTOM_SLUG", "REST_A", "Slug Route", 1);
+  const slugResult = await sendCompactWebhook(integrationA, "tenant-a-pos", slugPayload);
+  assert.equal(slugResult.response.status, 200, JSON.stringify(slugResult.body));
+
+  const tenantAHashInvoice = await invoiceRows(TENANT_A, "PP-ORDER_A_HASH_ONLY");
+  const tenantASlugInvoice = await invoiceRows(TENANT_A, "PP-ORDER_A_CUSTOM_SLUG");
+  const tenantBHashLeak = await invoiceRows(TENANT_B, "PP-ORDER_A_HASH_ONLY");
+  const tenantBSlugLeak = await invoiceRows(TENANT_B, "PP-ORDER_A_CUSTOM_SLUG");
+
+  assert.equal(tenantAHashInvoice.length, 1, "Compact hash route should insert into tenant A");
+  assert.equal(tenantASlugInvoice.length, 1, "Compact custom slug route should insert into tenant A");
+  assert.equal(tenantBHashLeak.length, 0, "Compact hash route leaked into tenant B");
+  assert.equal(tenantBSlugLeak.length, 0, "Compact slug route leaked into tenant B");
 });
 
 test("prints a verification summary for manual review", async () => {

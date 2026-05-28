@@ -11,6 +11,9 @@ type IntegrationRecord = {
   provider: string;
   webhookSecret: string;
   publicWebhookKey: string;
+  webhookIdentifier: string | null;
+  legacyWebhookId: string | null;
+  isLegacyActive: boolean;
   tenantSchemaName: string | null;
   restaurantId: string | null;
 };
@@ -18,7 +21,10 @@ type IntegrationRecord = {
 const TEST_API_PORT = 3116;
 const TEST_INVOICE_A = "PP-ORDER_PUBLIC_001";
 const TEST_INVOICE_B = "PP-ORDER_PUBLIC_002";
+const TEST_INVOICE_LEGACY = "PP-ORDER_PUBLIC_LEGACY";
+const TEST_INVOICE_CUSTOM = "PP-ORDER_PUBLIC_CUSTOM";
 const TEST_RESTAURANT = "REST_PUBLIC";
+const TEST_RESTAURANT_DUP = "REST_PUBLIC_DUP";
 const execFileAsync = promisify(execFile);
 
 let apiProcess: ChildProcess | null = null;
@@ -116,38 +122,43 @@ async function cleanupPublicArtifacts() {
     DELETE FROM public.sales_invoice_lines
     WHERE invoice_id IN (
       SELECT id FROM public.sales_invoices
-      WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}')
+      WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}', '${TEST_INVOICE_LEGACY}', '${TEST_INVOICE_CUSTOM}')
     );
   `);
   await runSql(`
     DELETE FROM public.sales_invoices
-    WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}');
+    WHERE invoice_no IN ('${TEST_INVOICE_A}', '${TEST_INVOICE_B}', '${TEST_INVOICE_LEGACY}', '${TEST_INVOICE_CUSTOM}');
   `);
   await runSql(`
     DELETE FROM public.pos_webhook_events
     WHERE integration_id IN (
       SELECT id FROM public.pos_integrations
-      WHERE restaurant_id = '${TEST_RESTAURANT}'
+      WHERE restaurant_id IN ('${TEST_RESTAURANT}', '${TEST_RESTAURANT_DUP}')
     );
   `);
   await runSql(`
     DELETE FROM public.pos_sync_logs
     WHERE integration_id IN (
       SELECT id FROM public.pos_integrations
-      WHERE restaurant_id = '${TEST_RESTAURANT}'
+      WHERE restaurant_id IN ('${TEST_RESTAURANT}', '${TEST_RESTAURANT_DUP}')
     );
   `);
   await runSql(`
     DELETE FROM public.pos_integrations
-    WHERE restaurant_id = '${TEST_RESTAURANT}';
+    WHERE restaurant_id IN ('${TEST_RESTAURANT}', '${TEST_RESTAURANT_DUP}');
+  `);
+  await runSql(`
+    DELETE FROM public.pos_webhook_routes
+    WHERE tenant_schema_name IS NULL
+      AND integration_id NOT IN (SELECT id FROM public.pos_integrations);
   `);
 }
 
-async function createIntegration() {
+async function createIntegration(name = "Petpooja Public Install", restaurantId = TEST_RESTAURANT, webhookIdentifier?: string) {
   const payload = {
-    name: "Petpooja Public Install",
+    name,
     provider: "petpooja",
-    restaurantId: TEST_RESTAURANT,
+    restaurantId,
     accessToken: "User@123",
     defaultGstPercent: 5,
     defaultOrderType: "dine-in",
@@ -155,6 +166,7 @@ async function createIntegration() {
     syncOrders: true,
     syncMenuItems: true,
     autoSync: false,
+    webhookIdentifier: webhookIdentifier || "",
   };
 
   const { response, body } = await httpJson("/api/pos-integrations", {
@@ -177,6 +189,7 @@ async function createIntegration() {
   assert.equal(body.tenantSchemaName ?? null, null);
   assert.ok(body.publicWebhookKey, "Expected publicWebhookKey in create response");
   assert.ok(body.webhookSecret, "Expected webhookSecret in create response");
+  assert.equal(body.legacyWebhookId, String(body.id));
   return body as IntegrationRecord;
 }
 
@@ -210,8 +223,8 @@ function petpoojaPayload(orderId: string, restaurantId: string, itemName: string
   };
 }
 
-async function sendWebhook(payload: Record<string, unknown>) {
-  const webhookPath = `/api/webhook/petpooja/${integration.publicWebhookKey}`;
+async function sendWebhook(identifier: string, payload: Record<string, unknown>) {
+  const webhookPath = `/api/webhook/petpooja/${identifier}`;
   const { response, body } = await httpJson(webhookPath, {
     method: "POST",
     headers: {
@@ -267,11 +280,12 @@ after(async () => {
 test("existing tenant-safe webhook test still covers SaaS route assumptions", async () => {
   assert.ok(integration.publicWebhookKey, "Public integration key should exist");
   assert.equal(integration.tenantSchemaName ?? null, null);
+  assert.equal(integration.legacyWebhookId, String(integration.id));
 });
 
-test("routes public webhook into public schema only", async () => {
+test("routes hash-based public webhook into public schema only", async () => {
   const payload = petpoojaPayload(TEST_INVOICE_A, TEST_RESTAURANT, "Direct Burger", 2);
-  const result = await sendWebhook(payload);
+  const result = await sendWebhook(integration.publicWebhookKey, payload);
   assert.equal(result.response.status, 200, JSON.stringify(result.body));
 
   const invoiceRows = await queryJson<Array<{ invoice_no: string; source_type: string }>>(
@@ -279,6 +293,53 @@ test("routes public webhook into public schema only", async () => {
   );
   assert.equal(invoiceRows.length, 1, "Expected invoice in public schema");
   assert.equal(invoiceRows[0]?.source_type, "petpooja");
+});
+
+test("routes legacy numeric webhook into public schema only", async () => {
+  const payload = petpoojaPayload(TEST_INVOICE_LEGACY, TEST_RESTAURANT, "Legacy Burger", 1);
+  const result = await sendWebhook(String(integration.legacyWebhookId), payload);
+  assert.equal(result.response.status, 200, JSON.stringify(result.body));
+
+  const invoiceRows = await queryJson<Array<{ invoice_no: string }>>(
+    `SELECT invoice_no FROM public.sales_invoices WHERE invoice_no = '${TEST_INVOICE_LEGACY}'`
+  );
+  assert.equal(invoiceRows.length, 1, "Expected legacy webhook invoice in public schema");
+});
+
+test("routes custom slug webhook into public schema only", async () => {
+  const patch = await httpJson(`/api/pos-integrations/${integration.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${ownerTokenWithoutTenant()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ webhookIdentifier: "slvcoffee" }),
+  });
+  assert.equal(patch.response.status, 200, JSON.stringify(patch.body));
+  integration = { ...(patch.body as IntegrationRecord), webhookSecret: integration.webhookSecret };
+
+  const payload = petpoojaPayload(TEST_INVOICE_CUSTOM, TEST_RESTAURANT, "Custom Burger", 3);
+  const result = await sendWebhook("slvcoffee", payload);
+  assert.equal(result.response.status, 200, JSON.stringify(result.body));
+
+  const invoiceRows = await queryJson<Array<{ invoice_no: string }>>(
+    `SELECT invoice_no FROM public.sales_invoices WHERE invoice_no = '${TEST_INVOICE_CUSTOM}'`
+  );
+  assert.equal(invoiceRows.length, 1, "Expected custom webhook invoice in public schema");
+});
+
+test("rejects duplicate custom webhook identifiers", async () => {
+  const duplicate = await createIntegration("Petpooja Public Duplicate", TEST_RESTAURANT_DUP);
+  const patch = await httpJson(`/api/pos-integrations/${duplicate.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${ownerTokenWithoutTenant()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ webhookIdentifier: "slvcoffee" }),
+  });
+  assert.equal(patch.response.status, 409);
+  assert.equal(patch.body?.errorCode, "POS_INTEGRATION_IDENTIFIER_DUPLICATE");
 });
 
 test("returns 404 for invalid public webhook key", async () => {
@@ -294,6 +355,8 @@ test("returns 404 for invalid public webhook key", async () => {
 test("prints verification summary for public install flow", async () => {
   console.log(JSON.stringify({
     publicWebhookUrl: `${baseUrl}/api/webhook/petpooja/${integration.publicWebhookKey}`,
+    legacyWebhookUrl: `${baseUrl}/api/webhook/petpooja/${integration.legacyWebhookId}`,
+    customWebhookUrl: integration.webhookIdentifier ? `${baseUrl}/api/webhook/petpooja/${integration.webhookIdentifier}` : null,
     integration,
     logs: testLogs,
   }, null, 2));

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db, posIntegrationsTable, posSyncLogsTable, posWebhookEventsTable, menuItemsTable, categoriesTable,
+import { db, pool, posIntegrationsTable, posSyncLogsTable, posWebhookEventsTable, posWebhookRoutesTable, menuItemsTable, categoriesTable,
   salesInvoicesTable, salesImportBatchesTable } from "@workspace/db";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, or, sql, desc } from "drizzle-orm";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { importPetpoojaOrder, upsertPetpoojaCustomer } from "../lib/petpoojaImporter";
@@ -12,6 +12,14 @@ import { isValidIsoDate } from "../lib/dateValidation";
 import crypto from "crypto";
 
 const router: IRouter = Router();
+const RESERVED_WEBHOOK_IDENTIFIERS = new Set(["public", "api", "webhook", "petpooja", "petpooja-global"]);
+
+type IntegrationIdentityContext = {
+  integration: any;
+  tenantSchemaName: string | null;
+};
+
+type DbExecutor = typeof db;
 
 function redactSecrets(obj: any) {
   if (!obj) return obj;
@@ -53,6 +61,7 @@ function summarizePosIntegrationPayload(body: Record<string, unknown>) {
   return {
     name: body.name,
     provider: body.provider,
+    webhookIdentifier: body.webhookIdentifier,
     restaurantId: body.restaurantId,
     baseUrl: body.baseUrl,
     autoSync: body.autoSync,
@@ -67,8 +76,10 @@ function summarizePosIntegrationPayload(body: Record<string, unknown>) {
 }
 
 function buildPosIntegrationError(err: any) {
-  const message = String(err?.message || "Unknown error");
-  const code = String(err?.code || "");
+  const rootErr = typeof err?.cause === "object" && err.cause ? err.cause : err;
+  const message = String(rootErr?.message || err?.message || "Unknown error");
+  const code = String(rootErr?.code || err?.code || "");
+  const constraint = String(rootErr?.constraint || err?.constraint || "");
 
   if (code === "42703" || code === "42P01" || /column .* does not exist/i.test(message) || /relation .* does not exist/i.test(message)) {
     return {
@@ -93,6 +104,22 @@ function buildPosIntegrationError(err: any) {
   }
 
   if (code === "23505") {
+    if (
+      constraint === "pos_webhook_routes_provider_identifier_idx" ||
+      constraint === "pos_integrations_webhook_identifier_idx" ||
+      /webhook_identifier|legacy_webhook_id|pos_webhook_routes_provider_identifier_idx/i.test(message) ||
+      /webhook_identifier|legacy_webhook_id|pos_webhook_routes_provider_identifier_idx/i.test(constraint)
+    ) {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          message: "That webhook identifier is already in use. Choose a different custom endpoint.",
+          errorCode: "POS_INTEGRATION_IDENTIFIER_DUPLICATE",
+        },
+      };
+    }
+
     return {
       status: 409,
       body: {
@@ -117,6 +144,14 @@ function generatePublicWebhookKey(): string {
   return crypto.randomBytes(18).toString("hex");
 }
 
+function normalizeWebhookIdentifier(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(normalized)) return null;
+  if (RESERVED_WEBHOOK_IDENTIFIERS.has(normalized)) return null;
+  return normalized;
+}
+
 function normalizeTenantSchemaName(value: string | null | undefined): string | null {
   if (!value) return null;
   const normalized = value.trim().toLowerCase();
@@ -139,7 +174,40 @@ function effectiveWebhookSchemaName(value: string | null | undefined): string {
   return resolveIntegrationSchemaName(value) || "public";
 }
 
-async function ensureWebhookIdentity(integration: any, tenantSchemaName?: string | null) {
+function buildDefaultLegacyWebhookId(integrationId: number, tenantSchemaName?: string | null): string | null {
+  return resolveIntegrationSchemaName(tenantSchemaName) ? null : String(integrationId);
+}
+
+function normalizeLegacyWebhookId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/i.test(normalized)) return null;
+  return normalized.toLowerCase();
+}
+
+function buildIntegrationIdentifierCondition(identifier: string, includeLegacyNumericId = false) {
+  const clauses = [
+    eq(posIntegrationsTable.publicWebhookKey, identifier),
+    eq(posIntegrationsTable.webhookIdentifier, identifier),
+    and(eq(posIntegrationsTable.legacyWebhookId, identifier), eq(posIntegrationsTable.isLegacyActive, true)),
+  ];
+
+  if (includeLegacyNumericId && /^\d+$/.test(identifier)) {
+    clauses.push(eq(posIntegrationsTable.id, Number(identifier)));
+  }
+
+  return or(...clauses);
+}
+
+function webhookUrlPath(integration: any, identifier: string) {
+  const resolvedSchema = resolveIntegrationSchemaName(integration?.tenantSchemaName);
+  if (resolvedSchema) {
+    return `/api/webhook/petpooja/${resolvedSchema}/${identifier}`;
+  }
+  return `/api/webhook/petpooja/${identifier}`;
+}
+
+async function ensureWebhookIdentity(integration: any, tenantSchemaName?: string | null, executor: DbExecutor = db) {
   const updates: Record<string, string> = {};
   const normalizedSchema = resolveIntegrationSchemaName(tenantSchemaName);
 
@@ -149,17 +217,123 @@ async function ensureWebhookIdentity(integration: any, tenantSchemaName?: string
   if (!integration.tenantSchemaName && normalizedSchema) {
     updates.tenantSchemaName = normalizedSchema;
   }
+  if (!integration.legacyWebhookId) {
+    const legacyWebhookId = buildDefaultLegacyWebhookId(integration.id, integration.tenantSchemaName ?? normalizedSchema);
+    if (legacyWebhookId) {
+      updates.legacyWebhookId = legacyWebhookId;
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     return integration;
   }
 
-  const [updated] = await db.update(posIntegrationsTable)
+  const [updated] = await executor.update(posIntegrationsTable)
     .set(updates)
     .where(eq(posIntegrationsTable.id, integration.id))
     .returning();
 
   return updated ?? { ...integration, ...updates };
+}
+
+function buildWebhookRouteEntries({ integration, tenantSchemaName }: IntegrationIdentityContext) {
+  const resolvedSchema = resolveIntegrationSchemaName(integration.tenantSchemaName ?? tenantSchemaName);
+  const rows: Array<{
+    provider: string;
+    identifier: string;
+    routeType: string;
+    tenantSchemaName: string | null;
+    integrationId: number;
+    active: boolean;
+  }> = [];
+
+  if (integration.publicWebhookKey) {
+    rows.push({
+      provider: integration.provider,
+      identifier: integration.publicWebhookKey,
+      routeType: "public_key",
+      tenantSchemaName: resolvedSchema,
+      integrationId: integration.id,
+      active: Boolean(integration.active),
+    });
+  }
+
+  const normalizedCustomIdentifier = normalizeWebhookIdentifier(integration.webhookIdentifier);
+  if (normalizedCustomIdentifier) {
+    rows.push({
+      provider: integration.provider,
+      identifier: normalizedCustomIdentifier,
+      routeType: "custom",
+      tenantSchemaName: resolvedSchema,
+      integrationId: integration.id,
+      active: Boolean(integration.active),
+    });
+  }
+
+  const normalizedLegacyWebhookId = normalizeLegacyWebhookId(integration.legacyWebhookId);
+  if (normalizedLegacyWebhookId && integration.isLegacyActive !== false) {
+    rows.push({
+      provider: integration.provider,
+      identifier: normalizedLegacyWebhookId,
+      routeType: "legacy",
+      tenantSchemaName: resolvedSchema,
+      integrationId: integration.id,
+      active: Boolean(integration.active),
+    });
+  }
+
+  return { resolvedSchema, rows };
+}
+
+function deleteWebhookRoutesStatement(provider: string, integrationId: number, tenantSchemaName: string | null) {
+  return tenantSchemaName
+    ? sql`
+        DELETE FROM public.pos_webhook_routes
+        WHERE provider = ${provider}
+          AND integration_id = ${integrationId}
+          AND tenant_schema_name = ${tenantSchemaName}
+      `
+    : sql`
+        DELETE FROM public.pos_webhook_routes
+        WHERE provider = ${provider}
+          AND integration_id = ${integrationId}
+          AND tenant_schema_name IS NULL
+      `;
+}
+
+async function syncWebhookRoutes(integration: any, tenantSchemaName?: string | null, executor: DbExecutor = db) {
+  const { resolvedSchema, rows } = buildWebhookRouteEntries({ integration, tenantSchemaName: tenantSchemaName ?? null });
+  const dbExecutor = executor as any;
+  await dbExecutor.execute(deleteWebhookRoutesStatement(integration.provider, integration.id, resolvedSchema));
+  if (rows.length > 0) {
+    await dbExecutor.execute(sql`
+      INSERT INTO public.pos_webhook_routes (
+        provider,
+        identifier,
+        route_type,
+        tenant_schema_name,
+        integration_id,
+        active
+      )
+      VALUES ${sql.join(
+        rows.map((row) => sql`(
+          ${row.provider},
+          ${row.identifier},
+          ${row.routeType},
+          ${row.tenantSchemaName},
+          ${row.integrationId},
+          ${row.active}
+        )`),
+        sql`, `,
+      )}
+    `);
+  }
+}
+
+async function hydrateIntegrationIdentity(integration: any, tenantSchemaName?: string | null, executor: DbExecutor = db) {
+  const hydrated = await ensureWebhookIdentity(integration, tenantSchemaName, executor);
+  await syncWebhookRoutes(hydrated, tenantSchemaName, executor);
+  return hydrated;
 }
 
 async function createWebhookEvent(input: {
@@ -201,10 +375,92 @@ async function updateWebhookEvent(id: number, updates: {
   }).where(eq(posWebhookEventsTable.id, id));
 }
 
+async function findIntegrationByIdentifier(identifier: string, requestedTenantSchemaName?: string | null) {
+  const normalizedIdentifier = normalizeLegacyWebhookId(identifier);
+  if (!normalizedIdentifier) {
+    return null;
+  }
+
+  const normalizedRequestedSchema = resolveIntegrationSchemaName(requestedTenantSchemaName);
+  const mappingQuery = normalizedRequestedSchema
+    ? {
+        text: `
+          SELECT provider, identifier, route_type, tenant_schema_name, integration_id
+          FROM public.pos_webhook_routes
+          WHERE provider = $1
+            AND identifier = $2
+            AND tenant_schema_name = $3
+            AND active = true
+          LIMIT 1
+        `,
+        values: ["petpooja", normalizedIdentifier, normalizedRequestedSchema],
+      }
+    : {
+        text: `
+          SELECT provider, identifier, route_type, tenant_schema_name, integration_id
+          FROM public.pos_webhook_routes
+          WHERE provider = $1
+            AND identifier = $2
+            AND active = true
+          LIMIT 1
+        `,
+        values: ["petpooja", normalizedIdentifier],
+      };
+
+  const mappingResult = await pool.query<{
+    provider: string;
+    identifier: string;
+    route_type: string;
+    tenant_schema_name: string | null;
+    integration_id: number;
+  }>(mappingQuery.text, mappingQuery.values);
+  const mapping = mappingResult.rows[0];
+  if (mapping) {
+    const schemaNameForRequest = effectiveWebhookSchemaName(mapping.tenant_schema_name);
+    const [integration] = await runWithTenantSchema(schemaNameForRequest, async () => (
+      await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, mapping.integration_id)).limit(1)
+    ));
+    if (!integration) return null;
+    return {
+      integration,
+      schemaNameForRequest,
+      matchedIdentifier: normalizedIdentifier,
+      routeType: mapping.route_type,
+    };
+  }
+
+  if (normalizedRequestedSchema) {
+    const [integration] = await runWithTenantSchema(normalizedRequestedSchema, async () => (
+      await db.select().from(posIntegrationsTable)
+        .where(buildIntegrationIdentifierCondition(normalizedIdentifier))
+        .limit(1)
+    ));
+    if (!integration) return null;
+    return {
+      integration,
+      schemaNameForRequest: normalizedRequestedSchema,
+      matchedIdentifier: normalizedIdentifier,
+      routeType: "fallback",
+    };
+  }
+
+  const [integration] = await db.select().from(posIntegrationsTable)
+    .where(buildIntegrationIdentifierCondition(normalizedIdentifier, true))
+    .limit(1);
+  if (!integration) return null;
+
+  return {
+    integration,
+    schemaNameForRequest: "public",
+    matchedIdentifier: normalizedIdentifier,
+    routeType: "fallback_public",
+  };
+}
+
 router.get("/pos-integrations", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const tenantSchemaName = (req as any).tenantSchemaName as string | undefined;
   const integrations = await db.select().from(posIntegrationsTable).orderBy(posIntegrationsTable.createdAt);
-  const hydrated = await Promise.all(integrations.map((integration) => ensureWebhookIdentity(integration, tenantSchemaName)));
+  const hydrated = await Promise.all(integrations.map((integration) => hydrateIntegrationIdentity(integration, tenantSchemaName)));
   const safe = hydrated.map(i => ({
     ...i,
     apiKey: i.apiKey ? `****${i.apiKey.slice(-4)}` : null,
@@ -218,7 +474,7 @@ router.get("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pro
 router.get("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [rawIntegration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
-  const integration = rawIntegration ? await ensureWebhookIdentity(rawIntegration, (req as any).tenantSchemaName as string | undefined) : null;
+  const integration = rawIntegration ? await hydrateIntegrationIdentity(rawIntegration, (req as any).tenantSchemaName as string | undefined) : null;
   if (!integration) { res.status(404).json({ error: "Not found" }); return; }
   res.json({
     ...integration,
@@ -230,9 +486,21 @@ router.get("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res):
 
 router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { name, provider, apiKey, apiSecret, restaurantId, baseUrl, accessToken,
-    autoSync, syncMenuItems, syncOrders, defaultGstPercent, defaultOrderType } = req.body;
+    autoSync, syncMenuItems, syncOrders, defaultGstPercent, defaultOrderType, webhookIdentifier, isLegacyActive } = req.body;
   if (!name || !provider) {
     res.status(400).json({ success: false, message: "name and provider are required", errorCode: "POS_INTEGRATION_VALIDATION_FAILED" });
+    return;
+  }
+
+  const normalizedWebhookIdentifier = String(webhookIdentifier || "").trim()
+    ? normalizeWebhookIdentifier(String(webhookIdentifier))
+    : null;
+  if (String(webhookIdentifier || "").trim() && !normalizedWebhookIdentifier) {
+    res.status(400).json({
+      success: false,
+      message: "Custom webhook identifier may only contain lowercase letters, numbers, hyphen, or underscore.",
+      errorCode: "POS_INTEGRATION_IDENTIFIER_INVALID",
+    });
     return;
   }
 
@@ -256,22 +524,28 @@ router.post("/pos-integrations", authMiddleware, adminOnly, async (req, res): Pr
       webhookSecretSuffix: webhookSecret.slice(-8),
     });
 
-    const [integration] = await db.insert(posIntegrationsTable).values({
-      name, provider,
-      apiKey: apiKey || null,
-      apiSecret: apiSecret || null,
-      webhookSecret,
-      publicWebhookKey,
-      tenantSchemaName,
-      restaurantId: restaurantId || null,
-      baseUrl: baseUrl || null,
-      accessToken: accessToken || null,
-      autoSync: autoSync ?? false,
-      syncMenuItems: syncMenuItems ?? true,
-      syncOrders: syncOrders ?? true,
-      defaultGstPercent: defaultGstPercent ?? 5,
-      defaultOrderType: defaultOrderType || "dine-in",
-    }).returning();
+    const integration = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(posIntegrationsTable).values({
+        name, provider,
+        apiKey: apiKey || null,
+        apiSecret: apiSecret || null,
+        webhookSecret,
+        publicWebhookKey,
+        webhookIdentifier: normalizedWebhookIdentifier,
+        isLegacyActive: typeof isLegacyActive === "boolean" ? isLegacyActive : true,
+        tenantSchemaName,
+        restaurantId: restaurantId || null,
+        baseUrl: baseUrl || null,
+        accessToken: accessToken || null,
+        autoSync: autoSync ?? false,
+        syncMenuItems: syncMenuItems ?? true,
+        syncOrders: syncOrders ?? true,
+        defaultGstPercent: defaultGstPercent ?? 5,
+        defaultOrderType: defaultOrderType || "dine-in",
+      }).returning();
+
+      return hydrateIntegrationIdentity(created, tenantSchemaName, tx as unknown as DbExecutor);
+    });
 
     req.log?.info({
       event: "pos_integration.create.inserted",
@@ -313,21 +587,63 @@ router.patch("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res
     "autoSync", "syncMenuItems", "syncOrders", "defaultGstPercent", "defaultOrderType", "active"];
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
 
-  const [updated] = await db.update(posIntegrationsTable).set(updates).where(eq(posIntegrationsTable.id, id)).returning();
-  await createAuditLog("pos_integrations", id, "update", redactSecrets(old), redactSecrets(updated));
-  res.json({
-    ...updated,
-    apiSecret: updated.apiSecret ? "****" : null,
-    webhookSecret: updated.webhookSecret ? `****${updated.webhookSecret.slice(-4)}` : null,
-    accessToken: updated.accessToken ? "****" : null,
-  });
+  if (req.body.webhookIdentifier !== undefined) {
+    const rawWebhookIdentifier = String(req.body.webhookIdentifier || "").trim();
+    if (!rawWebhookIdentifier) {
+      updates.webhookIdentifier = null;
+    } else {
+      const normalizedWebhookIdentifier = normalizeWebhookIdentifier(rawWebhookIdentifier);
+      if (!normalizedWebhookIdentifier) {
+        res.status(400).json({
+          success: false,
+          message: "Custom webhook identifier may only contain lowercase letters, numbers, hyphen, or underscore.",
+          errorCode: "POS_INTEGRATION_IDENTIFIER_INVALID",
+        });
+        return;
+      }
+      updates.webhookIdentifier = normalizedWebhookIdentifier;
+    }
+  }
+
+  if (req.body.isLegacyActive !== undefined) {
+    updates.isLegacyActive = Boolean(req.body.isLegacyActive);
+  }
+
+  try {
+    const updated = await db.transaction(async (tx) => {
+      const [saved] = await tx.update(posIntegrationsTable).set(updates).where(eq(posIntegrationsTable.id, id)).returning();
+      return hydrateIntegrationIdentity(saved, saved.tenantSchemaName, tx as unknown as DbExecutor);
+    });
+    await createAuditLog("pos_integrations", id, "update", redactSecrets(old), redactSecrets(updated));
+    res.json({
+      ...updated,
+      apiSecret: updated.apiSecret ? "****" : null,
+      webhookSecret: updated.webhookSecret ? `****${updated.webhookSecret.slice(-4)}` : null,
+      accessToken: updated.accessToken ? "****" : null,
+    });
+  } catch (err: any) {
+    req.log?.error({
+      err,
+      event: "pos_integration.update.failed",
+      integrationId: id,
+      tenantSchemaName: resolveIntegrationSchemaName((req as any).tenantSchemaName),
+      updates: summarizePosIntegrationPayload(req.body || {}),
+      dbCode: err?.code,
+    }, "Failed to update POS integration");
+    const mapped = buildPosIntegrationError(err);
+    res.status(mapped.status).json(mapped.body);
+  }
 });
 
 router.delete("/pos-integrations/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-  await db.delete(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  const resolvedSchema = resolveIntegrationSchemaName(existing.tenantSchemaName);
+  await db.transaction(async (tx) => {
+    await (tx as any).execute(deleteWebhookRoutesStatement(existing.provider, existing.id, resolvedSchema));
+    await tx.delete(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  });
   await createAuditLog("pos_integrations", id, "delete", redactSecrets(existing), null);
   res.json({ message: "Deleted" });
 });
@@ -411,42 +727,48 @@ router.get("/pos-integrations/:id/stats", authMiddleware, adminOnly, async (req,
 
 async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
   const tenantSchemaName = resolveIntegrationSchemaName(req.params.tenantSchemaName);
-  const publicWebhookKey = String(req.params.publicWebhookKey || "").trim();
+  const webhookIdentifier = String(req.params.publicWebhookKey || req.params.identifier || "").trim();
 
-  if (!publicWebhookKey) {
+  if (!webhookIdentifier) {
     res.status(400).json({ error: "Invalid webhook URL" });
     return;
   }
 
-  const schemaNameForRequest = effectiveWebhookSchemaName(tenantSchemaName);
-
   req.log?.info({
     event: "petpooja.webhook.received",
-    tenantSchemaName: schemaNameForRequest,
-    publicWebhookKeySuffix: publicWebhookKey.slice(-8),
+    requestedTenantSchemaName: tenantSchemaName || "public",
+    identifier: webhookIdentifier,
     provider: "petpooja",
   });
 
+  const resolved = await findIntegrationByIdentifier(webhookIdentifier, tenantSchemaName);
+  if (!resolved || !resolved.integration || !resolved.integration.active) {
+    req.log?.warn({
+      event: "petpooja.webhook.integration_not_found",
+      requestedTenantSchemaName: tenantSchemaName || "public",
+      identifier: webhookIdentifier,
+    });
+    res.status(404).json({ error: "Integration not found or inactive" });
+    return;
+  }
+
+  const schemaNameForRequest = resolved.schemaNameForRequest;
+  const integration = resolved.integration;
+
+  req.log?.info({
+    event: "petpooja.webhook.resolved",
+    identifier: webhookIdentifier,
+    routeType: resolved.routeType,
+    resolvedTenantSchemaName: schemaNameForRequest,
+    integrationId: integration.id,
+  });
+
   await runWithTenantSchema(schemaNameForRequest, async () => {
-    const [rawIntegration] = await db.select().from(posIntegrationsTable).where(
-      tenantSchemaName
-        ? and(
-            eq(posIntegrationsTable.publicWebhookKey, publicWebhookKey),
-            eq(posIntegrationsTable.provider, "petpooja"),
-            eq(posIntegrationsTable.tenantSchemaName, tenantSchemaName),
-          )
-        : and(
-            eq(posIntegrationsTable.publicWebhookKey, publicWebhookKey),
-            eq(posIntegrationsTable.provider, "petpooja"),
-            sql`${posIntegrationsTable.tenantSchemaName} IS NULL OR lower(${posIntegrationsTable.tenantSchemaName}) = 'public'`,
-          )
-    );
-    const integration = rawIntegration ? await ensureWebhookIdentity(rawIntegration, tenantSchemaName) : null;
     if (!integration || !integration.active) {
       req.log?.warn({
         event: "petpooja.webhook.integration_not_found",
         tenantSchemaName: schemaNameForRequest,
-        publicWebhookKeySuffix: publicWebhookKey.slice(-8),
+        identifier: webhookIdentifier,
       });
       res.status(404).json({ error: "Integration not found or inactive" });
       return;

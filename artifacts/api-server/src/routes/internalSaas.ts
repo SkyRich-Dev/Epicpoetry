@@ -200,6 +200,7 @@ async function createTenantSchema(schemaName: string): Promise<void> {
       where table_schema = 'public'
         and table_type = 'BASE TABLE'
         and table_name <> 'saas_subscription_link'
+        and table_name <> 'pos_webhook_routes'
       order by table_name
     `);
 
@@ -225,6 +226,7 @@ async function createTenantSchema(schemaName: string): Promise<void> {
       from information_schema.columns
       where table_schema = 'public'
         and table_name <> 'saas_subscription_link'
+        and table_name <> 'pos_webhook_routes'
         and column_default like 'nextval(%'
     `);
 

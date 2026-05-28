@@ -13,7 +13,7 @@ const requireFromDb = createRequire(path.resolve(process.cwd(), "lib/db/package.
 const { Client } = requireFromDb("pg");
 
 const TENANT_SCHEMA_PATTERN = "tenant_platr_%";
-const SKIPPED_TABLES = new Set(["saas_subscription_link"]);
+const SKIPPED_TABLES = new Set(["saas_subscription_link", "pos_webhook_routes"]);
 
 function quoteIdent(value) {
   return `"${String(value).replace(/"/g, '""')}"`;
@@ -180,6 +180,7 @@ async function ensureTenantIndexes(client, schemaName, tableName) {
 async function syncTenantSchema(client, schemaName, publicTables) {
   await client.query("BEGIN");
   try {
+    await client.query(`DROP TABLE IF EXISTS ${quoteIdent(schemaName)}."pos_webhook_routes" CASCADE`);
     await ensureTenantSequences(client, schemaName);
 
     for (const tableName of publicTables) {
@@ -193,6 +194,110 @@ async function syncTenantSchema(client, schemaName, publicTables) {
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
+  }
+}
+
+function normalizeWebhookIdentifier(value) {
+  if (!value) return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(normalized)) return null;
+  if (["public", "api", "webhook", "petpooja", "petpooja-global"].includes(normalized)) return null;
+  return normalized;
+}
+
+async function ensurePosWebhookRouteRows(client, {
+  provider,
+  identifier,
+  routeType,
+  tenantSchemaName,
+  integrationId,
+}) {
+  if (!identifier) return;
+  await client.query(
+    `
+      INSERT INTO public.pos_webhook_routes (provider, identifier, route_type, tenant_schema_name, integration_id, active)
+      VALUES ($1, $2, $3, $4, $5, true)
+      ON CONFLICT (provider, identifier)
+      DO UPDATE SET
+        route_type = EXCLUDED.route_type,
+        tenant_schema_name = EXCLUDED.tenant_schema_name,
+        integration_id = EXCLUDED.integration_id,
+        active = true,
+        updated_at = now()
+    `,
+    [provider, identifier, routeType, tenantSchemaName, integrationId],
+  );
+}
+
+async function backfillPosWebhookRoutes(client, tenantSchemas) {
+  await client.query(`
+    UPDATE public.pos_integrations
+    SET legacy_webhook_id = id::text
+    WHERE legacy_webhook_id IS NULL
+  `);
+
+  const publicRows = await client.query(`
+    SELECT id, provider, public_webhook_key, webhook_identifier, legacy_webhook_id, is_legacy_active
+    FROM public.pos_integrations
+  `);
+
+  for (const row of publicRows.rows) {
+    await ensurePosWebhookRouteRows(client, {
+      provider: row.provider,
+      identifier: row.public_webhook_key,
+      routeType: "public_key",
+      tenantSchemaName: null,
+      integrationId: row.id,
+    });
+    await ensurePosWebhookRouteRows(client, {
+      provider: row.provider,
+      identifier: normalizeWebhookIdentifier(row.webhook_identifier),
+      routeType: "custom",
+      tenantSchemaName: null,
+      integrationId: row.id,
+    });
+    if (row.is_legacy_active !== false) {
+      await ensurePosWebhookRouteRows(client, {
+        provider: row.provider,
+        identifier: row.legacy_webhook_id,
+        routeType: "legacy",
+        tenantSchemaName: null,
+        integrationId: row.id,
+      });
+    }
+  }
+
+  for (const schemaName of tenantSchemas) {
+    const rows = await client.query(`
+      SELECT id, provider, public_webhook_key, webhook_identifier, legacy_webhook_id, is_legacy_active
+      FROM ${quoteIdent(schemaName)}.pos_integrations
+    `);
+
+    for (const row of rows.rows) {
+      await ensurePosWebhookRouteRows(client, {
+        provider: row.provider,
+        identifier: row.public_webhook_key,
+        routeType: "public_key",
+        tenantSchemaName: schemaName,
+        integrationId: row.id,
+      });
+      await ensurePosWebhookRouteRows(client, {
+        provider: row.provider,
+        identifier: normalizeWebhookIdentifier(row.webhook_identifier),
+        routeType: "custom",
+        tenantSchemaName: schemaName,
+        integrationId: row.id,
+      });
+      if (row.is_legacy_active !== false && row.legacy_webhook_id) {
+        await ensurePosWebhookRouteRows(client, {
+          provider: row.provider,
+          identifier: row.legacy_webhook_id,
+          routeType: "legacy",
+          tenantSchemaName: schemaName,
+          integrationId: row.id,
+        });
+      }
+    }
   }
 }
 
@@ -221,12 +326,16 @@ try {
 
   const publicTables = publicTablesResult.rows.map((row) => row.table_name);
   const syncedSchemas = [];
+  const tenantSchemas = tenantSchemasResult.rows.map((row) => row.schema_name);
 
-  for (const { schema_name: schemaName } of tenantSchemasResult.rows) {
+  for (const schemaName of tenantSchemas) {
     await client.query("SELECT set_config('search_path', $1, false)", [tenantSearchPath(schemaName)]);
     await syncTenantSchema(client, schemaName, publicTables);
     syncedSchemas.push(schemaName);
   }
+
+  await client.query("SELECT set_config('search_path', 'public', false)");
+  await backfillPosWebhookRoutes(client, tenantSchemas);
 
   console.log(JSON.stringify({
     syncedSchemas,

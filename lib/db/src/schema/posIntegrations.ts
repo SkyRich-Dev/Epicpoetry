@@ -9,6 +9,9 @@ export const posIntegrationsTable = pgTable("pos_integrations", {
   apiSecret: text("api_secret"),
   webhookSecret: text("webhook_secret"),
   publicWebhookKey: text("public_webhook_key"),
+  webhookIdentifier: text("webhook_identifier"),
+  legacyWebhookId: text("legacy_webhook_id"),
+  isLegacyActive: boolean("is_legacy_active").notNull().default(true),
   tenantSchemaName: text("tenant_schema_name"),
   restaurantId: text("restaurant_id"),
   baseUrl: text("base_url"),
@@ -28,7 +31,24 @@ export const posIntegrationsTable = pgTable("pos_integrations", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => ({
   publicWebhookKeyUnique: uniqueIndex("pos_integrations_public_webhook_key_idx").on(t.publicWebhookKey),
+  webhookIdentifierUnique: uniqueIndex("pos_integrations_webhook_identifier_idx").on(t.webhookIdentifier),
+  legacyWebhookIdUnique: uniqueIndex("pos_integrations_legacy_webhook_id_idx").on(t.legacyWebhookId),
   tenantSchemaNameIdx: index("pos_integrations_tenant_schema_name_idx").on(t.tenantSchemaName),
+}));
+
+export const posWebhookRoutesTable = pgTable("pos_webhook_routes", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(),
+  identifier: text("identifier").notNull(),
+  routeType: text("route_type").notNull(),
+  tenantSchemaName: text("tenant_schema_name"),
+  integrationId: integer("integration_id").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  providerIdentifierUnique: uniqueIndex("pos_webhook_routes_provider_identifier_idx").on(t.provider, t.identifier),
+  tenantIntegrationIdx: index("pos_webhook_routes_tenant_integration_idx").on(t.tenantSchemaName, t.integrationId),
 }));
 
 export const posSyncLogsTable = pgTable("pos_sync_logs", {
