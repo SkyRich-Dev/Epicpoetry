@@ -147,6 +147,13 @@ async function provisionTenant() {
 }
 
 async function setupMailConfig() {
+  process.env.SMTP_HOST = "127.0.0.1";
+  process.env.SMTP_PORT = String(TEST_SMTP_PORT);
+  process.env.SMTP_FROM = "noreply@example.com";
+  process.env.SMTP_FROM_NAME = "Platr QA";
+  process.env.SMTP_SECURE = "false";
+  delete process.env.SMTP_USER;
+  delete process.env.SMTP_PASS;
   await runSql(`
     DELETE FROM public.mail_config;
     INSERT INTO public.mail_config (smtp_host, smtp_port, from_email, from_name, secure, enabled)

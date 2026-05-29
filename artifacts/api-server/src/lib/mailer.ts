@@ -15,6 +15,40 @@ export interface ResolvedMailConfig {
   enabled: boolean;
 }
 
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value == null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function parseNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getEnvMailConfig(): ResolvedMailConfig | null {
+  const smtpHost = process.env.SMTP_HOST?.trim() || "";
+  const smtpPort = parseNumber(process.env.SMTP_PORT, 587);
+  const fromEmail = process.env.SMTP_FROM?.trim() || "";
+  const fromName = process.env.SMTP_FROM_NAME?.trim() || "Platr";
+  const smtpUser = process.env.SMTP_USER?.trim() || null;
+  const smtpPass = process.env.SMTP_PASS?.trim() || null;
+  const enabled = Boolean(smtpHost && fromEmail);
+  if (!enabled) return null;
+  return {
+    smtpHost,
+    smtpPort,
+    smtpUser,
+    smtpPass,
+    fromEmail,
+    fromName,
+    secure: parseBoolean(process.env.SMTP_SECURE, smtpPort === 465),
+    enabled: true,
+  };
+}
+
 async function getPublicMailConfigRow() {
   return (await pool.query<{
     smtp_host: string | null;
@@ -29,6 +63,11 @@ async function getPublicMailConfigRow() {
 }
 
 export async function getMailConfig(preferPublic = false): Promise<ResolvedMailConfig | null> {
+  const envConfig = getEnvMailConfig();
+  if (envConfig) {
+    return envConfig;
+  }
+
   const fallbackRow = preferPublic ? await getPublicMailConfigRow() : null;
   if (fallbackRow) {
     return {
