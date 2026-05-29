@@ -11,7 +11,8 @@
     "test:tenant-webhook": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/webhook-tenant-isolation.spec.js",
     "test:public-webhook": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/webhook-public-install.spec.js",
     "test:sales-summary": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/sales-invoice-summary.spec.js",
-    "test:purchase-bill-attachment": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/purchase-bill-attachment.spec.js"
+    "test:purchase-bill-attachment": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/purchase-bill-attachment.spec.js",
+    "test:tenant-account-setup": "tsc -p tsconfig.tests.json && node --test dist-tests/tests/tenant-account-setup.spec.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.916.0",
@@ -38,9 +39,11 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^25.3.3",
     "@types/nodemailer": "^8.0.0",
+    "@types/smtp-server": "^3.5.13",
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^10.0.0",
+    "smtp-server": "^3.18.4",
     "thread-stream": "3.1.0"
   }
 }

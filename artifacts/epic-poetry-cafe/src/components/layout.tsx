@@ -97,7 +97,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       });
       const data = await res.json();
       if (!res.ok) { setPwError(data.error || 'Failed to change password'); }
-      else { setPwSuccess('Password changed successfully!'); setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); }
+      else { setPwSuccess(data.message || 'Verification email sent. Confirm the change from your inbox.'); setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); }
     } catch { setPwError('Network error'); }
     setPwSaving(false);
   };
@@ -202,6 +202,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div><Label>Current Password</Label><Input type="password" value={pwForm.currentPassword} onChange={(e: any) => setPwForm({...pwForm, currentPassword: e.target.value})} placeholder="Enter current password" /></div>
           <div><Label>New Password</Label><Input type="password" value={pwForm.newPassword} onChange={(e: any) => setPwForm({...pwForm, newPassword: e.target.value})} placeholder="Min 6 characters" /></div>
           <div><Label>Confirm New Password</Label><Input type="password" value={pwForm.confirmPassword} onChange={(e: any) => setPwForm({...pwForm, confirmPassword: e.target.value})} placeholder="Re-enter new password" /></div>
+          <p className="text-xs text-muted-foreground">We&apos;ll send a verification email before the password change is applied.</p>
         </div>
       </Modal>
     </div>

@@ -29,6 +29,8 @@ router.post("/users", authMiddleware, adminOnly, async (req, res): Promise<void>
   const [user] = await db.insert(usersTable).values({
     username: parsed.data.username,
     passwordHash: hashPassword(parsed.data.password),
+    passwordSet: true,
+    passwordSetupCompletedAt: new Date(),
     fullName: parsed.data.fullName,
     email: parsed.data.email,
     role: parsed.data.role,
@@ -63,7 +65,11 @@ router.patch("/users/:id", authMiddleware, adminOnly, async (req, res): Promise<
   if (parsed.data.email !== undefined) updates.email = parsed.data.email;
   if (parsed.data.role) updates.role = parsed.data.role;
   if (parsed.data.active !== undefined) updates.active = parsed.data.active;
-  if (parsed.data.password) updates.passwordHash = hashPassword(parsed.data.password);
+  if (parsed.data.password) {
+    updates.passwordHash = hashPassword(parsed.data.password);
+    updates.passwordSet = true;
+    updates.passwordSetupCompletedAt = new Date();
+  }
 
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning();
   if (!user) {

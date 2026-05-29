@@ -31,11 +31,20 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const PUBLIC_PATHS = ["/api/healthz", "/api/auth/login"];
+const PUBLIC_PATHS = [
+  "/api/healthz",
+  "/api/auth/login",
+  "/api/auth/forgot-password",
+  "/api/auth/password-tokens/complete",
+];
 const PUBLIC_PREFIXES = ["/api/webhook/", "/api/internal/saas/"];
 app.use("/api", async (req: Request, res: Response, next: NextFunction) => {
   const path = req.path.startsWith("/") ? `/api${req.path}` : `/api/${req.path}`;
-  if (PUBLIC_PATHS.some(p => path === p) || PUBLIC_PREFIXES.some(p => path.startsWith(p))) {
+  if (
+    PUBLIC_PATHS.some(p => path === p)
+    || path.startsWith("/api/auth/password-tokens/")
+    || PUBLIC_PREFIXES.some(p => path.startsWith(p))
+  ) {
     return next();
   }
   const authHeader = req.headers.authorization;

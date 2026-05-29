@@ -3,9 +3,10 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, pool, saasSubscriptionLinkTable, systemConfigTable } from "@workspace/db";
-import { hashPassword } from "../lib/auth";
-import { getSaasAccessState, requirePlatrInternalSecret } from "../lib/saas";
+import { getSaasAccessState, requirePlatrInternalSecret, runWithTenantSchema } from "../lib/saas";
 import { logger } from "../lib/logger";
+import { issuePasswordToken, PASSWORD_TOKEN_PURPOSES } from "../lib/passwordAuth";
+import { sendTenantPasswordSetupEmail } from "../lib/accountEmails";
 
 const router: IRouter = Router();
 
@@ -256,28 +257,77 @@ async function createTenantSchema(schemaName: string): Promise<void> {
   }
 }
 
-async function ensureTenantOwnerUser(input: SyncInput): Promise<void> {
-  if (!input.tenantSchemaName || !input.platrCustomerEmail) return;
+async function ensureTenantOwnerUser(input: SyncInput) {
+  if (!input.tenantSchemaName || !input.platrCustomerEmail) return null;
   const schemaIdent = quoteIdent(input.tenantSchemaName);
-  const password = process.env.SAAS_TENANT_OWNER_DEFAULT_PASSWORD ?? "ChangeMe123!";
-  const passwordHash = hashPassword(password);
-  await pool.query(
+  const result = await pool.query<{
+    id: number;
+    username: string;
+    email: string | null;
+    full_name: string;
+    password_set: boolean;
+    password_hash: string | null;
+  }>(
     `
-      insert into ${schemaIdent}.users (username, password_hash, full_name, email, role, active)
-      values ($1, $2, $3, $4, 'owner', true)
+      insert into ${schemaIdent}.users (username, password_hash, password_set, full_name, email, role, active)
+      values ($1, null, false, $2, $3, 'owner', true)
       on conflict (username) do update set
         full_name = excluded.full_name,
         email = excluded.email,
         role = case when ${schemaIdent}.users.role in ('admin', 'owner') then ${schemaIdent}.users.role else 'owner' end,
         active = true
+      returning id, username, email, full_name, password_set, password_hash
     `,
     [
       input.platrCustomerEmail,
-      passwordHash,
       input.platrCustomerName ?? input.companyName ?? input.platrCustomerEmail,
       input.platrCustomerEmail,
     ],
   );
+  return result.rows[0] ?? null;
+}
+
+async function sendOwnerPasswordSetup(input: SyncInput, req: any, user: {
+  id: number;
+  username: string;
+  email: string | null;
+  full_name: string;
+  password_set: boolean;
+  password_hash: string | null;
+} | null) {
+  if (!input.tenantSchemaName || !user?.email || !!user.password_hash) {
+    return { ok: false, skipped: true as const };
+  }
+
+  return runWithTenantSchema(input.tenantSchemaName ?? null, async () => {
+    const { rawToken, expiresAt } = await issuePasswordToken({
+      userId: user.id,
+      purpose: PASSWORD_TOKEN_PURPOSES.setup,
+      metadata: {
+        tenantName: input.companyName ?? input.platrCustomerName ?? user.full_name,
+        username: user.username,
+      },
+    });
+    const delivery = await sendTenantPasswordSetupEmail({
+      req,
+      to: user.email!,
+      customerName: input.platrCustomerName ?? user.full_name,
+      tenantName: input.companyName ?? input.platrCustomerName ?? user.full_name,
+      username: user.username,
+      rawToken,
+      expiresAt,
+    });
+    if (!delivery.ok) {
+      logger.warn({
+        event: "tenant.password_setup_email.failed",
+        tenantSchemaName: input.tenantSchemaName,
+        userId: user.id,
+        email: user.email,
+        error: delivery.error,
+      }, "Failed to send tenant password setup email");
+    }
+    return delivery;
+  });
 }
 
 async function upsertLink(input: SyncInput) {
@@ -338,13 +388,15 @@ router.post("/internal/saas/provision", requirePlatrInternalSecret, async (req, 
     return;
   }
 
+  let ownerUser: Awaited<ReturnType<typeof ensureTenantOwnerUser>> = null;
   if (input.tenantSchemaName) {
     await createTenantSchema(input.tenantSchemaName);
-    await ensureTenantOwnerUser(input);
+    ownerUser = await ensureTenantOwnerUser(input);
   }
   const row = await upsertLink(input);
+  const setupEmail = await sendOwnerPasswordSetup(input, req, ownerUser);
   const state = await getSaasAccessState(input.tenantSchemaName);
-  res.status(201).json({ ok: true, mode: "provision", link: row, access: state });
+  res.status(201).json({ ok: true, mode: "provision", link: row, access: state, setupEmail });
 });
 
 router.post("/internal/saas/subscription-sync", requirePlatrInternalSecret, async (req, res): Promise<void> => {

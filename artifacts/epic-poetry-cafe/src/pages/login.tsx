@@ -1,19 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { useLocation } from 'wouter';
-import { useAuth } from '../lib/auth';
-import { useLogin } from '@workspace/api-client-react';
-import { Input, Button, Label } from '../components/ui-extras';
-import { Lock, User as UserIcon } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "../lib/auth";
+import { useLogin } from "@workspace/api-client-react";
+import { Input, Button, Label } from "../components/ui-extras";
+import { Lock, User as UserIcon } from "lucide-react";
 
-const AUTH_MESSAGE_KEY = 'epicpoetry.authMessage';
+const AUTH_MESSAGE_KEY = "epicpoetry.authMessage";
 
 export default function Login() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const { mutateAsync: loginMutation, isPending } = useLogin();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     try {
@@ -27,13 +27,13 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     try {
       const res = await loginMutation({ data: { username, password } });
       login(res.token, res.user);
-      setLocation('/');
+      setLocation("/");
     } catch (err: any) {
-      setError(err?.data?.error || 'Invalid credentials. Please try again.');
+      setError(err?.data?.error || "Invalid credentials. Please try again.");
     }
   };
 
@@ -51,12 +51,12 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 bg-card border border-border rounded-2xl p-6 shadow-sm">
-          {error && (
+          {error ? (
             <div className="p-3 bg-destructive/10 text-destructive rounded-lg text-sm font-medium border border-destructive/20 flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
               {error}
             </div>
-          )}
+          ) : null}
 
           <div className="space-y-1.5">
             <Label htmlFor="username">Username</Label>
@@ -92,8 +92,13 @@ export default function Login() {
           </div>
 
           <Button type="submit" className="w-full h-11 text-sm font-semibold rounded-xl mt-2" disabled={isPending}>
-            {isPending ? 'Signing in…' : 'Sign in'}
+            {isPending ? "Signing in..." : "Sign in"}
           </Button>
+          <div className="text-right">
+            <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+              Forgot password?
+            </Link>
+          </div>
         </form>
 
         <p className="text-center text-[11px] text-muted-foreground/60 mt-6 tracking-wide">
@@ -103,4 +108,3 @@ export default function Login() {
     </div>
   );
 }
-

@@ -8,6 +8,8 @@ import { Layout } from "./components/layout";
 // Pages
 import NotFound from "@/pages/not-found";
 import Login from "./pages/login";
+import ForgotPasswordPage from "./pages/forgot-password";
+import PasswordActionPage from "./pages/password-action";
 import Dashboard from "./pages/dashboard";
 import MenuItems from "./pages/menu-items";
 import Ingredients from "./pages/ingredients";
@@ -74,6 +76,11 @@ function ProtectedRoute({ component: Component, requires }: { component: React.C
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={Login} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/create-password/:token">{(params: any) => <PasswordActionPage mode="setup" token={params.token} />}</Route>
+      <Route path="/reset-password/:token">{(params: any) => <PasswordActionPage mode="reset" token={params.token} />}</Route>
+      <Route path="/change-password/:token">{(params: any) => <PasswordActionPage mode="change" token={params.token} />}</Route>
       <Route path="/" component={() => <ProtectedRoute component={Dashboard} requires="dashboard.view" />} />
       <Route path="/menu" component={() => <ProtectedRoute component={MenuItems} requires="menu_items.view" />} />
       <Route path="/ingredients" component={() => <ProtectedRoute component={Ingredients} requires="ingredients.view" />} />

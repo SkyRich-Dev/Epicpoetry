@@ -49,6 +49,8 @@ export async function seed() {
     {
       username: "admin",
       passwordHash: hashPassword("admin123"),
+      passwordSet: true,
+      passwordSetupCompletedAt: new Date(),
       fullName: "Admin User",
       email: "admin@epicpoetrycafe.com",
       role: "admin",
@@ -57,6 +59,8 @@ export async function seed() {
     {
       username: "manager",
       passwordHash: hashPassword("manager123"),
+      passwordSet: true,
+      passwordSetupCompletedAt: new Date(),
       fullName: "Cafe Manager",
       email: "manager@epicpoetrycafe.com",
       role: "manager",

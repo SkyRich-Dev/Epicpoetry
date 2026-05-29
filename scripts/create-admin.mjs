@@ -27,10 +27,12 @@ const schema = tableResult.rows[0].table_schema;
 const qualifiedUsersTable = `"${schema}"."users"`;
 
 await client.query(
-  `insert into ${qualifiedUsersTable} (username, password_hash, full_name, email, role, active)
-   values ($1, $2, $3, $4, $5, $6)
+  `insert into ${qualifiedUsersTable} (username, password_hash, password_set, password_setup_completed_at, full_name, email, role, active)
+   values ($1, $2, true, now(), $3, $4, $5, $6)
    on conflict (username) do update
    set password_hash = excluded.password_hash,
+       password_set = true,
+       password_setup_completed_at = now(),
        full_name = excluded.full_name,
        email = excluded.email,
        role = excluded.role,
