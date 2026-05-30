@@ -8,6 +8,14 @@ import type { PosIntegration } from "./posProviders";
 
 const PETPOOJA_SOURCE = "petpooja";
 
+function normalizeTenantSchemaName(value: string | null | undefined): string | null {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(normalized)) return null;
+  if (normalized === "public" || normalized.startsWith("pg_") || normalized === "information_schema") return null;
+  return normalized;
+}
+
 export interface ImportInput {
   ppOrder: any;
   ppItems: any[];
@@ -25,6 +33,7 @@ export interface ImportResult {
 
 export async function importPetpoojaOrder(input: ImportInput): Promise<ImportResult> {
   const { ppOrder, ppItems, ppCustomer, integration } = input;
+  const tenantSchemaName = normalizeTenantSchemaName(integration.tenantSchemaName);
 
   if (!ppOrder || !Array.isArray(ppItems) || ppItems.length === 0) {
     throw new Error("Missing Order or OrderItem in payload");
@@ -96,6 +105,9 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       txResult = await db.transaction(async (tx) => {
+      if (tenantSchemaName) {
+        await tx.execute(sql`select set_config('search_path', ${`"${tenantSchemaName}", public`}, false)`);
+      }
       const existing = await tx.select({ id: salesInvoicesTable.id })
         .from(salesInvoicesTable)
         .where(and(eq(salesInvoicesTable.invoiceNo, invoiceNo), eq(salesInvoicesTable.sourceType, PETPOOJA_SOURCE)))
