@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
-import { PageHeader, StatCard, formatCurrency, Badge, cn } from '../components/ui-extras';
-import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Minus, CalendarDays, Calendar, FileText, CreditCard, AlertOctagon, Cake, Heart, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PageHeader, StatCard, formatCurrency, Badge, Button, cn, daysAgoLocalDateInputValue } from '../components/ui-extras';
+import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Minus, CalendarDays, Calendar, FileText, CreditCard, AlertOctagon, Cake, Heart, ArrowRight, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Link } from 'wouter';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
+import { Tooltip as UiTooltip, TooltipContent as UiTooltipContent, TooltipTrigger as UiTooltipTrigger } from '@/components/ui/tooltip';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 
 const BASE = import.meta.env.BASE_URL || '/';
@@ -151,6 +153,25 @@ function getComparisonLabel(mode: FilterMode, isSingleDay: boolean) {
   if (isSingleDay) return { prev: "vs Yesterday", lastWeek: "vs Last Week Same Day" };
   return { prev: "vs Previous Period", lastWeek: "" };
 }
+
+type PosIntegrationSummary = {
+  id: number;
+  provider: string;
+  active: boolean;
+  syncOrders: boolean;
+  name?: string | null;
+};
+
+type RecoverySummaryResponse = {
+  success: boolean;
+  businessDate: string;
+  petpoojaRequestDate: string;
+  fetched: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  failures?: Array<{ orderRef: string; message: string }>;
+};
 
 function ManagerDashboard({ summary, mode }: { summary: any; mode: FilterMode }) {
   const isSingleDay = summary.isSingleDay;
@@ -490,7 +511,9 @@ function CelebrationsCard() {
 
 export default function Dashboard() {
   const { user, hasPerm } = useAuth();
+  const { toast } = useToast();
   const isAdmin = hasPerm('dashboard.view_pnl');
+  const canRefreshMissingSales = hasPerm('pos_integrations.manage');
   void user;
   const today = getToday();
 
@@ -499,6 +522,9 @@ export default function Dashboard() {
   const [mode, setMode] = useState<FilterMode>('today');
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [recoveryRunning, setRecoveryRunning] = useState(false);
+  const [recoveryTargets, setRecoveryTargets] = useState<PosIntegrationSummary[]>([]);
+  const [lastRecoveryAt, setLastRecoveryAt] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -511,10 +537,107 @@ export default function Dashboard() {
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
+  const loadRecoveryTargets = useCallback(async () => {
+    if (!canRefreshMissingSales) return;
+    try {
+      const data = await customFetch(`${BASE}api/pos-integrations`);
+      const integrations = (Array.isArray(data) ? data : []).filter((integration: PosIntegrationSummary) =>
+        integration.active && integration.provider === 'petpooja' && integration.syncOrders,
+      );
+      setRecoveryTargets(integrations);
+
+      if (integrations.length === 0) {
+        setLastRecoveryAt(null);
+        return;
+      }
+
+      const logs = await Promise.all(integrations.map(async (integration: PosIntegrationSummary) => {
+        try {
+          const response = await customFetch(`${BASE}api/pos-integrations/${integration.id}/recovery-logs?limit=1`);
+          return Array.isArray(response?.logs) ? response.logs[0] : null;
+        } catch {
+          return null;
+        }
+      }));
+
+      const timestamps = logs
+        .map((log: any) => log?.createdAt)
+        .filter(Boolean)
+        .map((value: string) => new Date(value))
+        .filter((value) => !Number.isNaN(value.getTime()))
+        .sort((left, right) => right.getTime() - left.getTime());
+
+      setLastRecoveryAt(timestamps[0] ? timestamps[0].toISOString() : null);
+    } catch {
+      setRecoveryTargets([]);
+      setLastRecoveryAt(null);
+    }
+  }, [canRefreshMissingSales]);
+
+  useEffect(() => {
+    void loadRecoveryTargets();
+  }, [loadRecoveryTargets]);
+
   const handleFilterChange = (from: string, to: string, m: FilterMode) => {
     setFromDate(from);
     setToDate(to);
     setMode(m);
+  };
+
+  const handleRefreshMissingSales = async () => {
+    if (recoveryRunning) return;
+    if (recoveryTargets.length === 0) {
+      toast({ title: 'No POS integrations configured', description: 'Set up an active Petpooja integration first.', variant: 'destructive' });
+      return;
+    }
+
+    const businessDates = [
+      daysAgoLocalDateInputValue(1),
+      daysAgoLocalDateInputValue(2),
+      daysAgoLocalDateInputValue(3),
+    ];
+
+    setRecoveryRunning(true);
+    let fetched = 0;
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+    try {
+      for (const integration of recoveryTargets) {
+        for (const businessDate of businessDates) {
+          const result = await customFetch<RecoverySummaryResponse>(`${BASE}api/pos-integrations/${integration.id}/recover-sales`, {
+            method: 'POST',
+            body: JSON.stringify({ businessDate }),
+          });
+          fetched += Number(result?.fetched || 0);
+          imported += Number(result?.imported || 0);
+          skipped += Number(result?.skipped || 0);
+          failed += Number(result?.failed || 0);
+        }
+      }
+
+      await Promise.all([loadDashboard(), loadRecoveryTargets()]);
+
+      if (failed > 0) {
+        toast({
+          title: 'Missing sales recovery completed with issues',
+          description: `${imported} imported, ${skipped} skipped, ${failed} failed out of ${fetched} fetched.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Missing sales recovery completed',
+        description: imported > 0
+          ? `Recovered ${imported} missing sales orders`
+          : 'No missing sales found',
+      });
+    } catch (error: any) {
+      toast({ title: 'Missing sales recovery failed', description: error?.message || 'Missing sales recovery failed', variant: 'destructive' });
+    } finally {
+      setRecoveryRunning(false);
+    }
   };
 
   const title = isAdmin ? "Owner's Dashboard" : "Operations Dashboard";
@@ -525,10 +648,46 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 pb-10">
       <PageHeader title={title} description={subtitle}>
-        <Badge variant="neutral" className="px-4 py-1.5 text-sm font-medium">
-          <CalendarDays size={14} className="mr-1.5" />
-          {mode === 'today' ? 'Live' : mode.charAt(0).toUpperCase() + mode.slice(1)}
-        </Badge>
+        <div className="flex flex-col items-start gap-1.5 sm:items-end">
+          <div className="flex flex-wrap items-center gap-2">
+            {canRefreshMissingSales && (
+              <UiTooltip>
+                <UiTooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      variant="outline"
+                      className="h-10 px-4"
+                      onClick={handleRefreshMissingSales}
+                      disabled={recoveryRunning || recoveryTargets.length === 0}
+                    >
+                      <RefreshCw size={14} className={cn("mr-1.5", recoveryRunning && "animate-spin")} />
+                      {recoveryRunning ? 'Refreshing...' : 'Refresh Now'}
+                    </Button>
+                  </span>
+                </UiTooltipTrigger>
+                <UiTooltipContent side="bottom" align="end">
+                  <div className="space-y-1">
+                    <p className="font-medium">Fetch missing sales from POS integrations now</p>
+                    <p className="text-[11px] opacity-90">Manual recovery for missed POS sales. Automatic recovery runs nightly.</p>
+                  </div>
+                </UiTooltipContent>
+              </UiTooltip>
+            )}
+            <Badge variant="neutral" className="px-4 py-1.5 text-sm font-medium">
+              <CalendarDays size={14} className="mr-1.5" />
+              {mode === 'today' ? 'Live' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </Badge>
+          </div>
+          {canRefreshMissingSales && (
+            <p className="text-xs text-muted-foreground">
+              {lastRecoveryAt
+                ? `Last recovery: ${new Date(lastRecoveryAt).toLocaleString()}`
+                : recoveryTargets.length > 0
+                  ? 'No manual recovery has run yet'
+                  : 'No active Petpooja integrations available for recovery'}
+            </p>
+          )}
+        </div>
       </PageHeader>
 
       <DateFilterBar fromDate={fromDate} toDate={toDate} mode={mode} onChange={handleFilterChange} />

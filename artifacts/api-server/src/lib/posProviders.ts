@@ -121,7 +121,7 @@ async function httpJson(url: string, init: RequestInit & { timeoutMs?: number } 
 
 // SSRF guard: only allow https:// to known POS host suffixes. Blocks internal hostnames,
 // private IPs, link-local metadata, file:// schemes, etc. New providers must extend this list.
-const PETPOOJA_ALLOWED_HOST_SUFFIXES = [
+export const PETPOOJA_ALLOWED_HOST_SUFFIXES = [
   "petpooja.com",
   "petpooja.in",
 ];

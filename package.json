@@ -10,6 +10,8 @@
   "scripts": {
     "db:prepare": "node ./scripts/configure-db-schema.mjs",
     "db:push": "npm run --workspace=@workspace/db push && node ./scripts/sync-tenant-schemas.mjs",
+    "tenant:sequences:audit": "node ./scripts/audit-tenant-sequences.mjs",
+    "tenant:sequences:repair": "node ./scripts/repair-tenant-sequences.mjs",
     "dev:api": "npm run --workspace=@workspace/api-server dev",
     "dev:web": "npm run --workspace=@workspace/epic-poetry-cafe dev",
     "typecheck:libs": "tsc --build",

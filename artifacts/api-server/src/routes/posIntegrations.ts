@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, pool, posIntegrationsTable, posSyncLogsTable, posWebhookEventsTable, posWebhookRoutesTable, menuItemsTable, categoriesTable,
+import { db, pool, posIntegrationsTable, posRecoveryLogsTable, posSyncLogsTable, posWebhookEventsTable, posWebhookRoutesTable, menuItemsTable, categoriesTable,
   salesInvoicesTable, salesImportBatchesTable } from "@workspace/db";
 import { eq, and, or, sql, desc } from "drizzle-orm";
 import { authMiddleware, adminOnly } from "../lib/auth";
@@ -8,7 +8,8 @@ import { importPetpoojaOrder, upsertPetpoojaCustomer } from "../lib/petpoojaImpo
 import { runWithTenantSchema } from "../lib/saas";
 import { fetchFromPos, getProviderCapabilities, POS_DATA_TYPES, POS_DATA_TYPE_LABELS,
   PosFetchError, type PosDataType } from "../lib/posProviders";
-import { isValidIsoDate } from "../lib/dateValidation";
+import { isValidIsoDate, validateNotFutureDate } from "../lib/dateValidation";
+import { runManualPetpoojaRecovery } from "../lib/petpoojaRecovery";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -170,6 +171,18 @@ function resolveIntegrationSchemaName(value: string | null | undefined): string 
   const normalized = normalizeTenantSchemaName(value);
   if (!normalized || isPublicSchemaName(normalized)) return null;
   return normalized;
+}
+
+function isPetpoojaRecoveryConfigured(integration: any): boolean {
+  return Boolean(
+    integration?.provider === "petpooja" &&
+    integration?.active &&
+    integration?.syncOrders &&
+    String(integration?.apiKey || "").trim() &&
+    String(integration?.apiSecret || "").trim() &&
+    String(integration?.accessToken || "").trim() &&
+    String(integration?.restaurantId || "").trim(),
+  );
 }
 
 function effectiveWebhookSchemaName(value: string | null | undefined): string {
@@ -968,6 +981,26 @@ router.get("/pos-integrations/:id/sync-logs", authMiddleware, adminOnly, async (
   res.json({ logs: rows });
 });
 
+router.get("/pos-integrations/:id/recovery-logs", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const rawLimit = req.query.limit;
+  let limit = 20;
+  if (rawLimit !== undefined) {
+    const n = Number(rawLimit);
+    if (!Number.isInteger(n) || n < 1 || n > 100) {
+      res.status(400).json({ error: "limit must be an integer between 1 and 100" }); return;
+    }
+    limit = n;
+  }
+  const [integration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  if (!integration) { res.status(404).json({ error: "Not found" }); return; }
+  const rows = await db.select().from(posRecoveryLogsTable)
+    .where(eq(posRecoveryLogsTable.integrationId, id))
+    .orderBy(desc(posRecoveryLogsTable.createdAt))
+    .limit(limit);
+  res.json({ logs: rows });
+});
+
 router.get("/pos-integrations/:id/webhook-events", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const rawLimit = req.query.limit;
@@ -986,6 +1019,60 @@ router.get("/pos-integrations/:id/webhook-events", authMiddleware, adminOnly, as
     .orderBy(desc(posWebhookEventsTable.createdAt))
     .limit(limit);
   res.json({ events: rows });
+});
+
+router.post("/pos-integrations/:id/recover-sales", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [integration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  if (!integration) { res.status(404).json({ error: "Not found" }); return; }
+  if (!integration.active) { res.status(400).json({ error: "Integration is inactive" }); return; }
+  if (integration.provider !== "petpooja") {
+    res.status(400).json({ error: "Manual recover-sales is currently supported only for Petpooja integrations" }); return;
+  }
+
+  const businessDate = String(req.body?.businessDate || "").trim();
+  if (!businessDate) {
+    res.status(400).json({ error: "businessDate is required (YYYY-MM-DD)" }); return;
+  }
+  if (!isValidIsoDate(businessDate)) {
+    res.status(400).json({ error: "businessDate must be a valid calendar date in YYYY-MM-DD format" }); return;
+  }
+  const futureDateError = validateNotFutureDate(businessDate, "businessDate");
+  if (futureDateError) {
+    res.status(400).json({ error: futureDateError }); return;
+  }
+  if (!isPetpoojaRecoveryConfigured(integration)) {
+    res.status(400).json({
+      error: "Petpooja recovery is not configured. Complete apiKey, apiSecret, accessToken, restaurantId, and order sync settings first.",
+    });
+    return;
+  }
+
+  const schemaName = resolveIntegrationSchemaName((req as any).tenantSchemaName) ?? resolveIntegrationSchemaName(integration.tenantSchemaName);
+  const changedBy = (req as any).user?.username || (req as any).user?.email || "admin";
+
+  try {
+    const summary = await runManualPetpoojaRecovery({ ...integration, tenantSchemaName: schemaName }, schemaName, businessDate);
+    await createAuditLog("pos_integrations", integration.id, "recover_sales", null, {
+      businessDate,
+      petpoojaRequestDate: summary.petpoojaRequestDate,
+      fetched: summary.fetched,
+      imported: summary.imported,
+      skipped: summary.skipped,
+      failed: summary.failed,
+      trigger: "manual",
+    }, changedBy);
+    res.json(summary);
+  } catch (error: any) {
+    req.log?.error({
+      err: error,
+      event: "petpooja.recovery.manual_failed",
+      integrationId: integration.id,
+      tenantSchemaName: schemaName || "public",
+      businessDate,
+    }, "Manual Petpooja recovery failed");
+    res.status(500).json({ error: error?.message || "Manual sales recovery failed" });
+  }
 });
 
 const FETCH_RATE_LIMIT_MS = 30_000;

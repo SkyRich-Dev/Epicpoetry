@@ -157,6 +157,35 @@ async function ensureTenantSerialDefaults(client, schemaName, tableName) {
   }
 }
 
+async function ensureTenantSequenceValues(client, schemaName, tableName) {
+  const { rows } = await client.query(
+    `
+      SELECT column_name, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+        AND column_default LIKE 'nextval(%'
+    `,
+    [tableName],
+  );
+
+  for (const row of rows) {
+    const match = String(row.column_default || "").match(/nextval\('(?:public\.)?([^']+)'::regclass\)/i);
+    if (!match) continue;
+    const sequenceName = String(match[1]).replace(/^public\./i, "");
+    await client.query(
+      `
+        SELECT setval(
+          $1::regclass,
+          COALESCE((SELECT MAX(${quoteIdent(row.column_name)}) FROM ${quoteIdent(schemaName)}.${quoteIdent(tableName)}), 0) + 1,
+          false
+        )
+      `,
+      [`${schemaName}.${sequenceName}`],
+    );
+  }
+}
+
 async function ensureTenantIndexes(client, schemaName, tableName) {
   const publicIndexes = await client.query(
     `
@@ -188,6 +217,7 @@ async function syncTenantSchema(client, schemaName, publicTables) {
       await ensureTenantColumns(client, schemaName, tableName);
       await ensureTenantSerialDefaults(client, schemaName, tableName);
       await ensureTenantIndexes(client, schemaName, tableName);
+      await ensureTenantSequenceValues(client, schemaName, tableName);
     }
 
     await client.query("COMMIT");

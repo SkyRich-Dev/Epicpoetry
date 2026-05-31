@@ -69,6 +69,28 @@ export const posSyncLogsTable = pgTable("pos_sync_logs", {
   byIntegration: index("pos_sync_logs_by_integration_idx").on(t.integrationId, t.createdAt),
 }));
 
+export const posRecoveryLogsTable = pgTable("pos_recovery_logs", {
+  id: serial("id").primaryKey(),
+  integrationId: integer("integration_id").notNull().references(() => posIntegrationsTable.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  triggerSource: text("trigger_source").notNull(),
+  runDate: date("run_date").notNull(),
+  businessDate: date("business_date").notNull(),
+  providerRequestDate: date("provider_request_date").notNull(),
+  status: text("status").notNull(),
+  fetchedCount: integer("fetched_count").notNull().default(0),
+  importedCount: integer("imported_count").notNull().default(0),
+  skippedCount: integer("skipped_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  message: text("message"),
+  failures: jsonb("failures").$type<Array<{ orderRef: string; message: string }> | null>(),
+  durationMs: integer("duration_ms"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byIntegrationDate: index("pos_recovery_logs_by_integration_date_idx").on(t.integrationId, t.businessDate, t.createdAt),
+  byRunDate: index("pos_recovery_logs_by_run_date_idx").on(t.runDate, t.triggerSource, t.createdAt),
+}));
+
 export const posWebhookEventsTable = pgTable("pos_webhook_events", {
   id: serial("id").primaryKey(),
   integrationId: integer("integration_id").notNull().references(() => posIntegrationsTable.id, { onDelete: "cascade" }),
