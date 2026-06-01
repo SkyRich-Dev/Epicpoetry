@@ -1542,6 +1542,64 @@ function POSIntegrationsTab() {
           </div>
         )}
 
+        <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Edit Integration" : "Add POS Integration"} maxWidth="max-w-2xl"
+          footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update' : 'Create'}</Button></>}>
+          <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+              <div><Label>Integration Name *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Petpooja Main Branch" /></div>
+              <div><Label>Provider *</Label><Select value={form.provider} onChange={(e: any) => setForm({ ...form, provider: e.target.value })}>
+                {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </Select></div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+              <div><Label>Restaurant ID</Label><Input value={form.restaurantId} onChange={e => setForm({ ...form, restaurantId: e.target.value })} placeholder="Your POS restaurant ID" /></div>
+              <div><Label>Base URL</Label><Input value={form.baseUrl} onChange={e => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.petpooja.com" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+              <div>
+                <Label>Custom Webhook Endpoint</Label>
+                <Input value={form.webhookIdentifier} onChange={e => setForm({ ...form, webhookIdentifier: e.target.value.toLowerCase() })} placeholder="slvcoffee or petpooja-slv" />
+                <p className="mt-1 text-xs text-muted-foreground">Optional. Use lowercase letters, numbers, hyphen, or underscore.</p>
+              </div>
+              <div className="flex flex-col justify-end">
+                <label className="flex items-center gap-2 text-sm cursor-pointer h-10">
+                  <input type="checkbox" checked={form.isLegacyActive} onChange={e => setForm({ ...form, isLegacyActive: e.target.checked })} className="rounded" />
+                  Keep legacy webhook URL active
+                </label>
+                <p className="mt-1 text-xs text-muted-foreground">Recommended for customers whose vendors still post to older numeric URLs.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+              <div><Label>API Key</Label><Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} /></div>
+              <div><Label>Access Token</Label><Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} /></div>
+            </div>
+            <div>
+              <Label>Accepted Legacy Webhook Secret</Label>
+              <Input type="password" value={form.legacyWebhookSecret} onChange={e => setForm({ ...form, legacyWebhookSecret: e.target.value })} placeholder={editId ? 'Optional: paste old vendor secret to keep old webhook working' : 'Optional legacy secret'} />
+              <p className="mt-1 text-xs text-muted-foreground">Optional. If the vendor is still posting the old secret, paste it here so the old webhook configuration continues working.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5">
+              <div><Label>Default GST %</Label><Input type="number" min="0" max="28" value={form.defaultGstPercent} onChange={e => setForm({ ...form, defaultGstPercent: Number(e.target.value) })} /></div>
+              <div><Label>Default Order Type</Label><Select value={form.defaultOrderType} onChange={(e: any) => setForm({ ...form, defaultOrderType: e.target.value })}>
+                <option value="dine-in">Dine In</option>
+                <option value="takeaway">Takeaway</option>
+                <option value="delivery">Delivery</option>
+                <option value="online">Online</option>
+              </Select></div>
+              <div className="flex flex-col justify-end">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} className="rounded" />
+                  Active
+                </label>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5">
+              <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.syncOrders} onChange={e => setForm({ ...form, syncOrders: e.target.checked })} className="rounded" /> Sync Orders</label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.syncMenuItems} onChange={e => setForm({ ...form, syncMenuItems: e.target.checked })} className="rounded" /> Sync Menu Items</label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.autoSync} onChange={e => setForm({ ...form, autoSync: e.target.checked })} className="rounded" /> Auto Sync</label>
+            </div>
+          </div>
+        </Modal>
         <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Integration"
           footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
           <p className="py-2 text-sm text-muted-foreground">Delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This removes the configuration only — imported invoices are preserved.</p>
