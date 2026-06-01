@@ -1101,6 +1101,12 @@ function POSIntegrationsTab() {
   const [selectedTypes, setSelectedTypes] = useState<Record<string, boolean>>({ sales: true, customers: true });
   const [fetching, setFetching] = useState(false);
   const [fetchResults, setFetchResults] = useState<Record<string, any> | null>(null);
+  const [storedCredentialState, setStoredCredentialState] = useState({
+    apiKey: '',
+    apiSecret: '',
+    accessToken: '',
+    legacyWebhookSecret: '',
+  });
 
   const [form, setForm] = useState({
     name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
@@ -1117,6 +1123,7 @@ function POSIntegrationsTab() {
 
   const openCreate = () => {
     setEditId(null);
+    setStoredCredentialState({ apiKey: '', apiSecret: '', accessToken: '', legacyWebhookSecret: '' });
     setForm({ name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
       accessToken: '', autoSync: false, syncMenuItems: true, syncOrders: true,
       defaultGstPercent: 5, defaultOrderType: 'dine-in', active: true, webhookIdentifier: '', isLegacyActive: true, legacyWebhookSecret: '' });
@@ -1125,11 +1132,17 @@ function POSIntegrationsTab() {
 
   const openEdit = (i: any) => {
     setEditId(i.id);
+    setStoredCredentialState({
+      apiKey: i.apiKey || '',
+      apiSecret: i.apiSecret || '',
+      accessToken: i.accessToken || '',
+      legacyWebhookSecret: i.legacyWebhookSecret || '',
+    });
     setForm({
-      name: i.name, provider: i.provider, apiKey: '', apiSecret: '', restaurantId: i.restaurantId || '',
-      baseUrl: i.baseUrl || '', accessToken: '', autoSync: i.autoSync, syncMenuItems: i.syncMenuItems,
+      name: i.name, provider: i.provider, apiKey: i.apiKey || '', apiSecret: i.apiSecret || '', restaurantId: i.restaurantId || '',
+      baseUrl: i.baseUrl || '', accessToken: i.accessToken || '', autoSync: i.autoSync, syncMenuItems: i.syncMenuItems,
       syncOrders: i.syncOrders, defaultGstPercent: i.defaultGstPercent, defaultOrderType: i.defaultOrderType, active: i.active,
-      webhookIdentifier: i.webhookIdentifier || '', isLegacyActive: i.isLegacyActive ?? true, legacyWebhookSecret: '',
+      webhookIdentifier: i.webhookIdentifier || '', isLegacyActive: i.isLegacyActive ?? true, legacyWebhookSecret: i.legacyWebhookSecret || '',
     });
     setShowModal(true);
   };
@@ -1137,9 +1150,10 @@ function POSIntegrationsTab() {
   const handleSave = async () => {
     try {
       const body: any = { ...form };
-      if (!body.apiKey) delete body.apiKey;
-      if (!body.apiSecret) delete body.apiSecret;
-      if (!body.accessToken) delete body.accessToken;
+      if (!body.apiKey || body.apiKey === storedCredentialState.apiKey) delete body.apiKey;
+      if (!body.apiSecret || body.apiSecret === storedCredentialState.apiSecret) delete body.apiSecret;
+      if (!body.accessToken || body.accessToken === storedCredentialState.accessToken) delete body.accessToken;
+      if (body.legacyWebhookSecret === storedCredentialState.legacyWebhookSecret) delete body.legacyWebhookSecret;
       if (!body.baseUrl) delete body.baseUrl;
       if (editId) {
         await posApiFetch(`pos-integrations/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -1570,13 +1584,29 @@ function POSIntegrationsTab() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-              <div><Label>API Key</Label><Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} /></div>
-              <div><Label>Access Token</Label><Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} /></div>
+              <div>
+                <Label>API Key</Label>
+                <Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} />
+                {editId && storedCredentialState.apiKey && <p className="mt-1 text-xs text-muted-foreground">Stored key detected. Replace only if vendor gave you a new App Key.</p>}
+              </div>
+              <div>
+                <Label>API Secret</Label>
+                <Input type="password" value={form.apiSecret} onChange={e => setForm({ ...form, apiSecret: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Secret'} />
+                {editId && storedCredentialState.apiSecret && <p className="mt-1 text-xs text-muted-foreground">Stored securely. Enter a new value only when you need to rotate the App Secret.</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+              <div>
+                <Label>Access Token</Label>
+                <Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} />
+                {editId && storedCredentialState.accessToken && <p className="mt-1 text-xs text-muted-foreground">Stored securely. Replace only if the POS vendor issued a new Access Token.</p>}
+              </div>
             </div>
             <div>
               <Label>Accepted Legacy Webhook Secret</Label>
               <Input type="password" value={form.legacyWebhookSecret} onChange={e => setForm({ ...form, legacyWebhookSecret: e.target.value })} placeholder={editId ? 'Optional: paste old vendor secret to keep old webhook working' : 'Optional legacy secret'} />
               <p className="mt-1 text-xs text-muted-foreground">Optional. If the vendor is still posting the old secret, paste it here so the old webhook configuration continues working.</p>
+              {editId && storedCredentialState.legacyWebhookSecret && <p className="mt-1 text-xs text-muted-foreground">A legacy webhook secret is already configured.</p>}
             </div>
             <div className="grid grid-cols-3 gap-x-4 gap-y-5">
               <div><Label>Default GST %</Label><Input type="number" min="0" max="28" value={form.defaultGstPercent} onChange={e => setForm({ ...form, defaultGstPercent: Number(e.target.value) })} /></div>
@@ -1698,13 +1728,29 @@ function POSIntegrationsTab() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-            <div><Label>API Key</Label><Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} /></div>
-            <div><Label>Access Token</Label><Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} /></div>
+            <div>
+              <Label>API Key</Label>
+              <Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} />
+              {editId && storedCredentialState.apiKey && <p className="mt-1 text-xs text-muted-foreground">Stored key detected. Replace only if vendor gave you a new App Key.</p>}
+            </div>
+            <div>
+              <Label>API Secret</Label>
+              <Input type="password" value={form.apiSecret} onChange={e => setForm({ ...form, apiSecret: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Secret'} />
+              {editId && storedCredentialState.apiSecret && <p className="mt-1 text-xs text-muted-foreground">Stored securely. Enter a new value only when you need to rotate the App Secret.</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+            <div>
+              <Label>Access Token</Label>
+              <Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} />
+              {editId && storedCredentialState.accessToken && <p className="mt-1 text-xs text-muted-foreground">Stored securely. Replace only if the POS vendor issued a new Access Token.</p>}
+            </div>
           </div>
           <div>
             <Label>Accepted Legacy Webhook Secret</Label>
             <Input type="password" value={form.legacyWebhookSecret} onChange={e => setForm({ ...form, legacyWebhookSecret: e.target.value })} placeholder={editId ? 'Optional: paste old vendor secret to keep old webhook working' : 'Optional legacy secret'} />
             <p className="mt-1 text-xs text-muted-foreground">Optional. If the vendor is still posting the old secret, paste it here so the old webhook configuration continues working.</p>
+            {editId && storedCredentialState.legacyWebhookSecret && <p className="mt-1 text-xs text-muted-foreground">A legacy webhook secret is already configured.</p>}
           </div>
           <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Default GST %</Label><Input type="number" min="0" max="28" value={form.defaultGstPercent} onChange={e => setForm({ ...form, defaultGstPercent: Number(e.target.value) })} /></div>
