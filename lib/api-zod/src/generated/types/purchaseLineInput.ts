@@ -12,4 +12,5 @@ export interface PurchaseLineInput {
   purchaseUom?: string;
   unitRate: number;
   taxPercent?: number;
+  expiryDate?: string;
 }

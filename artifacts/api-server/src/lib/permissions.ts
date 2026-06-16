@@ -1,21 +1,5 @@
 /**
- * Platr permission catalog.
- *
- * Permissions are organised into feature CATEGORIES (Account, Operation,
- * Purchase, HR, Reports, Admin). The Role Management UI uses these
- * categories to render a grouped checkbox matrix so an owner can assign
- * permissions in bulk by category.
- *
- * Each permission has a stable string key (e.g. "expenses.create") that
- * is what gets stored in role_permissions.permission_key.
- *
- * The frontend reads this catalog from GET /api/permissions and uses
- * effective permissions from GET /api/auth/me to gate buttons / nav.
- *
- * NOTE: existing route-level guards (`adminOnly`, `managerOrAdmin`) are
- * preserved as-is. The richer `requirePermission(key)` middleware is
- * available for new endpoints and can be wired into existing routes
- * incrementally without breaking them.
+ * Platr permission catalog — v2.0 updated.
  */
 
 export interface PermissionDef {
@@ -47,6 +31,15 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "customers.edit", label: "Edit customers" },
       { key: "waste.view", label: "View waste" },
       { key: "waste.create", label: "Record waste" },
+      // v2.0
+      { key: "tables.view", label: "View table management" },
+      { key: "tables.edit", label: "Manage tables & floor plan" },
+      { key: "kot.view", label: "View kitchen orders (KOT)" },
+      { key: "kot.edit", label: "Update KOT status" },
+      { key: "eod.view", label: "View EOD / daily closing" },
+      { key: "eod.manage", label: "Initiate and approve EOD" },
+      { key: "reservations.view", label: "View reservations" },
+      { key: "reservations.edit", label: "Manage reservations" },
     ],
   },
   {
@@ -63,6 +56,9 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "petty_cash.view", label: "View petty cash" },
       { key: "petty_cash.create", label: "Record petty cash entries" },
       { key: "petty_cash.delete", label: "Delete petty cash entries" },
+      // v2.0
+      { key: "expense_budgets.view", label: "View expense budgets" },
+      { key: "expense_budgets.edit", label: "Set / edit expense budgets" },
     ],
   },
   {
@@ -81,9 +77,16 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "ingredients.edit", label: "Edit ingredients" },
       { key: "menu_items.view", label: "View menu items" },
       { key: "menu_items.edit", label: "Edit menu items / recipes" },
-      { key: "menu_items.view_margin", label: "View menu item cost & margin", description: "Reveals production cost, margin %, and recipe cost on menu items." },
+      { key: "menu_items.view_margin", label: "View menu item cost & margin", description: "Reveals production cost, margin %, and recipe cost." },
       { key: "inventory.view", label: "View inventory" },
       { key: "inventory.edit", label: "Adjust inventory" },
+      // v2.0
+      { key: "purchase_orders.view", label: "View purchase orders" },
+      { key: "purchase_orders.create", label: "Create / submit purchase orders" },
+      { key: "purchase_orders.approve", label: "Approve purchase orders" },
+      { key: "stocktakes.view", label: "View stocktakes" },
+      { key: "stocktakes.manage", label: "Initiate and count stocktakes" },
+      { key: "stocktakes.approve", label: "Approve stocktake variances" },
     ],
   },
   {
@@ -103,6 +106,10 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "salary.edit", label: "Edit salary" },
       { key: "salary_advances.view", label: "View salary advances" },
       { key: "salary_advances.create", label: "Record salary advances" },
+      // v2.0
+      { key: "timeclock.view", label: "View time clock records" },
+      { key: "timeclock.manage", label: "Manage clock-in / clock-out" },
+      { key: "timeclock.approve_overtime", label: "Approve overtime" },
     ],
   },
   {
@@ -115,7 +122,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "decision_engine.financial", label: "View Decision Engine financial tabs" },
       { key: "insights.view", label: "View insights" },
       { key: "dashboard.view", label: "View dashboard" },
-      { key: "dashboard.view_pnl", label: "View Owner's P&L dashboard", description: "Reveals P&L tiles, settlement totals, vendor payables, and trend charts on the dashboard." },
+      { key: "dashboard.view_pnl", label: "View Owner's P&L dashboard", description: "Reveals P&L tiles, settlement totals, vendor payables, and trend charts." },
     ],
   },
   {
@@ -132,6 +139,9 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "audit_logs.view", label: "View audit logs" },
       { key: "backup.run", label: "Run backups" },
       { key: "pos_integrations.manage", label: "Manage POS integrations" },
+      // v2.0
+      { key: "notifications.manage", label: "Manage notification rules" },
+      { key: "global_search.use", label: "Use global search" },
     ],
   },
 ];
@@ -147,15 +157,9 @@ export function isValidPermissionKey(key: string): boolean {
   return ALL_KEYS_SET.has(key);
 }
 
-/**
- * Default built-in roles. These are seeded on first boot. The owner can
- * tweak the permission set from the Roles tab, but cannot delete a
- * built-in role.
- */
 export interface BuiltInRoleDef {
   name: string;
   description: string;
-  /** "*" means all permissions */
   permissions: string[] | "*";
 }
 
@@ -172,7 +176,7 @@ export const BUILT_IN_ROLES: BuiltInRoleDef[] = [
   },
   {
     name: "manager",
-    description: "Day-to-day operations: sales, settlements, customers, purchases, inventory, reports view.",
+    description: "Day-to-day operations: sales, tables, KOT, EOD, purchases, inventory, reports.",
     permissions: [
       "dashboard.view",
       "sales.view", "sales.create", "sales.edit", "sales.import",
@@ -181,12 +185,47 @@ export const BUILT_IN_ROLES: BuiltInRoleDef[] = [
       "waste.view", "waste.create",
       "vendors.view", "vendors.create", "vendors.edit",
       "purchases.view", "purchases.create", "purchases.edit",
+      "purchase_orders.view", "purchase_orders.create",
       "ingredients.view", "menu_items.view",
       "inventory.view", "inventory.edit",
+      "stocktakes.view", "stocktakes.manage",
       "expenses.view", "expenses.create",
+      "expense_budgets.view",
       "petty_cash.view", "petty_cash.create",
       "vendor_payments.view", "vendor_payments.create",
+      "tables.view", "tables.edit",
+      "kot.view", "kot.edit",
+      "eod.view", "eod.manage",
+      "reservations.view", "reservations.edit",
+      "timeclock.view", "timeclock.manage",
       "reports.view", "decision_engine.view", "insights.view",
+      "global_search.use",
+    ],
+  },
+  {
+    name: "cashier",
+    description: "Front of house: sales, tables, KOT, petty cash.",
+    permissions: [
+      "dashboard.view",
+      "sales.view", "sales.create", "sales.edit",
+      "customers.view",
+      "tables.view", "tables.edit",
+      "kot.view", "kot.edit",
+      "reservations.view",
+      "petty_cash.view", "petty_cash.create",
+      "menu_items.view",
+      "global_search.use",
+    ],
+  },
+  {
+    name: "kitchen",
+    description: "Kitchen: KOT management, inventory view, waste recording.",
+    permissions: [
+      "dashboard.view",
+      "kot.view", "kot.edit",
+      "inventory.view",
+      "ingredients.view", "menu_items.view",
+      "waste.view", "waste.create",
     ],
   },
   {
@@ -195,14 +234,17 @@ export const BUILT_IN_ROLES: BuiltInRoleDef[] = [
     permissions: [
       "dashboard.view",
       "expenses.view", "expenses.create", "expenses.edit", "expenses.delete",
+      "expense_budgets.view", "expense_budgets.edit",
       "petty_cash.view", "petty_cash.create", "petty_cash.delete",
       "vendor_payments.view", "vendor_payments.create", "vendor_payments.delete",
       "settlements.view", "settlements.verify",
       "vendors.view", "purchases.view",
+      "purchase_orders.view",
       "reports.view", "reports.financial",
       "decision_engine.view", "decision_engine.financial",
       "audit_logs.view",
       "menu_items.view_margin", "dashboard.view_pnl",
+      "global_search.use",
     ],
   },
   {
@@ -212,20 +254,23 @@ export const BUILT_IN_ROLES: BuiltInRoleDef[] = [
       "dashboard.view",
       "vendors.view",
       "purchases.view", "purchases.create", "purchases.edit",
+      "purchase_orders.view", "purchase_orders.create",
       "ingredients.view", "ingredients.edit",
       "menu_items.view", "menu_items.edit",
       "inventory.view", "inventory.edit",
+      "stocktakes.view", "stocktakes.manage",
       "waste.view", "waste.create",
       "reports.view",
     ],
   },
   {
     name: "hr",
-    description: "Human resources: employees, attendance, leaves, salary.",
+    description: "Human resources: employees, attendance, time clock, leaves, salary.",
     permissions: [
       "dashboard.view",
       "employees.view", "employees.create", "employees.edit",
       "attendance.view", "attendance.create",
+      "timeclock.view", "timeclock.manage", "timeclock.approve_overtime",
       "leaves.view", "leaves.approve",
       "salary.view", "salary.create", "salary.edit",
       "salary_advances.view", "salary_advances.create",
@@ -238,11 +283,13 @@ export const BUILT_IN_ROLES: BuiltInRoleDef[] = [
     permissions: [
       "dashboard.view",
       "sales.view", "settlements.view", "customers.view", "waste.view",
-      "expenses.view", "petty_cash.view", "vendor_payments.view",
-      "vendors.view", "purchases.view", "ingredients.view",
-      "menu_items.view", "inventory.view",
-      "employees.view", "attendance.view", "leaves.view", "salary.view",
+      "expenses.view", "expense_budgets.view", "petty_cash.view", "vendor_payments.view",
+      "vendors.view", "purchases.view", "purchase_orders.view", "ingredients.view",
+      "menu_items.view", "inventory.view", "stocktakes.view",
+      "tables.view", "kot.view", "eod.view", "reservations.view",
+      "employees.view", "attendance.view", "timeclock.view", "leaves.view", "salary.view",
       "reports.view", "decision_engine.view", "insights.view",
+      "global_search.use",
     ],
   },
 ];

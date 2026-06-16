@@ -646,7 +646,8 @@ router.get("/vendor-summaries", authMiddleware, async (req, res): Promise<void> 
 });
 
 router.get("/uploads/vendor-proofs/:filename", authMiddleware, async (req, res): Promise<void> => {
-  const filename = path.basename(req.params.filename);
+  const rawFilename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
+  const filename = path.basename(rawFilename);
   const filePath = path.join(PROOF_DIR, filename);
   const resolved = path.resolve(filePath);
   if (!resolved.startsWith(path.resolve(PROOF_DIR))) { res.status(403).json({ error: "Forbidden" }); return; }

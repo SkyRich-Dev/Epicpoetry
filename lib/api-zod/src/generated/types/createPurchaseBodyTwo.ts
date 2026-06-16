@@ -9,6 +9,6 @@
 export type CreatePurchaseBodyTwo = {
   /** JSON string matching CreatePurchaseRequest */
   payload?: string;
-  billAttachment?: Blob;
+  billAttachment?: unknown;
   removeBillAttachment?: boolean;
 };

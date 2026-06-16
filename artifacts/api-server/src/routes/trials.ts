@@ -77,7 +77,7 @@ router.get("/trials/:id", async (req, res): Promise<void> => {
       .from(trialIngredientLinesTable)
       .leftJoin(ingredientsTable, eq(trialIngredientLinesTable.ingredientId, ingredientsTable.id))
       .where(eq(trialIngredientLinesTable.trialVersionId, v.id));
-    enrichedVersions.push({ ...v, trialDate: v.trialDate, inventoryDeducted: v.inventoryDeducted, ingredients: lines });
+    enrichedVersions.push({ ...v, ingredients: lines });
   }
 
   res.json({ trial, versions: enrichedVersions });
@@ -131,7 +131,7 @@ router.post("/trials/:id/versions", authMiddleware, requirePermission("menu_item
   }
 
   const costPerUnit = parsed.data.yieldQty > 0 ? totalCost / parsed.data.yieldQty : 0;
-  const trialDate = parsed.data.trialDate || new Date().toISOString().split("T")[0];
+  const trialDate = new Date().toISOString().split("T")[0];
 
   const result = await db.transaction(async (tx) => {
     const [version] = await tx.insert(trialVersionsTable).values({

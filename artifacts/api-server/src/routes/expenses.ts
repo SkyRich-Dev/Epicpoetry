@@ -6,6 +6,7 @@ import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
+import { checkBudgetAlert } from "../lib/alertTriggers";
 import { isPettyCashMode } from "../lib/paymentMode";
 
 async function getPettyCashBalance(): Promise<number> {

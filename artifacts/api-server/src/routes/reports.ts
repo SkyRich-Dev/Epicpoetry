@@ -134,7 +134,7 @@ function generatePdf(result: ReportResult, period: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 30 });
     const chunks: Buffer[] = [];
-    doc.on("data", c => chunks.push(c));
+    doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 

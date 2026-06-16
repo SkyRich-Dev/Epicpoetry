@@ -924,7 +924,7 @@ router.post("/webhook/petpooja/:tenantSchemaName/:publicWebhookKey", async (req,
 });
 
 router.post("/webhook/petpooja/:publicWebhookKey", async (req, res): Promise<void> => {
-  req.params.tenantSchemaName = "public";
+  (req.params as Record<string, string>).tenantSchemaName = "public";
   await handlePetpoojaWebhook(req, res);
 });
 
@@ -933,7 +933,7 @@ router.post("/webhook/petpooja-global/:tenantSchemaName/:publicWebhookKey", asyn
 });
 
 router.post("/webhook/petpooja-global/:publicWebhookKey", async (req, res): Promise<void> => {
-  req.params.tenantSchemaName = "public";
+  (req.params as Record<string, string>).tenantSchemaName = "public";
   await handlePetpoojaWebhook(req, res);
 });
 

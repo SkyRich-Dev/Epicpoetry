@@ -173,6 +173,10 @@ type RecoverySummaryResponse = {
   failures?: Array<{ orderRef: string; message: string }>;
 };
 
+type RecoveryLogListResponse = {
+  logs?: Array<{ createdAt?: string | null }>;
+};
+
 function ManagerDashboard({ summary, mode }: { summary: any; mode: FilterMode }) {
   const isSingleDay = summary.isSingleDay;
   const labels = getRangeLabel(mode, isSingleDay);
@@ -553,7 +557,7 @@ export default function Dashboard() {
 
       const logs = await Promise.all(integrations.map(async (integration: PosIntegrationSummary) => {
         try {
-          const response = await customFetch(`${BASE}api/pos-integrations/${integration.id}/recovery-logs?limit=1`);
+          const response = await customFetch<RecoveryLogListResponse>(`${BASE}api/pos-integrations/${integration.id}/recovery-logs?limit=1`);
           return Array.isArray(response?.logs) ? response.logs[0] : null;
         } catch {
           return null;
@@ -564,8 +568,8 @@ export default function Dashboard() {
         .map((log: any) => log?.createdAt)
         .filter(Boolean)
         .map((value: string) => new Date(value))
-        .filter((value) => !Number.isNaN(value.getTime()))
-        .sort((left, right) => right.getTime() - left.getTime());
+        .filter((value: Date) => !Number.isNaN(value.getTime()))
+        .sort((left: Date, right: Date) => right.getTime() - left.getTime());
 
       setLastRecoveryAt(timestamps[0] ? timestamps[0].toISOString() : null);
     } catch {

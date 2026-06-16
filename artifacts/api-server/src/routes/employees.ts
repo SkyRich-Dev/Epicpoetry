@@ -513,7 +513,8 @@ router.patch("/salary/:id", authMiddleware, requirePermission("salary.edit"), as
 });
 
 router.get("/uploads/salary-proofs/:filename", authMiddleware, async (req, res): Promise<void> => {
-  const filePath = path.join(PROOF_DIR, req.params.filename);
+  const filename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
+  const filePath = path.join(PROOF_DIR, filename);
   if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
   res.sendFile(filePath);
 });

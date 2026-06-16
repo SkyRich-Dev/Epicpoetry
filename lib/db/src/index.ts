@@ -28,11 +28,11 @@ function tenantSearchPath(schemaName: string): string {
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-const originalPoolQuery = pool.query.bind(pool);
-const originalPoolConnect = pool.connect.bind(pool);
+const originalPoolQuery = pool.query.bind(pool) as typeof pool.query;
+const originalPoolConnect = pool.connect.bind(pool) as unknown as () => Promise<pg.PoolClient>;
 
-pool.connect = (async (...args: Parameters<typeof originalPoolConnect>) => {
-  const client = await originalPoolConnect(...args);
+pool.connect = (async () => {
+  const client = await originalPoolConnect();
   const schemaName = tenantSchemaContext.getStore();
   if (!schemaName) return client;
 
@@ -52,7 +52,7 @@ pool.connect = (async (...args: Parameters<typeof originalPoolConnect>) => {
   }) as typeof client.release;
 
   return client;
-}) as typeof pool.connect;
+}) as unknown as typeof pool.connect;
 
 pool.query = (async (...args: Parameters<typeof originalPoolQuery>) => {
   const schemaName = tenantSchemaContext.getStore();

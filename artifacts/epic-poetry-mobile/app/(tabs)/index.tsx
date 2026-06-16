@@ -157,7 +157,7 @@ export default function HomeScreen() {
               label="Avg ticket"
               value={formatCurrency(summary.avgTicket ?? 0)}
               hint="Per invoice"
-              icon="receipt"
+              icon="file-text"
               tone="info"
             />
           </View>

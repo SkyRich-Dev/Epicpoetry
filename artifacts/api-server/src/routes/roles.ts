@@ -88,7 +88,7 @@ router.post("/roles", authMiddleware, adminOnly, async (req, res): Promise<void>
 });
 
 router.patch("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid role id" }); return; }
   const [role] = await db.select().from(rolesTable).where(eq(rolesTable.id, id));
   if (!role) { res.status(404).json({ error: "Role not found" }); return; }
@@ -142,7 +142,7 @@ router.patch("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise<
 });
 
 router.delete("/roles/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid role id" }); return; }
   const [role] = await db.select().from(rolesTable).where(eq(rolesTable.id, id));
   if (!role) { res.status(404).json({ error: "Role not found" }); return; }

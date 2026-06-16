@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useListTrials, useCreateTrial, useGetTrial, useCreateTrialVersion, useConvertTrialToMenuItem, useUpdateTrial, useDeleteTrial } from '@workspace/api-client-react';
+import { useListTrials, useCreateTrial, useGetTrial, useCreateTrialVersion, useConvertTrialToMenuItem, useUpdateTrial, useDeleteTrial, getGetTrialQueryKey } from '@workspace/api-client-react';
 import type { TrialVersion, TrialIngredientLine } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Modal, Badge, Select, formatCurrency, useFormDirty } from '../components/ui-extras';
 import { FlaskConical, Plus, ArrowLeft, Clock, Beaker, ChevronRight, Trash2, CheckCircle2, Package, IndianRupee, Timer, XCircle } from 'lucide-react';
@@ -33,6 +33,11 @@ interface IngredientRow {
   wastageQty: number;
 }
 
+type TrialVersionView = TrialVersion & {
+  trialDate?: string | null;
+  inventoryDeducted?: number | null;
+};
+
 const emptyIngRow = (): IngredientRow => ({ ingredientId: 0, plannedQty: 0, actualQty: 0, uom: '', wastageQty: 0 });
 
 export default function Trials() {
@@ -49,7 +54,7 @@ export default function Trials() {
   const [formData, setFormData] = useState({ proposedItemName: '', targetCost: 0, targetSellingPrice: 0, notes: '' });
 
   const [selectedTrialId, setSelectedTrialId] = useState<number | null>(null);
-  const { data: trialDetail, isLoading: detailLoading } = useGetTrial(selectedTrialId!, { query: { enabled: !!selectedTrialId } });
+  const { data: trialDetail, isLoading: detailLoading } = useGetTrial(selectedTrialId!, { query: { queryKey: getGetTrialQueryKey(selectedTrialId || 0), enabled: !!selectedTrialId } });
 
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
   const [versionForm, setVersionForm] = useState({
@@ -368,11 +373,11 @@ export default function Trials() {
 }
 
 function VersionCard({ version, expanded, onToggle, onConvert, trialStatus, getIngName }: {
-  version: TrialVersion; expanded: boolean; onToggle: () => void;
+  version: TrialVersionView; expanded: boolean; onToggle: () => void;
   onConvert: () => void; trialStatus: string; getIngName: (id: number) => string;
 }) {
   const avgScore = [version.tasteScore, version.appearanceScore, version.consistencyScore]
-    .filter(s => s != null && s > 0);
+    .filter((s): s is number => typeof s === 'number' && s > 0);
   const avgScoreVal = avgScore.length > 0 ? avgScore.reduce((a, b) => a + (b || 0), 0) / avgScore.length : 0;
 
   return (

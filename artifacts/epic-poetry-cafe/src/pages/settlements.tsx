@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useListSettlements, useCreateSettlement, useGetSettlementSalesSummary, useVerifySettlement, useDeleteSettlement, useGetSettlement, useUpdateSettlement } from '@workspace/api-client-react';
+import { useListSettlements, useCreateSettlement, useGetSettlementSalesSummary, useVerifySettlement, useDeleteSettlement, useGetSettlement, useUpdateSettlement, getGetSettlementSalesSummaryQueryKey, getGetSettlementQueryKey } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty, useClientPagination, TablePagination } from '../components/ui-extras';
 import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode, Trash2, Eye, ShieldCheck, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -61,8 +61,8 @@ export default function Settlements() {
     setLines(updated);
   };
 
-  const { data: salesSummary } = useGetSettlementSalesSummary({ date: settlementDate }, { query: { enabled: isModalOpen } });
-  const { data: detail } = useGetSettlement(detailModal || 0, { query: { enabled: !!detailModal } });
+  const { data: salesSummary } = useGetSettlementSalesSummary({ date: settlementDate }, { query: { queryKey: getGetSettlementSalesSummaryQueryKey({ date: settlementDate }), enabled: isModalOpen } });
+  const { data: detail } = useGetSettlement(detailModal || 0, { query: { queryKey: getGetSettlementQueryKey(detailModal || 0), enabled: !!detailModal } });
 
   const totalSettlement = lines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
   const netSales = salesSummary?.netSales || 0;

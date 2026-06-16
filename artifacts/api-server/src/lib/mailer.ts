@@ -15,6 +15,19 @@ export interface ResolvedMailConfig {
   enabled: boolean;
 }
 
+type PublicMailConfigRow = {
+  smtp_host: string | null;
+  smtp_port: number;
+  smtp_user: string | null;
+  smtp_pass: string | null;
+  from_email: string | null;
+  from_name: string;
+  secure: boolean;
+  enabled: boolean;
+};
+
+type TenantMailConfigRow = typeof mailConfigTable.$inferSelect;
+
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value == null) return fallback;
   const normalized = value.trim().toLowerCase();
@@ -50,16 +63,33 @@ function getEnvMailConfig(): ResolvedMailConfig | null {
 }
 
 async function getPublicMailConfigRow() {
-  return (await pool.query<{
-    smtp_host: string | null;
-    smtp_port: number;
-    smtp_user: string | null;
-    smtp_pass: string | null;
-    from_email: string | null;
-    from_name: string;
-    secure: boolean;
-    enabled: boolean;
-  }>("select smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name, secure, enabled from public.mail_config order by id asc limit 1")).rows[0] ?? null;
+  return (await pool.query<PublicMailConfigRow>("select smtp_host, smtp_port, smtp_user, smtp_pass, from_email, from_name, secure, enabled from public.mail_config order by id asc limit 1")).rows[0] ?? null;
+}
+
+function toResolvedMailConfig(row: TenantMailConfigRow | PublicMailConfigRow): ResolvedMailConfig {
+  if ("smtpHost" in row) {
+    return {
+      smtpHost: row.smtpHost ?? "",
+      smtpPort: row.smtpPort ?? 587,
+      smtpUser: row.smtpUser ?? null,
+      smtpPass: row.smtpPass ?? null,
+      fromEmail: row.fromEmail ?? "",
+      fromName: row.fromName ?? "Platr",
+      secure: row.secure,
+      enabled: row.enabled,
+    };
+  }
+
+  return {
+    smtpHost: row.smtp_host ?? "",
+    smtpPort: row.smtp_port ?? 587,
+    smtpUser: row.smtp_user ?? null,
+    smtpPass: row.smtp_pass ?? null,
+    fromEmail: row.from_email ?? "",
+    fromName: row.from_name ?? "Platr",
+    secure: row.secure,
+    enabled: row.enabled,
+  };
 }
 
 export async function getMailConfig(preferPublic = false): Promise<ResolvedMailConfig | null> {
@@ -88,16 +118,7 @@ export async function getMailConfig(preferPublic = false): Promise<ResolvedMailC
     : null;
   const active = row && row.smtpHost && row.fromEmail ? row : tenantFallbackRow;
   if (!active) return null;
-  return {
-    smtpHost: active.smtpHost ?? active.smtp_host ?? "",
-    smtpPort: active.smtpPort ?? active.smtp_port ?? 587,
-    smtpUser: active.smtpUser ?? active.smtp_user ?? null,
-    smtpPass: active.smtpPass ?? active.smtp_pass ?? null,
-    fromEmail: active.fromEmail ?? active.from_email ?? "",
-    fromName: active.fromName ?? active.from_name ?? "Platr",
-    secure: active.secure,
-    enabled: active.enabled,
-  };
+  return toResolvedMailConfig(active);
 }
 
 function buildKey(c: ResolvedMailConfig) {

@@ -11,6 +11,7 @@ export interface CreatePurchaseRequest {
   purchaseDate: string;
   vendorId: number;
   invoiceNumber?: string;
+  dueDate?: string;
   paymentMode?: string;
   paymentStatus?: string;
   removeBillAttachment?: boolean;

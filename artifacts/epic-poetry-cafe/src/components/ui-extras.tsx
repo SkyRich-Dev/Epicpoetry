@@ -116,6 +116,7 @@ export function useFormDirty(isOpen: boolean, formData: any): boolean {
 
 export function Modal({
   isOpen,
+  open,
   onClose,
   title,
   titleActions,
@@ -125,14 +126,27 @@ export function Modal({
   dirty = false,
   confirmDiscardMessage = "You have unsaved changes. Discard them?",
   closeRef,
-}: any) {
+}: {
+  isOpen?: boolean;
+  open?: boolean;
+  onClose?: () => void;
+  title?: React.ReactNode;
+  titleActions?: React.ReactNode;
+  children?: React.ReactNode;
+  maxWidth?: string;
+  footer?: React.ReactNode | ((close: () => void) => React.ReactNode);
+  dirty?: boolean;
+  confirmDiscardMessage?: string;
+  closeRef?: React.MutableRefObject<(() => void) | null> | null;
+}) {
+  const resolvedOpen = isOpen ?? open ?? false;
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   // Reset the inline confirm overlay when the modal itself toggles, so a
   // reopened modal never starts on the confirm prompt.
   useEffect(() => {
-    if (!isOpen) setConfirmDiscard(false);
-  }, [isOpen]);
+    if (!resolvedOpen) setConfirmDiscard(false);
+  }, [resolvedOpen]);
 
   const attemptClose = () => {
     if (dirty) setConfirmDiscard(true);
@@ -154,7 +168,7 @@ export function Modal({
   // bare div, so without this ESC silently does nothing — which is itself a
   // bug. We handle it here AND apply the dirty-guard at the same time.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!resolvedOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       // Don't fight nested overlays' ESC handling.
@@ -165,9 +179,9 @@ export function Modal({
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, dirty, confirmDiscard]);
+  }, [resolvedOpen, dirty, confirmDiscard]);
 
-  if (!isOpen) return null;
+  if (!resolvedOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <div
@@ -234,43 +248,70 @@ export function Modal({
   );
 }
 
-export function Button({ children, variant = 'primary', className, ...props }: any) {
-  const base = "inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-all duration-200 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none";
+export function Button({
+  children,
+  variant = 'primary',
+  size,
+  className,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  children?: React.ReactNode;
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'destructive';
+  size?: 'sm' | 'default' | 'lg' | 'icon' | string;
+}) {
+  const base = "inline-flex items-center justify-center gap-2 text-sm font-medium transition-all duration-200 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none";
   const variants = {
     primary: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md active:scale-[0.98]",
     secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 active:scale-[0.98]",
     outline: "border border-border bg-card hover:bg-muted text-foreground active:scale-[0.98]",
     ghost: "bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground",
     danger: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 active:scale-[0.98]",
+    destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 active:scale-[0.98]",
   };
+  const sizes = {
+    sm: "h-9 px-3 py-2 text-xs",
+    default: "px-4 py-2.5",
+    lg: "h-11 px-5 py-3",
+    icon: "h-10 w-10 p-0",
+  } as const;
   return (
-    <button className={cn(base, variants[variant as keyof typeof variants], className)} {...props}>
+    <button className={cn(base, sizes[(size as keyof typeof sizes) || 'default'] || '', variants[variant as keyof typeof variants], className)} {...props}>
       {children}
     </button>
   );
 }
 
-export function Input({ className, onInput, ...props }: any) {
-  const handleInput = (e: any) => {
-    if (props.type === "number" && e.target.value) {
-      const raw = e.target.value;
+export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function Input({
+  className,
+  onInput,
+  ...props
+}, ref) {
+  const handleInput = (e: React.FormEvent<HTMLInputElement>) => {
+    const target = e.currentTarget;
+    if (props.type === "number" && target.value) {
+      const raw = target.value;
       const cleaned = raw.replace(/^0+(?=\d)/, '');
       if (raw !== cleaned) {
-        e.target.value = cleaned;
+        target.value = cleaned;
       }
     }
-    onInput?.(e);
+    (onInput as ((event: React.FormEvent<HTMLInputElement>) => void) | undefined)?.(e);
   };
   return (
     <input 
+      ref={ref}
       className={cn("flex h-10 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm transition-all duration-200 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50", className)} 
       onInput={handleInput}
       {...props} 
     />
   );
-}
+});
 
-export function Select({ className, children, ...props }: any) {
+export function Select({
+  className,
+  children,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { children?: React.ReactNode }) {
   return (
     <select 
       className={cn("flex h-10 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 appearance-none cursor-pointer", className)} 
@@ -281,7 +322,11 @@ export function Select({ className, children, ...props }: any) {
   );
 }
 
-export function Label({ className, children, ...props }: any) {
+export function Label({
+  className,
+  children,
+  ...props
+}: React.LabelHTMLAttributes<HTMLLabelElement> & { children?: React.ReactNode }) {
   return <label className={cn("block text-sm font-medium text-foreground/80 mb-2", className)} {...props}>{children}</label>;
 }
 

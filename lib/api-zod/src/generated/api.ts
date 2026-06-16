@@ -801,6 +801,7 @@ export const CreatePurchaseBody = zod.object({
   purchaseDate: zod.string(),
   vendorId: zod.number(),
   invoiceNumber: zod.string().optional(),
+  dueDate: zod.string().optional(),
   paymentMode: zod.string().optional(),
   paymentStatus: zod.string().optional(),
   removeBillAttachment: zod.boolean().optional(),
@@ -812,6 +813,7 @@ export const CreatePurchaseBody = zod.object({
       purchaseUom: zod.string().optional(),
       unitRate: zod.number(),
       taxPercent: zod.number().optional(),
+      expiryDate: zod.string().optional(),
     }),
   ),
 });

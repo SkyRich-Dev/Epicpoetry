@@ -13,7 +13,6 @@ import purchasesRouter from "./purchases";
 import expensesRouter from "./expenses";
 import expenseCostTypesRouter from "./expenseCostTypes";
 import inventoryRouter from "./inventory";
-
 import wasteRouter from "./waste";
 import trialsRouter from "./trials";
 import dashboardRouter from "./dashboard";
@@ -32,6 +31,16 @@ import insightsRouter from "./insights";
 import decisionRouter from "./decision";
 import rolesRouter from "./roles";
 import notificationsRouter from "./notifications";
+// ─── v2.0 New Modules ─────────────────────────────────────────────────────────
+import tablesRouter from "./tables";
+import kotRouter from "./kot";
+import eodRouter from "./eod";
+import stocktakesRouter from "./stocktakes";
+import purchaseOrdersRouter from "./purchaseOrders";
+import timeclockRouter from "./timeclock";
+import expenseBudgetsRouter from "./expenseBudgets";
+import modifiersRouter from "./modifiers";
+import searchRouter from "./search";
 
 const router: IRouter = Router();
 
@@ -49,7 +58,6 @@ router.use(purchasesRouter);
 router.use(expensesRouter);
 router.use(expenseCostTypesRouter);
 router.use(inventoryRouter);
-
 router.use(wasteRouter);
 router.use(trialsRouter);
 router.use(dashboardRouter);
@@ -68,5 +76,15 @@ router.use(insightsRouter);
 router.use(decisionRouter);
 router.use(rolesRouter);
 router.use(notificationsRouter);
+// ─── v2.0 New Modules ─────────────────────────────────────────────────────────
+router.use(tablesRouter);
+router.use(kotRouter);
+router.use(eodRouter);
+router.use(stocktakesRouter);
+router.use(purchaseOrdersRouter);
+router.use(timeclockRouter);
+router.use(expenseBudgetsRouter);
+router.use(modifiersRouter);
+router.use(searchRouter);
 
 export default router;

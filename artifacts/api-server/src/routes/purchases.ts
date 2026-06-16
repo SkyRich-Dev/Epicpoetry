@@ -6,6 +6,7 @@ import { authMiddleware, adminOnly, requirePermission } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
+import { checkStockAlert } from "../lib/alertTriggers";
 import { createSignedReadUrl, deleteFileFromS3, sanitizeFileName, uploadFileToS3, type StoredS3Attachment } from "../lib/s3Storage";
 import PDFDocument from "pdfkit";
 import multer from "multer";
@@ -262,6 +263,7 @@ async function removePurchaseStockImpact(tx: any, purchaseId: number): Promise<t
     if (!ing) continue;
     const newStock = Math.max(0, (ing.currentStock || 0) - (line.quantity || 0));
     await tx.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, line.ingredientId));
+    await checkStockAlert(line.ingredientId);
   }
   return existingLines;
 }
@@ -307,6 +309,7 @@ async function applyPurchaseLines(
       latestCost: unitRate,
       weightedAvgCost: newAvg,
       }).where(eq(ingredientsTable.id, line.ingredientId));
+    await checkStockAlert(line.ingredientId);
   }
   return { subtotal, taxAmount, totalAmount };
 }
@@ -497,7 +500,7 @@ function generateBillPdf(data: {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 40 });
     const chunks: Buffer[] = [];
-    doc.on("data", (c) => chunks.push(c));
+    doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
@@ -683,11 +686,15 @@ router.get("/purchases", async (req, res): Promise<void> => {
 router.post("/purchases", authMiddleware, requirePermission("purchases.create"), purchaseBillUploadMiddleware, async (req, res): Promise<void> => {
   const parsed = parsePurchaseRequestBody(req);
   if (!parsed.success) { res.status(400).json({ error: parsed.errorMessage }); return; }
-  const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
+  const purchaseData = parsed.data as typeof parsed.data & {
+    dueDate?: string;
+    lines: Array<(typeof parsed.data.lines)[number] & { expiryDate?: string | null }>;
+  };
+  const dateErr = validateNotFutureDate(purchaseData.purchaseDate, "Purchase date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
-  const isPaid = parsed.data.paymentStatus === "paid";
-  const paymentMode = parsed.data.paymentMode || (isPaid ? "cash" : null);
+  const isPaid = purchaseData.paymentStatus === "paid";
+  const paymentMode = purchaseData.paymentMode || (isPaid ? "cash" : null);
   const isPettyCash = isPaid && paymentMode === "petty_cash";
   const uploadedFile = req.file as Express.Multer.File | undefined;
   const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
@@ -703,18 +710,18 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
   try {
     const result = await db.transaction(async (tx) => {
       await applyTenantSearchPath(tx, tenantSchemaName);
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(56000000, ${parsed.data.vendorId})`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(56000000, ${purchaseData.vendorId})`);
       const purchaseNumber = await generateCode("PUR", "purchases", tx);
       const [purchase] = await tx.insert(purchasesTable).values({
         purchaseNumber,
-        purchaseDate: parsed.data.purchaseDate,
-        vendorId: parsed.data.vendorId,
-        invoiceNumber: parsed.data.invoiceNumber,
-        vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
-        dueDate: parsed.data.dueDate || undefined,
+        purchaseDate: purchaseData.purchaseDate,
+        vendorId: purchaseData.vendorId,
+        invoiceNumber: purchaseData.invoiceNumber,
+        vendorInvoiceNumber: purchaseData.invoiceNumber || undefined,
+        dueDate: purchaseData.dueDate || undefined,
         paymentMode,
         paymentStatus: isPaid ? "fully_paid" : "unpaid",
-        notes: parsed.data.notes,
+        notes: purchaseData.notes,
         billAttachment: null,
         totalAmount: 0,
       }).returning();
@@ -729,7 +736,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         await tx.update(purchasesTable).set({ billAttachment: nextBillAttachment }).where(eq(purchasesTable.id, purchase.id));
       }
 
-      const lineTotals = await applyPurchaseLines(tx, purchase.id, parsed.data.lines as any);
+      const lineTotals = await applyPurchaseLines(tx, purchase.id, purchaseData.lines as any);
       const totalAmount = round2(lineTotals.totalAmount);
       const finalStatus = isPaid ? "fully_paid" : "unpaid";
       await tx.update(purchasesTable).set({
@@ -739,33 +746,33 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         pendingAmount: finalStatus === "fully_paid" ? 0 : totalAmount,
         paidAmount: finalStatus === "fully_paid" ? totalAmount : 0,
         paymentStatus: finalStatus,
-        lastPaymentDate: finalStatus === "fully_paid" ? parsed.data.purchaseDate : undefined,
+        lastPaymentDate: finalStatus === "fully_paid" ? purchaseData.purchaseDate : undefined,
       }).where(eq(purchasesTable.id, purchase.id));
 
-      const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, parsed.data.vendorId));
+      const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, purchaseData.vendorId));
       const resolvedVendorName = vendor?.name ?? "";
 
       await rebuildVendorLedgerForPurchase(tx, {
         purchaseId: purchase.id,
-        vendorId: parsed.data.vendorId,
-        purchaseDate: parsed.data.purchaseDate,
+        vendorId: purchaseData.vendorId,
+        purchaseDate: purchaseData.purchaseDate,
         purchaseNumber,
-        invoiceNumber: parsed.data.invoiceNumber,
+        invoiceNumber: purchaseData.invoiceNumber,
         totalAmount,
         paymentMode,
         paymentStatus: finalStatus,
       });
-      await recalculateVendorLedger(tx, parsed.data.vendorId);
+      await recalculateVendorLedger(tx, purchaseData.vendorId);
 
       if (isPettyCash) {
         await createPurchasePettyCashArtifacts(tx, {
           purchase,
-          vendorName: resolvedVendorName || `vendor #${parsed.data.vendorId}`,
+          vendorName: resolvedVendorName || `vendor #${purchaseData.vendorId}`,
           subtotal: lineTotals.subtotal,
           taxAmount: lineTotals.taxAmount,
           totalAmount,
-          purchaseDate: parsed.data.purchaseDate,
-          invoiceNumber: parsed.data.invoiceNumber,
+          purchaseDate: purchaseData.purchaseDate,
+          invoiceNumber: purchaseData.invoiceNumber,
           userId,
         });
       }
@@ -802,8 +809,8 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
     taxAmount: computedTaxAmount,
     pendingAmount: isPaid ? 0 : computedTotal,
     paidAmount: isPaid ? computedTotal : 0,
-    vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
-    dueDate: parsed.data.dueDate || undefined,
+    vendorInvoiceNumber: purchaseData.invoiceNumber || undefined,
+    dueDate: purchaseData.dueDate || undefined,
   }).where(eq(purchasesTable.id, createdPurchase.id));
 
   res.status(201).json({
@@ -822,14 +829,18 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
 
   const parsed = parsePurchaseRequestBody(req);
   if (!parsed.success) { res.status(400).json({ error: parsed.errorMessage }); return; }
-  const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
+  const purchaseData = parsed.data as typeof parsed.data & {
+    dueDate?: string;
+    lines: Array<(typeof parsed.data.lines)[number] & { expiryDate?: string | null }>;
+  };
+  const dateErr = validateNotFutureDate(purchaseData.purchaseDate, "Purchase date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
-  const validLines = parsed.data.lines.filter((line) => line.ingredientId > 0 && line.quantity > 0);
+  const validLines = purchaseData.lines.filter((line) => line.ingredientId > 0 && line.quantity > 0);
   if (validLines.length === 0) { res.status(400).json({ error: "At least one purchase line is required." }); return; }
 
-  const paymentStatus = normalizePurchasePaymentStatus(parsed.data.paymentStatus);
-  const paymentMode = paymentStatus === "fully_paid" ? (parsed.data.paymentMode || "cash") : null;
+  const paymentStatus = normalizePurchasePaymentStatus(purchaseData.paymentStatus);
+  const paymentMode = paymentStatus === "fully_paid" ? (purchaseData.paymentMode || "cash") : null;
   const isPettyCash = paymentStatus === "fully_paid" && paymentMode === "petty_cash";
   const userId = (req as any).userId || null;
   const uploadedFile = req.file as Express.Multer.File | undefined;
@@ -863,36 +874,36 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
       await tx.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, existingRow.id));
       await deletePurchasePettyCashArtifacts(tx, existingRow);
 
-      const lineTotals = await applyPurchaseLines(tx, existing.id, validLines as any);
+      const lineTotals = await applyPurchaseLines(tx, existingRow.id, validLines as any);
       const totalAmount = round2(lineTotals.totalAmount);
-      const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, parsed.data.vendorId));
-      const resolvedVendorName = vendor?.name ?? `vendor #${parsed.data.vendorId}`;
+      const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, purchaseData.vendorId));
+      const resolvedVendorName = vendor?.name ?? `vendor #${purchaseData.vendorId}`;
 
       const [purchase] = await tx.update(purchasesTable).set({
-        purchaseDate: parsed.data.purchaseDate,
-        vendorId: parsed.data.vendorId,
-        invoiceNumber: parsed.data.invoiceNumber,
-        vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
-        dueDate: parsed.data.dueDate || undefined,
+        purchaseDate: purchaseData.purchaseDate,
+        vendorId: purchaseData.vendorId,
+        invoiceNumber: purchaseData.invoiceNumber,
+        vendorInvoiceNumber: purchaseData.invoiceNumber || undefined,
+        dueDate: purchaseData.dueDate || undefined,
         paymentMode,
         paymentStatus,
-        notes: parsed.data.notes,
+        notes: purchaseData.notes,
         billAttachment: nextBillAttachment,
         totalAmount,
         grossAmount: lineTotals.subtotal,
         taxAmount: lineTotals.taxAmount,
         pendingAmount: paymentStatus === "fully_paid" ? 0 : totalAmount,
         paidAmount: paymentStatus === "fully_paid" ? totalAmount : 0,
-        lastPaymentDate: paymentStatus === "fully_paid" ? parsed.data.purchaseDate : null,
+        lastPaymentDate: paymentStatus === "fully_paid" ? purchaseData.purchaseDate : null,
         linkedExpenseId: null,
       }).where(eq(purchasesTable.id, existingRow.id)).returning();
 
       await rebuildVendorLedgerForPurchase(tx, {
         purchaseId: existingRow.id,
-        vendorId: parsed.data.vendorId,
-        purchaseDate: parsed.data.purchaseDate,
+        vendorId: purchaseData.vendorId,
+        purchaseDate: purchaseData.purchaseDate,
         purchaseNumber: existingRow.purchaseNumber,
-        invoiceNumber: parsed.data.invoiceNumber,
+        invoiceNumber: purchaseData.invoiceNumber,
         totalAmount,
         paymentMode,
         paymentStatus,
@@ -905,37 +916,38 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
           subtotal: lineTotals.subtotal,
           taxAmount: lineTotals.taxAmount,
           totalAmount,
-          purchaseDate: parsed.data.purchaseDate,
-          invoiceNumber: parsed.data.invoiceNumber,
+          purchaseDate: purchaseData.purchaseDate,
+          invoiceNumber: purchaseData.invoiceNumber,
           userId,
         });
       }
 
       await recalculateVendorLedger(tx, existingRow.vendorId);
-      if (parsed.data.vendorId !== existingRow.vendorId) {
-        await recalculateVendorLedger(tx, parsed.data.vendorId);
+      if (purchaseData.vendorId !== existingRow.vendorId) {
+        await recalculateVendorLedger(tx, purchaseData.vendorId);
       }
 
       const [freshPurchase] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, existingRow.id)).limit(1);
       return freshPurchase ?? purchase;
     });
 
-    if (!existing) {
+    const existingPurchase = existing as typeof purchasesTable.$inferSelect | null;
+    if (!existingPurchase) {
       throw Object.assign(new Error("Not found"), { httpStatus: 404 });
     }
 
-    await createAuditLog("purchases", existing.id, "update", existing, {
-      vendorId: parsed.data.vendorId,
-      purchaseDate: parsed.data.purchaseDate,
-      invoiceNumber: parsed.data.invoiceNumber,
+    await createAuditLog("purchases", existingPurchase.id, "update", existingPurchase, {
+      vendorId: purchaseData.vendorId,
+      purchaseDate: purchaseData.purchaseDate,
+      invoiceNumber: purchaseData.invoiceNumber,
       totalAmount: updated.totalAmount,
       paymentMode,
       paymentStatus,
-      billAttachmentChanged: existing.billAttachment !== updated.billAttachment,
+      billAttachmentChanged: existingPurchase.billAttachment !== updated.billAttachment,
     });
 
-    if (existing.billAttachment && existing.billAttachment !== updated.billAttachment) {
-      await deletePurchaseBillFile(existing.billAttachment);
+    if (existingPurchase.billAttachment && existingPurchase.billAttachment !== updated.billAttachment) {
+      await deletePurchaseBillFile(existingPurchase.billAttachment);
     }
 
     const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, updated.vendorId));

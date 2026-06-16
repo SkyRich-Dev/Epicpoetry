@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
-import { db, mailConfigTable, notificationRulesTable, notificationLogsTable } from "@workspace/db";
+import { eq, desc, and, or, isNull } from "drizzle-orm";
+import { db, mailConfigTable, notificationRulesTable, notificationLogsTable, inAppNotificationsTable } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { sendMail, getMailConfig, invalidateTransporter } from "../lib/mailer";
 import { ALERT_TYPES, SCHEDULES, isValidSchedule, isValidType, buildAlertContent } from "../lib/notificationTypes";
@@ -123,7 +123,7 @@ router.post("/notification-rules", authMiddleware, adminOnly, async (req, res): 
 });
 
 router.patch("/notification-rules/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [existing] = await db.select().from(notificationRulesTable).where(eq(notificationRulesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Rule not found" }); return; }
@@ -143,14 +143,14 @@ router.patch("/notification-rules/:id", authMiddleware, adminOnly, async (req, r
 });
 
 router.delete("/notification-rules/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(notificationRulesTable).where(eq(notificationRulesTable.id, id));
   res.json({ success: true });
 });
 
 router.post("/notification-rules/:id/run-now", authMiddleware, adminOnly, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [rule] = await db.select().from(notificationRulesTable).where(eq(notificationRulesTable.id, id));
   if (!rule) { res.status(404).json({ error: "Rule not found" }); return; }
@@ -164,9 +164,10 @@ router.get("/notification-logs", authMiddleware, async (_req, res) => {
 });
 
 export async function runRule(rule: typeof notificationRulesTable.$inferSelect, trigger: "scheduler" | "manual" = "scheduler") {
-  const recipients = Array.isArray(rule.recipients) ? rule.recipients : [];
+  const raw = rule.recipients;
+  const recipients: string[] = Array.isArray(raw) ? (raw as string[]) : (typeof raw === "string" ? [raw] : []);
   if (recipients.length === 0) {
-    const log = { ruleId: rule.id, ruleName: rule.name, type: rule.type, status: "skipped", subject: null, recipientsCount: 0, recipients: [], error: "No recipients", trigger };
+    const log = { ruleId: rule.id, ruleName: rule.name, type: rule.type, status: "skipped", subject: null, recipientsCount: 0, recipients: [] as string[], error: "No recipients", trigger };
     await db.insert(notificationLogsTable).values(log);
     await db.update(notificationRulesTable).set({ lastRunAt: new Date(), lastStatus: "skipped", lastError: "No recipients" }).where(eq(notificationRulesTable.id, rule.id));
     return { ok: false, error: "No recipients" };
@@ -182,15 +183,10 @@ export async function runRule(rule: typeof notificationRulesTable.$inferSelect, 
   }
   const result = await sendMail({ to: recipients, subject: content.subject, html: content.html, text: content.text });
   await db.insert(notificationLogsTable).values({
-    ruleId: rule.id,
-    ruleName: rule.name,
-    type: rule.type,
-    status: result.ok ? "sent" : "failed",
-    subject: content.subject,
-    recipientsCount: recipients.length,
-    recipients,
-    error: result.error ?? null,
-    trigger,
+    ruleId: rule.id, ruleName: rule.name, type: rule.type,
+    status: result.ok ? "sent" : "failed", subject: content.subject,
+    recipientsCount: recipients.length, recipients,
+    error: result.error ?? null, trigger,
   });
   await db.update(notificationRulesTable).set({
     lastRunAt: new Date(),
@@ -198,6 +194,79 @@ export async function runRule(rule: typeof notificationRulesTable.$inferSelect, 
     lastError: result.error ?? null,
   }).where(eq(notificationRulesTable.id, rule.id));
   return result;
+}
+
+// ─── In-App Notification Feed (v2.0) ─────────────────────────────────────────
+
+router.get("/in-app-notifications", authMiddleware, async (req, res): Promise<void> => {
+  try {
+    const userId = (req as any).userId;
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const notifications = await db.select()
+      .from(inAppNotificationsTable)
+      .where(
+        or(
+          eq(inAppNotificationsTable.userId, userId),
+          isNull(inAppNotificationsTable.userId)
+        )
+      )
+      .orderBy(desc(inAppNotificationsTable.createdAt))
+      .limit(limit);
+    res.json(notifications);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/in-app-notifications/:id/read", authMiddleware, async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    await db.update(inAppNotificationsTable)
+      .set({ readAt: new Date() })
+      .where(eq(inAppNotificationsTable.id, id));
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/in-app-notifications/read-all", authMiddleware, async (req, res): Promise<void> => {
+  try {
+    const userId = (req as any).userId;
+    await db.update(inAppNotificationsTable)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          isNull(inAppNotificationsTable.readAt),
+          or(
+            eq(inAppNotificationsTable.userId, userId),
+            isNull(inAppNotificationsTable.userId)
+          )
+        )
+      );
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Helper to fire an in-app notification
+export async function fireInAppNotification(
+  title: string,
+  body: string,
+  type: "info" | "warning" | "critical" = "info",
+  opts?: { userId?: number; role?: string; link?: string }
+) {
+  try {
+    await db.insert(inAppNotificationsTable).values({
+      title, body, type,
+      userId: opts?.userId ?? null,
+      role: opts?.role ?? null,
+      link: opts?.link ?? null,
+    });
+  } catch (e) {
+    // Non-fatal
+  }
 }
 
 export default router;

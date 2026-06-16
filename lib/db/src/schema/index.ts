@@ -24,3 +24,8 @@ export * from "./customers";
 export * from "./roles";
 export * from "./notifications";
 export * from "./saas";
+export * from "./tables";
+export * from "./purchaseOrders";
+export * from "./stocktakes";
+export * from "./eod";
+export * from "./v2additions";

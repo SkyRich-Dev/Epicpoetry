@@ -33,6 +33,14 @@ import CustomersPage from "./pages/customers";
 import InsightsPage from "./pages/insights";
 import DecisionPage from "./pages/decision";
 import Celebrations from "./pages/celebrations";
+// ─── v2.0 New Pages ───────────────────────────────────────────────────────────
+import TablesPage from "./pages/tables";
+import KotPage from "./pages/kot";
+import EodPage from "./pages/eod";
+import StocktakePage from "./pages/stocktakes";
+import PurchaseOrdersPage from "./pages/purchase-orders";
+import TimeClockPage from "./pages/timeclock";
+import ExpenseBudgetsPage from "./pages/expense-budgets";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -104,6 +112,14 @@ function Router() {
       <Route path="/insights" component={() => <ProtectedRoute component={InsightsPage} requires="insights.view" />} />
       <Route path="/decision" component={() => <ProtectedRoute component={DecisionPage} requires="decision_engine.view" />} />
       <Route path="/celebrations" component={() => <ProtectedRoute component={Celebrations} />} />
+      {/* ── v2.0 Routes ─────────────────────────────────────────────────────── */}
+      <Route path="/tables" component={() => <ProtectedRoute component={TablesPage} requires="tables.view" />} />
+      <Route path="/kot" component={() => <ProtectedRoute component={KotPage} requires="kot.view" />} />
+      <Route path="/eod" component={() => <ProtectedRoute component={EodPage} requires="settlements.view" />} />
+      <Route path="/stocktakes" component={() => <ProtectedRoute component={StocktakePage} requires="inventory.view" />} />
+      <Route path="/purchase-orders" component={() => <ProtectedRoute component={PurchaseOrdersPage} requires="purchases.view" />} />
+      <Route path="/timeclock" component={() => <ProtectedRoute component={TimeClockPage} requires="attendance.view" />} />
+      <Route path="/expense-budgets" component={() => <ProtectedRoute component={ExpenseBudgetsPage} requires="expenses.view" />} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -125,3 +141,4 @@ function App() {
 }
 
 export default App;
+

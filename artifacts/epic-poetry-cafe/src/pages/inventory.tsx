@@ -82,6 +82,7 @@ export default function Inventory() {
       const id = setTimeout(() => firstSearchInputRef.current?.focus(), 50);
       return () => clearTimeout(id);
     }
+    return undefined;
   }, [isSnapshotOpen]);
 
   // editedIds = lines whose value differs from the baseline (i.e. unsaved edits)
@@ -115,7 +116,7 @@ export default function Inventory() {
     for (const s of filtered) {
       const key = s.categoryId == null ? UNCATEGORIZED : String(s.categoryId);
       const name = s.categoryName || 'Uncategorised';
-      const bucket = buckets.get(key) || { categoryId: key, categoryName: name, items: [] };
+      const bucket = buckets.get(key) || { categoryId: key, categoryName: name, items: [] as any[] };
       bucket.items.push(s);
       buckets.set(key, bucket);
     }

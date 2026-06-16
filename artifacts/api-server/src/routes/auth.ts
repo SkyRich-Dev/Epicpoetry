@@ -311,7 +311,7 @@ router.post("/auth/change-password", authMiddleware, async (req, res): Promise<v
     return;
   }
 
-  if (!verifyPassword(currentPassword, user.passwordHash)) {
+  if (!user.passwordHash || !verifyPassword(currentPassword, user.passwordHash)) {
     res.status(401).json({ error: "Current password is incorrect" });
     return;
   }

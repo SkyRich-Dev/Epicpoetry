@@ -624,6 +624,7 @@ export interface TrialVersion {
   id: number;
   trialId: number;
   versionNumber: number;
+  trialDate?: string | null;
   batchSize: number;
   yieldQty: number;
   yieldUom: string;
@@ -640,6 +641,7 @@ export interface TrialVersion {
   consistencyScore?: number | null;
   /** @nullable */
   notes?: string | null;
+  inventoryDeducted?: number | null;
   ingredients: TrialIngredientLine[];
   createdAt?: string;
 }

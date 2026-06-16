@@ -12,6 +12,10 @@ const CODE_COLUMN: Record<string, string> = {
   vendor_payments: "payment_no",
   employees: "code",
   waste_entries: "waste_number",
+  // v2.0
+  kot_orders: "kot_number",
+  stocktakes: "stocktake_number",
+  purchase_orders: "po_number",
 };
 
 // Anything with an .execute(sql) method (db or a drizzle transaction handle).
