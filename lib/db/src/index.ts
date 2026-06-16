@@ -31,7 +31,7 @@ export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const originalPoolQuery = pool.query.bind(pool) as typeof pool.query;
 const originalPoolConnect = pool.connect.bind(pool) as unknown as () => Promise<pg.PoolClient>;
 
-pool.connect = (async () => {
+async function connectWithTenantSchema(): Promise<pg.PoolClient> {
   const client = await originalPoolConnect();
   const schemaName = tenantSchemaContext.getStore();
   if (!schemaName) return client;
@@ -52,7 +52,22 @@ pool.connect = (async () => {
   }) as typeof client.release;
 
   return client;
-}) as unknown as typeof pool.connect;
+}
+
+pool.connect = (((callback?: ((err: Error | undefined, client: pg.PoolClient | undefined, done: (release?: any) => void) => void)) => {
+  if (typeof callback === "function") {
+    void connectWithTenantSchema()
+      .then((client) => {
+        callback(undefined, client, client.release.bind(client));
+      })
+      .catch((error) => {
+        callback(error instanceof Error ? error : new Error(String(error)), undefined, () => undefined);
+      });
+    return undefined as unknown as Promise<pg.PoolClient>;
+  }
+
+  return connectWithTenantSchema();
+}) as unknown as typeof pool.connect);
 
 pool.query = (async (...args: Parameters<typeof originalPoolQuery>) => {
   const schemaName = tenantSchemaContext.getStore();
