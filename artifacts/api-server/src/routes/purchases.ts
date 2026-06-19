@@ -177,6 +177,24 @@ function parseBooleanLike(value: unknown): boolean {
   return false;
 }
 
+function normalizePurchasePayload(rawBody: unknown): unknown {
+  if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) return rawBody;
+  const body = rawBody as Record<string, unknown>;
+  if (!Array.isArray(body.lines)) return rawBody;
+
+  return {
+    ...body,
+    lines: body.lines.map((line) => {
+      if (!line || typeof line !== "object" || Array.isArray(line)) return line;
+      const normalizedLine = { ...(line as Record<string, unknown>) };
+      if (normalizedLine.expiryDate === null || normalizedLine.expiryDate === "") {
+        delete normalizedLine.expiryDate;
+      }
+      return normalizedLine;
+    }),
+  };
+}
+
 function parsePurchaseRequestBody(req: Request) {
   const contentType = String(req.headers["content-type"] || "").toLowerCase();
   const rawBody = contentType.includes("multipart/form-data")
@@ -203,7 +221,8 @@ function parsePurchaseRequestBody(req: Request) {
     };
   }
 
-  const parsed = CreatePurchaseBody.safeParse(rawBody);
+  const normalizedBody = normalizePurchasePayload(rawBody);
+  const parsed = CreatePurchaseBody.safeParse(normalizedBody);
   if (!parsed.success) {
     return {
       success: false as const,
@@ -693,8 +712,12 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
   const dateErr = validateNotFutureDate(purchaseData.purchaseDate, "Purchase date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
-  const isPaid = purchaseData.paymentStatus === "paid";
-  const paymentMode = purchaseData.paymentMode || (isPaid ? "cash" : null);
+  const validLines = purchaseData.lines.filter((line) => line.ingredientId > 0 && line.quantity > 0);
+  if (validLines.length === 0) { res.status(400).json({ error: "At least one purchase line is required." }); return; }
+
+  const paymentStatus = normalizePurchasePaymentStatus(purchaseData.paymentStatus);
+  const isPaid = paymentStatus === "fully_paid";
+  const paymentMode = isPaid ? (purchaseData.paymentMode || "cash") : null;
   const isPettyCash = isPaid && paymentMode === "petty_cash";
   const uploadedFile = req.file as Express.Multer.File | undefined;
   const tenantSchemaName = normalizeTenantSchemaName((req as any).tenantSchemaName);
@@ -702,8 +725,6 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
 
   let createdPurchase: typeof purchasesTable.$inferSelect;
   let computedTotal = 0;
-  let computedSubtotal = 0;
-  let computedTaxAmount = 0;
   let vendorName = "";
   let uploadedBillAttachment: string | null = null;
 
@@ -720,7 +741,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         vendorInvoiceNumber: purchaseData.invoiceNumber || undefined,
         dueDate: purchaseData.dueDate || undefined,
         paymentMode,
-        paymentStatus: isPaid ? "fully_paid" : "unpaid",
+        paymentStatus,
         notes: purchaseData.notes,
         billAttachment: null,
         totalAmount: 0,
@@ -736,17 +757,16 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         await tx.update(purchasesTable).set({ billAttachment: nextBillAttachment }).where(eq(purchasesTable.id, purchase.id));
       }
 
-      const lineTotals = await applyPurchaseLines(tx, purchase.id, purchaseData.lines as any);
+      const lineTotals = await applyPurchaseLines(tx, purchase.id, validLines as any);
       const totalAmount = round2(lineTotals.totalAmount);
-      const finalStatus = isPaid ? "fully_paid" : "unpaid";
       await tx.update(purchasesTable).set({
         totalAmount,
         grossAmount: lineTotals.subtotal,
         taxAmount: lineTotals.taxAmount,
-        pendingAmount: finalStatus === "fully_paid" ? 0 : totalAmount,
-        paidAmount: finalStatus === "fully_paid" ? totalAmount : 0,
-        paymentStatus: finalStatus,
-        lastPaymentDate: finalStatus === "fully_paid" ? purchaseData.purchaseDate : undefined,
+        pendingAmount: paymentStatus === "fully_paid" ? 0 : totalAmount,
+        paidAmount: paymentStatus === "fully_paid" ? totalAmount : 0,
+        paymentStatus,
+        lastPaymentDate: paymentStatus === "fully_paid" ? purchaseData.purchaseDate : undefined,
       }).where(eq(purchasesTable.id, purchase.id));
 
       const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, purchaseData.vendorId));
@@ -760,7 +780,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         invoiceNumber: purchaseData.invoiceNumber,
         totalAmount,
         paymentMode,
-        paymentStatus: finalStatus,
+        paymentStatus,
       });
       await recalculateVendorLedger(tx, purchaseData.vendorId);
 
@@ -789,11 +809,9 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
     });
     createdPurchase = result.purchase;
     const purchaseNumber = result.purchaseNumber;
-    computedSubtotal = result.subtotal;
-    computedTaxAmount = result.taxAmount;
     computedTotal = result.totalAmount;
     vendorName = result.vendorName;
-    await createAuditLog("purchases", createdPurchase.id, "create", null, { purchaseNumber, totalAmount: computedTotal, paymentMode, isPaid });
+    await createAuditLog("purchases", createdPurchase.id, "create", null, { purchaseNumber, totalAmount: computedTotal, paymentMode, paymentStatus });
   } catch (e: any) {
     if (uploadedBillAttachment) {
       await deletePurchaseBillFile(uploadedBillAttachment).catch(() => undefined);
@@ -803,21 +821,11 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
     return;
   }
 
-  await db.update(purchasesTable).set({
-    totalAmount: computedTotal,
-    grossAmount: computedSubtotal,
-    taxAmount: computedTaxAmount,
-    pendingAmount: isPaid ? 0 : computedTotal,
-    paidAmount: isPaid ? computedTotal : 0,
-    vendorInvoiceNumber: purchaseData.invoiceNumber || undefined,
-    dueDate: purchaseData.dueDate || undefined,
-  }).where(eq(purchasesTable.id, createdPurchase.id));
-
   res.status(201).json({
     ...createdPurchase,
     totalAmount: computedTotal,
     paymentMode,
-    paymentStatus: isPaid ? "fully_paid" : "unpaid",
+    paymentStatus,
     vendorName,
     ...(await serializeBillAttachment(createdPurchase.billAttachment)),
   });

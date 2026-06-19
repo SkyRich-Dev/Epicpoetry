@@ -272,7 +272,11 @@ export default function Purchases() {
         invoiceNumber: formData.invoiceNumber,
         paymentStatus: formData.isPaid ? 'paid' : 'unpaid',
         paymentMode: formData.isPaid ? formData.paymentMode : undefined,
-        lines: validLines.map(l => ({ ...l, expiryDate: l.expiryDate || null })),
+        lines: validLines.map(l => {
+          const nextLine = { ...l };
+          if (!nextLine.expiryDate) delete nextLine.expiryDate;
+          return nextLine;
+        }),
         removeBillAttachment: removeExistingBillAttachment,
       };
       const token = getAuthToken();
