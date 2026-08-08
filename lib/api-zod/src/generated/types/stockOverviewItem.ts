@@ -14,9 +14,13 @@ export interface StockOverviewItem {
   /** @nullable */
   categoryName?: string | null;
   currentStock: number;
+  godownStock?: number;
+  totalStock?: number;
   stockUom: string;
   reorderLevel: number;
   stockValue: number;
+  godownStockValue?: number;
+  totalStockValue?: number;
   lowStock: boolean;
   /** @nullable */
   lastPurchaseDate?: string | null;

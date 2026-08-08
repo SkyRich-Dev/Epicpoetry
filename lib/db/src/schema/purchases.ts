@@ -17,6 +17,7 @@ export const purchasesTable = pgTable("purchases", {
   discountAmount: doublePrecision("discount_amount").notNull().default(0),
   paymentMode: text("payment_mode"),
   paymentStatus: text("payment_status").notNull().default("unpaid"),
+  inventoryLocation: text("inventory_location").notNull().default("inhouse"),
   totalAmount: doublePrecision("total_amount").notNull().default(0),
   paidAmount: doublePrecision("paid_amount").notNull().default(0),
   pendingAmount: doublePrecision("pending_amount").notNull().default(0),

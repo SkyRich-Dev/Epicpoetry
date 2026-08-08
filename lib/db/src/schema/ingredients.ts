@@ -19,6 +19,7 @@ export const ingredientsTable = pgTable("ingredients", {
   weightedAvgCost: doublePrecision("weighted_avg_cost").notNull().default(0),
   reorderLevel: doublePrecision("reorder_level").notNull().default(0),
   currentStock: doublePrecision("current_stock").notNull().default(0),
+  godownStock: doublePrecision("godown_stock").notNull().default(0),
   perishable: boolean("perishable").notNull().default(false),
   shelfLifeDays: integer("shelf_life_days"),
   active: boolean("active").notNull().default(true),

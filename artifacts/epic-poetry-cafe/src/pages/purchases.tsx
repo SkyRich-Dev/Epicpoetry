@@ -55,6 +55,7 @@ export default function Purchases() {
     invoiceNumber: '',
     isPaid: false,
     paymentMode: 'cash' as 'cash' | 'petty_cash' | 'account' | 'upi',
+    inventoryLocation: 'inhouse' as 'inhouse' | 'godown',
   });
 
   const [lines, setLines] = useState<any[]>([]);
@@ -107,7 +108,7 @@ export default function Purchases() {
 
   const openCreate = () => {
     setEditingPurchaseId(null);
-    setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', isPaid: false, paymentMode: 'cash' });
+    setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', isPaid: false, paymentMode: 'cash', inventoryLocation: 'inhouse' });
     setLines([{ ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
     resetBillAttachmentState();
     setIsModalOpen(true);
@@ -135,6 +136,7 @@ export default function Purchases() {
           invoiceNumber: detail.purchase.invoiceNumber || '',
           isPaid: detail.purchase.paymentStatus === 'fully_paid',
           paymentMode,
+          inventoryLocation: detail.purchase.inventoryLocation === 'godown' ? 'godown' : 'inhouse',
         });
         setExistingBillAttachment({
           billAttachmentUrl: detail.purchase.billAttachmentUrl || null,
@@ -272,6 +274,7 @@ export default function Purchases() {
         invoiceNumber: formData.invoiceNumber,
         paymentStatus: formData.isPaid ? 'paid' : 'unpaid',
         paymentMode: formData.isPaid ? formData.paymentMode : undefined,
+        inventoryLocation: formData.inventoryLocation,
         lines: validLines.map(l => {
           const nextLine = { ...l };
           if (!nextLine.expiryDate) delete nextLine.expiryDate;
@@ -350,6 +353,7 @@ export default function Purchases() {
               <th className="px-6 py-4">PO Number</th>
               <th className="px-6 py-4">Vendor</th>
               <th className="px-6 py-4">Invoice No</th>
+              <th className="px-6 py-4">Inventory</th>
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-right">Total Amount</th>
               <th className="px-6 py-4 text-center">Bill</th>
@@ -359,15 +363,20 @@ export default function Purchases() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
+              <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
             ) : purchases?.length === 0 ? (
-               <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
+               <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
             ) : purchasesPagination.paginatedRows.map((p: any) => (
               <tr key={p.id} className="table-row-hover">
                 <td className="px-6 py-4 text-foreground font-medium">{formatDate(p.purchaseDate)}</td>
                 <td className="px-6 py-4 text-muted-foreground">{p.purchaseNumber}</td>
                 <td className="px-6 py-4">{p.vendorName}</td>
                 <td className="px-6 py-4 text-muted-foreground">{p.invoiceNumber || '-'}</td>
+                <td className="px-6 py-4">
+                  <Badge variant={p.inventoryLocation === 'godown' ? 'warning' : 'neutral'}>
+                    {p.inventoryLocation === 'godown' ? 'Godown' : 'In-house'}
+                  </Badge>
+                </td>
                 <td className="px-6 py-4 text-center">
                   <Badge variant={(p.paymentStatus === 'fully_paid' || p.paymentStatus === 'paid' || p.paymentStatus === 'PAID') ? 'success' : 'warning'}>
                     {p.paymentStatus === 'fully_paid' ? 'Paid' : p.paymentStatus === 'unpaid' ? 'Unpaid' : String(p.paymentStatus || '').replace(/_/g, ' ')}
@@ -456,6 +465,13 @@ export default function Purchases() {
             <div>
               <Label>Invoice Number (Optional)</Label>
               <Input value={formData.invoiceNumber} onChange={(e:any) => setFormData({...formData, invoiceNumber: e.target.value})} placeholder="INV-12345" />
+            </div>
+            <div>
+              <Label>Inventory Destination</Label>
+              <Select value={formData.inventoryLocation} onChange={(e:any) => setFormData({...formData, inventoryLocation: e.target.value})}>
+                <option value="inhouse">In-house kitchen stock</option>
+                <option value="godown">Godown / warehouse stock</option>
+              </Select>
             </div>
           </div>
 

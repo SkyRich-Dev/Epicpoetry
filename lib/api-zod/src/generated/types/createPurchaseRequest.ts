@@ -14,6 +14,7 @@ export interface CreatePurchaseRequest {
   dueDate?: string;
   paymentMode?: string;
   paymentStatus?: string;
+  inventoryLocation?: "inhouse" | "godown";
   removeBillAttachment?: boolean;
   notes?: string;
   lines: PurchaseLineInput[];

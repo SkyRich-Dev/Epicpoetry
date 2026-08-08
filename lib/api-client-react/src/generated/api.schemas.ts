@@ -341,6 +341,7 @@ export interface Purchase {
   /** @nullable */
   paymentMode?: string | null;
   paymentStatus: string;
+  inventoryLocation?: string;
   totalAmount: number;
   /** @nullable */
   billAttachmentUrl?: string | null;
@@ -382,8 +383,10 @@ export interface CreatePurchaseRequest {
   purchaseDate: string;
   vendorId: number;
   invoiceNumber?: string;
+  dueDate?: string;
   paymentMode?: string;
   paymentStatus?: string;
+  inventoryLocation?: "inhouse" | "godown";
   removeBillAttachment?: boolean;
   notes?: string;
   lines: PurchaseLineInput[];
@@ -439,9 +442,13 @@ export interface StockOverviewItem {
   /** @nullable */
   categoryName?: string | null;
   currentStock: number;
+  godownStock?: number;
+  totalStock?: number;
   stockUom: string;
   reorderLevel: number;
   stockValue: number;
+  godownStockValue?: number;
+  totalStockValue?: number;
   lowStock: boolean;
   /** @nullable */
   lastPurchaseDate?: string | null;

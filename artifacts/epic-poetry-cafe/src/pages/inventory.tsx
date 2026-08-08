@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useGetStockOverview, useSaveStockSnapshot, useListCategories } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, useClientPagination, TablePagination } from '../components/ui-extras';
-import { PackageSearch, AlertCircle, Save, Search, X } from 'lucide-react';
+import { ArrowRightLeft, PackageSearch, AlertCircle, Save, Search, X, Warehouse } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '../lib/auth';
+import { getAuthToken } from '../lib/auth-storage';
 
 const UNCATEGORIZED = '__uncategorized__';
+const BASE = import.meta.env.BASE_URL || '/';
 
 export default function Inventory() {
   const queryClient = useQueryClient();
@@ -21,13 +23,24 @@ export default function Inventory() {
   const [search, setSearch] = useState('');
   const [filterCategoryId, setFilterCategoryId] = useState<number | 'all' | 'low'>('all');
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'stock-asc' | 'stock-desc' | 'category' | 'status'>('name-asc');
+  const [inventoryView, setInventoryView] = useState<'inhouse' | 'godown'>('inhouse');
+  const [transferItem, setTransferItem] = useState<any | null>(null);
+  const [transferQty, setTransferQty] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  const isRowLowForView = (row: any) => {
+    const activeStock = Number(inventoryView === 'godown' ? row.godownStock || 0 : row.currentStock || 0);
+    const reorderLevel = Number(row.reorderLevel || 0);
+    return activeStock <= reorderLevel;
+  };
 
   const filteredStock = useMemo(() => {
     if (!stock) return [];
     const q = search.trim().toLowerCase();
     let rows = (stock as any[]).filter((s: any) => {
       if (filterCategoryId === 'low') {
-        if (!s.lowStock) return false;
+        if (!isRowLowForView(s)) return false;
       } else if (filterCategoryId !== 'all') {
         if ((s.categoryId ?? null) !== filterCategoryId) return false;
       }
@@ -35,19 +48,70 @@ export default function Inventory() {
       return s.ingredientName?.toLowerCase().includes(q);
     });
     rows = [...rows].sort((a: any, b: any) => {
+      const stockA = inventoryView === 'godown' ? Number(a.godownStock || 0) : Number(a.currentStock || 0);
+      const stockB = inventoryView === 'godown' ? Number(b.godownStock || 0) : Number(b.currentStock || 0);
       switch (sortBy) {
         case 'name-asc': return (a.ingredientName || '').localeCompare(b.ingredientName || '');
         case 'name-desc': return (b.ingredientName || '').localeCompare(a.ingredientName || '');
-        case 'stock-asc': return (a.currentStock || 0) - (b.currentStock || 0);
-        case 'stock-desc': return (b.currentStock || 0) - (a.currentStock || 0);
+        case 'stock-asc': return stockA - stockB;
+        case 'stock-desc': return stockB - stockA;
         case 'category': return (a.categoryName || 'zzzz').localeCompare(b.categoryName || 'zzzz') || (a.ingredientName || '').localeCompare(b.ingredientName || '');
-        case 'status': return Number(!!b.lowStock) - Number(!!a.lowStock) || (a.ingredientName || '').localeCompare(b.ingredientName || '');
+        case 'status': return Number(isRowLowForView(b)) - Number(isRowLowForView(a)) || (a.ingredientName || '').localeCompare(b.ingredientName || '');
         default: return 0;
       }
     });
     return rows;
-  }, [stock, search, filterCategoryId, sortBy]);
+  }, [stock, search, filterCategoryId, sortBy, inventoryView]);
   const inventoryPagination = useClientPagination(filteredStock, 5);
+
+  const openTransfer = (item: any) => {
+    setTransferItem(item);
+    setTransferQty('');
+    setTransferReason('');
+  };
+
+  const closeTransfer = () => {
+    setTransferItem(null);
+    setTransferQty('');
+    setTransferReason('');
+  };
+
+  const handleTransfer = async () => {
+    if (!transferItem) return;
+    const quantity = Number(transferQty);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast({ title: 'Enter a valid transfer quantity', variant: 'destructive' });
+      return;
+    }
+    if (quantity > Number(transferItem.godownStock || 0) + 0.000001) {
+      toast({ title: 'Insufficient godown stock', description: `Available: ${Number(transferItem.godownStock || 0).toFixed(2)} ${transferItem.stockUom}`, variant: 'destructive' });
+      return;
+    }
+    try {
+      setIsTransferring(true);
+      const token = getAuthToken();
+      const res = await fetch(`${BASE}api/inventory/transfer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ingredientId: transferItem.ingredientId,
+          quantity,
+          reason: transferReason || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await queryClient.invalidateQueries({ queryKey: ['/api/inventory/stock-overview'] });
+      closeTransfer();
+      toast({ title: 'Stock moved to in-house inventory', description: `${quantity} ${transferItem.stockUom} transferred.` });
+    } catch (e: any) {
+      toast({ title: 'Failed to transfer stock', description: e.message, variant: 'destructive' });
+    } finally {
+      setIsTransferring(false);
+    }
+  };
 
   // ----- End of Day Physical Count modal -----
   const [isSnapshotOpen, setIsSnapshotOpen] = useState(false);
@@ -185,6 +249,23 @@ export default function Inventory() {
         {canAdjust && <Button onClick={openSnapshot}><PackageSearch size={18}/> End of Day Count</Button>}
       </PageHeader>
 
+      <div className="inline-flex rounded-xl bg-muted p-1">
+        <button
+          type="button"
+          onClick={() => setInventoryView('inhouse')}
+          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${inventoryView === 'inhouse' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <PackageSearch size={15} /> In-house inventory
+        </button>
+        <button
+          type="button"
+          onClick={() => setInventoryView('godown')}
+          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${inventoryView === 'godown' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Warehouse size={15} /> Godown / warehouse
+        </button>
+      </div>
+
       <div className="flex flex-wrap items-end gap-3" data-testid="inventory-filters">
         <div className="flex-1 min-w-[220px]">
           <Label>Search</Label>
@@ -237,33 +318,47 @@ export default function Inventory() {
             <tr>
               <th className="px-6 py-4">Ingredient</th>
               <th className="px-6 py-4">Category</th>
-              <th className="px-6 py-4 text-right">Current Stock</th>
+              <th className="px-6 py-4 text-right">{inventoryView === 'godown' ? 'Godown Stock' : 'In-house Stock'}</th>
+              <th className="px-6 py-4 text-right">Other Stock</th>
               <th className="px-6 py-4">UOM</th>
               <th className="px-6 py-4 text-right">Reorder Lvl</th>
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-right">Stock Value</th>
+              {inventoryView === 'godown' && <th className="px-6 py-4 text-right">Action</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border" data-testid="inventory-table-body">
             {isLoading ? (
-              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading stock...</td></tr>
+              <tr><td colSpan={inventoryView === 'godown' ? 9 : 8} className="px-6 py-8 text-center text-muted-foreground">Loading stock...</td></tr>
             ) : filteredStock.length === 0 ? (
-               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No ingredients match your filters.</td></tr>
+               <tr><td colSpan={inventoryView === 'godown' ? 9 : 8} className="px-6 py-8 text-center text-muted-foreground">No ingredients match your filters.</td></tr>
             ) : inventoryPagination.paginatedRows.map((s: any) => (
               <tr key={s.ingredientId} className="table-row-hover">
                 <td className="px-6 py-4 font-medium text-foreground">{s.ingredientName}</td>
                 <td className="px-6 py-4 text-muted-foreground">{s.categoryName || '-'}</td>
-                <td className="px-6 py-4 text-right font-display font-semibold text-base">{s.currentStock.toFixed(2)}</td>
+                <td className="px-6 py-4 text-right font-display font-semibold text-base">{Number(inventoryView === 'godown' ? s.godownStock || 0 : s.currentStock || 0).toFixed(2)}</td>
+                <td className="px-6 py-4 text-right text-muted-foreground">{Number(inventoryView === 'godown' ? s.currentStock || 0 : s.godownStock || 0).toFixed(2)}</td>
                 <td className="px-6 py-4 text-muted-foreground">{s.stockUom}</td>
                 <td className="px-6 py-4 text-right text-muted-foreground">{s.reorderLevel}</td>
                 <td className="px-6 py-4 text-center">
-                  {s.lowStock ? (
+                  {inventoryView === 'godown' ? (
+                    <Badge variant={isRowLowForView(s) ? 'danger' : 'success'}>
+                      {isRowLowForView(s) ? 'Low Stock' : 'Available'}
+                    </Badge>
+                  ) : isRowLowForView(s) ? (
                     <Badge variant="danger" className="gap-1"><AlertCircle size={12}/> Low Stock</Badge>
                   ) : (
                     <Badge variant="success">Optimal</Badge>
                   )}
                 </td>
-                <td className="px-6 py-4 text-right text-muted-foreground">{formatCurrency(s.stockValue)}</td>
+                <td className="px-6 py-4 text-right text-muted-foreground">{formatCurrency(inventoryView === 'godown' ? s.godownStockValue || 0 : s.stockValue)}</td>
+                {inventoryView === 'godown' && (
+                  <td className="px-6 py-4 text-right">
+                    <Button variant="outline" size="sm" onClick={() => openTransfer(s)} disabled={!canAdjust || Number(s.godownStock || 0) <= 0}>
+                      <ArrowRightLeft size={14} /> Move
+                    </Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -410,6 +505,46 @@ export default function Inventory() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!transferItem}
+        onClose={closeTransfer}
+        title="Move Stock To In-house"
+        maxWidth="max-w-md"
+        footer={(close) => (
+          <>
+            <Button variant="ghost" onClick={() => { closeTransfer(); close(); }}>Cancel</Button>
+            <Button onClick={handleTransfer} disabled={isTransferring}>
+              <ArrowRightLeft size={16} /> {isTransferring ? 'Moving...' : 'Move Stock'}
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-4 py-2">
+          <div>
+            <p className="font-medium text-foreground">{transferItem?.ingredientName}</p>
+            <p className="text-sm text-muted-foreground">
+              Godown available: {Number(transferItem?.godownStock || 0).toFixed(2)} {transferItem?.stockUom}
+            </p>
+          </div>
+          <div>
+            <Label>Quantity to move</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              max={Number(transferItem?.godownStock || 0)}
+              value={transferQty}
+              onChange={(e: any) => setTransferQty(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div>
+            <Label>Reason (Optional)</Label>
+            <Input value={transferReason} onChange={(e: any) => setTransferReason(e.target.value)} placeholder="Kitchen shortage, prep requirement..." />
           </div>
         </div>
       </Modal>

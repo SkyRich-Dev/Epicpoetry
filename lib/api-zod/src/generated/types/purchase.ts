@@ -17,6 +17,7 @@ export interface Purchase {
   /** @nullable */
   paymentMode?: string | null;
   paymentStatus: string;
+  inventoryLocation?: string;
   totalAmount: number;
   /** @nullable */
   billAttachmentUrl?: string | null;

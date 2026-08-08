@@ -63,6 +63,8 @@ type ParsedStoredBillAttachment =
   | ({ kind: "s3" } & StoredS3Attachment)
   | { kind: "legacy-local"; path: string; name: string; type: string | null };
 
+type InventoryLocation = "inhouse" | "godown";
+
 function billAttachmentTypeFromName(name: string | null | undefined): string | null {
   const lower = String(name || "").toLowerCase();
   if (!lower) return null;
@@ -276,13 +278,11 @@ async function recalculateVendorLedger(tx: any, vendorId: number): Promise<void>
 }
 
 async function removePurchaseStockImpact(tx: any, purchaseId: number): Promise<typeof purchaseLinesTable.$inferSelect[]> {
+  const [purchase] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, purchaseId)).limit(1);
+  const inventoryLocation = normalizeInventoryLocation(purchase?.inventoryLocation);
   const existingLines = await tx.select().from(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, purchaseId));
   for (const line of existingLines) {
-    const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
-    if (!ing) continue;
-    const newStock = Math.max(0, (ing.currentStock || 0) - (line.quantity || 0));
-    await tx.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, line.ingredientId));
-    await checkStockAlert(line.ingredientId);
+    await updateIngredientStockForLocation(tx, line.ingredientId, -(line.quantity || 0), inventoryLocation);
   }
   return existingLines;
 }
@@ -291,6 +291,7 @@ async function applyPurchaseLines(
   tx: any,
   purchaseId: number,
   lines: Array<{ ingredientId: number; quantity: number; purchaseUom?: string; unitRate: number; taxPercent?: number; expiryDate?: string | null }>,
+  inventoryLocation: InventoryLocation,
 ): Promise<{ subtotal: number; taxAmount: number; totalAmount: number }> {
   let subtotal = 0;
   let taxAmount = 0;
@@ -317,18 +318,7 @@ async function applyPurchaseLines(
       expiryDate: line.expiryDate || null,
     });
 
-    const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
-    if (!ing) continue;
-    const newStock = (ing.currentStock || 0) + quantity;
-    const oldTotal = (ing.weightedAvgCost || 0) * (ing.currentStock || 0);
-    const newTotal = oldTotal + unitRate * quantity;
-    const newAvg = newStock > 0 ? round2(newTotal / newStock) : unitRate;
-    await tx.update(ingredientsTable).set({
-      currentStock: newStock,
-      latestCost: unitRate,
-      weightedAvgCost: newAvg,
-      }).where(eq(ingredientsTable.id, line.ingredientId));
-    await checkStockAlert(line.ingredientId);
+    await updateIngredientStockForLocation(tx, line.ingredientId, quantity, inventoryLocation, { unitRate, quantity });
   }
   return { subtotal, taxAmount, totalAmount };
 }
@@ -336,6 +326,39 @@ async function applyPurchaseLines(
 function normalizePurchasePaymentStatus(status?: string | null): "fully_paid" | "unpaid" {
   const value = String(status || "").trim().toLowerCase();
   return value === "paid" || value === "fully_paid" ? "fully_paid" : "unpaid";
+}
+
+function normalizeInventoryLocation(value?: string | null): InventoryLocation {
+  return String(value || "").trim().toLowerCase() === "godown" ? "godown" : "inhouse";
+}
+
+async function updateIngredientStockForLocation(
+  tx: any,
+  ingredientId: number,
+  quantityDelta: number,
+  location: InventoryLocation,
+  costUpdate?: { unitRate: number; quantity: number },
+): Promise<void> {
+  const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, ingredientId));
+  if (!ing) return;
+
+  const currentInhouse = Number(ing.currentStock || 0);
+  const currentGodown = Number(ing.godownStock || 0);
+  const updates: Record<string, number> = location === "godown"
+    ? { godownStock: Math.max(0, currentGodown + quantityDelta) }
+    : { currentStock: Math.max(0, currentInhouse + quantityDelta) };
+
+  if (costUpdate) {
+    const previousTotalQty = Math.max(0, currentInhouse + currentGodown);
+    const nextTotalQty = Math.max(0, previousTotalQty + costUpdate.quantity);
+    const oldTotal = Number(ing.weightedAvgCost || 0) * previousTotalQty;
+    const newTotal = oldTotal + costUpdate.unitRate * costUpdate.quantity;
+    updates.latestCost = costUpdate.unitRate;
+    updates.weightedAvgCost = nextTotalQty > 0 ? round2(newTotal / nextTotalQty) : costUpdate.unitRate;
+  }
+
+  await tx.update(ingredientsTable).set(updates).where(eq(ingredientsTable.id, ingredientId));
+  await checkStockAlert(ingredientId);
 }
 
 async function getPettyCashOpeningBalance(tx: any): Promise<number> {
@@ -673,6 +696,7 @@ router.get("/purchases", async (req, res): Promise<void> => {
       invoiceNumber: purchasesTable.invoiceNumber,
       paymentMode: purchasesTable.paymentMode,
       paymentStatus: purchasesTable.paymentStatus,
+      inventoryLocation: purchasesTable.inventoryLocation,
       totalAmount: purchasesTable.totalAmount,
       paidAmount: purchasesTable.paidAmount,
       pendingAmount: purchasesTable.pendingAmount,
@@ -716,6 +740,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
   if (validLines.length === 0) { res.status(400).json({ error: "At least one purchase line is required." }); return; }
 
   const paymentStatus = normalizePurchasePaymentStatus(purchaseData.paymentStatus);
+  const inventoryLocation = normalizeInventoryLocation(purchaseData.inventoryLocation);
   const isPaid = paymentStatus === "fully_paid";
   const paymentMode = isPaid ? (purchaseData.paymentMode || "cash") : null;
   const isPettyCash = isPaid && paymentMode === "petty_cash";
@@ -742,6 +767,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         dueDate: purchaseData.dueDate || undefined,
         paymentMode,
         paymentStatus,
+        inventoryLocation,
         notes: purchaseData.notes,
         billAttachment: null,
         totalAmount: 0,
@@ -757,7 +783,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
         await tx.update(purchasesTable).set({ billAttachment: nextBillAttachment }).where(eq(purchasesTable.id, purchase.id));
       }
 
-      const lineTotals = await applyPurchaseLines(tx, purchase.id, validLines as any);
+      const lineTotals = await applyPurchaseLines(tx, purchase.id, validLines as any, inventoryLocation);
       const totalAmount = round2(lineTotals.totalAmount);
       await tx.update(purchasesTable).set({
         totalAmount,
@@ -811,7 +837,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
     const purchaseNumber = result.purchaseNumber;
     computedTotal = result.totalAmount;
     vendorName = result.vendorName;
-    await createAuditLog("purchases", createdPurchase.id, "create", null, { purchaseNumber, totalAmount: computedTotal, paymentMode, paymentStatus });
+    await createAuditLog("purchases", createdPurchase.id, "create", null, { purchaseNumber, totalAmount: computedTotal, paymentMode, paymentStatus, inventoryLocation });
   } catch (e: any) {
     if (uploadedBillAttachment) {
       await deletePurchaseBillFile(uploadedBillAttachment).catch(() => undefined);
@@ -826,6 +852,7 @@ router.post("/purchases", authMiddleware, requirePermission("purchases.create"),
     totalAmount: computedTotal,
     paymentMode,
     paymentStatus,
+    inventoryLocation,
     vendorName,
     ...(await serializeBillAttachment(createdPurchase.billAttachment)),
   });
@@ -848,6 +875,7 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
   if (validLines.length === 0) { res.status(400).json({ error: "At least one purchase line is required." }); return; }
 
   const paymentStatus = normalizePurchasePaymentStatus(purchaseData.paymentStatus);
+  const inventoryLocation = normalizeInventoryLocation(purchaseData.inventoryLocation);
   const paymentMode = paymentStatus === "fully_paid" ? (purchaseData.paymentMode || "cash") : null;
   const isPettyCash = paymentStatus === "fully_paid" && paymentMode === "petty_cash";
   const userId = (req as any).userId || null;
@@ -882,7 +910,7 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
       await tx.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, existingRow.id));
       await deletePurchasePettyCashArtifacts(tx, existingRow);
 
-      const lineTotals = await applyPurchaseLines(tx, existingRow.id, validLines as any);
+      const lineTotals = await applyPurchaseLines(tx, existingRow.id, validLines as any, inventoryLocation);
       const totalAmount = round2(lineTotals.totalAmount);
       const [vendor] = await tx.select().from(vendorsTable).where(eq(vendorsTable.id, purchaseData.vendorId));
       const resolvedVendorName = vendor?.name ?? `vendor #${purchaseData.vendorId}`;
@@ -895,6 +923,7 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
         dueDate: purchaseData.dueDate || undefined,
         paymentMode,
         paymentStatus,
+        inventoryLocation,
         notes: purchaseData.notes,
         billAttachment: nextBillAttachment,
         totalAmount,
@@ -951,6 +980,7 @@ router.patch("/purchases/:id", authMiddleware, requirePermission("purchases.edit
       totalAmount: updated.totalAmount,
       paymentMode,
       paymentStatus,
+      inventoryLocation,
       billAttachmentChanged: existingPurchase.billAttachment !== updated.billAttachment,
     });
 
@@ -982,6 +1012,7 @@ router.get("/purchases/:id", async (req, res): Promise<void> => {
       invoiceNumber: purchasesTable.invoiceNumber,
       paymentMode: purchasesTable.paymentMode,
       paymentStatus: purchasesTable.paymentStatus,
+      inventoryLocation: purchasesTable.inventoryLocation,
       totalAmount: purchasesTable.totalAmount,
       billAttachment: purchasesTable.billAttachment,
       notes: purchasesTable.notes,
