@@ -209,8 +209,13 @@ export default function EmployeesPage() {
 
   const deleteEmployee = async (id: number) => {
     if (!confirm('Delete this employee?')) return;
-    await apiFetch(`employees/${id}`, { method: 'DELETE' });
-    toast({ title: 'Employee deleted' }); loadEmployees();
+    try {
+      const result = await apiFetch(`employees/${id}`, { method: 'DELETE' });
+      toast({ title: result?.archived ? 'Employee archived' : 'Employee deleted', description: result?.message || undefined });
+      loadEmployees();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err?.message || 'Could not delete employee', variant: 'destructive' });
+    }
   };
 
   const openEditEmp = (emp: Employee) => {

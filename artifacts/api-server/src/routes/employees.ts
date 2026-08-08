@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, like } from "drizzle-orm";
-import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable, salaryAdvancesTable, salaryAdjustmentsTable, systemConfigTable } from "@workspace/db";
+import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable, salaryAdvancesTable, salaryAdjustmentsTable, systemConfigTable, timeClockTable } from "@workspace/db";
 import { authMiddleware, requirePermission } from "../lib/auth";
 import { generateCode } from "../lib/codeGenerator";
 import { createAuditLog } from "../lib/audit";
@@ -64,9 +64,51 @@ router.patch("/employees/:id", authMiddleware, requirePermission("employees.edit
 
 router.delete("/employees/:id", authMiddleware, requirePermission("employees.delete"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
+  const [existing] = await db.select().from(employeesTable).where(eq(employeesTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [
+    attendanceRefs,
+    leaveRefs,
+    salaryRefs,
+    advanceRefs,
+    adjustmentRefs,
+    timeClockRefs,
+  ] = await Promise.all([
+    db.select({ id: attendanceTable.id }).from(attendanceTable).where(eq(attendanceTable.employeeId, id)).limit(1),
+    db.select({ id: leavesTable.id }).from(leavesTable).where(eq(leavesTable.employeeId, id)).limit(1),
+    db.select({ id: salaryRecordsTable.id }).from(salaryRecordsTable).where(eq(salaryRecordsTable.employeeId, id)).limit(1),
+    db.select({ id: salaryAdvancesTable.id }).from(salaryAdvancesTable).where(eq(salaryAdvancesTable.employeeId, id)).limit(1),
+    db.select({ id: salaryAdjustmentsTable.id }).from(salaryAdjustmentsTable).where(eq(salaryAdjustmentsTable.employeeId, id)).limit(1),
+    db.select({ id: timeClockTable.id }).from(timeClockTable).where(eq(timeClockTable.employeeId, id)).limit(1),
+  ]);
+
+  const hasHistory = [
+    attendanceRefs,
+    leaveRefs,
+    salaryRefs,
+    advanceRefs,
+    adjustmentRefs,
+    timeClockRefs,
+  ].some((rows) => rows.length > 0);
+
+  if (hasHistory) {
+    const [employee] = await db.update(employeesTable)
+      .set({ active: false })
+      .where(eq(employeesTable.id, id))
+      .returning();
+    await createAuditLog("employees", id, "archive", existing, employee, String((req as any).userId ?? ""));
+    res.json({
+      success: true,
+      archived: true,
+      message: "Employee has historical records, so they were archived instead of permanently deleted.",
+    });
+    return;
+  }
+
   const [employee] = await db.delete(employeesTable).where(eq(employeesTable.id, id)).returning();
-  if (!employee) { res.status(404).json({ error: "Not found" }); return; }
-  res.json({ success: true });
+  await createAuditLog("employees", id, "delete", existing, null, String((req as any).userId ?? ""));
+  res.json({ success: true, archived: false, message: "Employee deleted successfully." });
 });
 
 router.get("/shifts", authMiddleware, async (_req, res): Promise<void> => {
